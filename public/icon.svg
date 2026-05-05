@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background fills the full canvas for maskable compatibility -->
+  <rect width="512" height="512" fill="#2d5a3d"/>
+  <!-- Sun rays -->
+  <g stroke="#f5c518" stroke-width="26" stroke-linecap="round">
+    <line x1="256" y1="68" x2="256" y2="112"/>
+    <line x1="256" y1="308" x2="256" y2="352"/>
+    <line x1="96"  y1="210" x2="140" y2="210"/>
+    <line x1="372" y1="210" x2="416" y2="210"/>
+    <line x1="144" y1="115" x2="175" y2="146"/>
+    <line x1="337" y1="115" x2="368" y2="146"/>
+    <line x1="144" y1="305" x2="175" y2="274"/>
+    <line x1="337" y1="305" x2="368" y2="274"/>
+  </g>
+  <!-- Sun -->
+  <circle cx="256" cy="210" r="88" fill="#f5c518"/>
+  <!-- Ground -->
+  <ellipse cx="256" cy="430" rx="230" ry="55" fill="#3d7a52"/>
+  <!-- Grass blades -->
+  <path d="M160 430 Q148 388 138 362 Q155 392 172 428Z" fill="#5aad72"/>
+  <path d="M210 430 Q204 382 200 355 Q215 386 228 428Z" fill="#5aad72"/>
+  <path d="M302 430 Q308 382 312 355 Q297 386 284 428Z" fill="#5aad72"/>
+  <path d="M352 430 Q364 388 374 362 Q357 392 340 428Z" fill="#5aad72"/>
+</svg>

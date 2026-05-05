@@ -1,0 +1,25 @@
+{
+  "name": "YardObs",
+  "short_name": "YardObs",
+  "description": "Hyperlocal backyard weather dashboard",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#fdf6ec",
+  "background_color": "#2d5a3d",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

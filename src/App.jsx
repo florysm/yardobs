@@ -61,7 +61,7 @@ export default function App() {
   const [previewCondition, setPreviewCondition] = useState(null);
 
   const stationId = import.meta.env.VITE_PWS_STATION_ID;
-  const { current, history, forecast, isLoading, error, lastUpdated, fetchHistory, fetchForecast } = useWeather(stationId);
+  const { current, history, historyDaily, forecast, isLoading, error, lastUpdated, fetchHistory, fetchHistoryDaily, fetchForecast } = useWeather(stationId);
 
   const autoTheme  = resolveAutoTheme(current);
   const activeTheme =
@@ -126,6 +126,8 @@ export default function App() {
               stationId={stationId}
               fetchHistory={fetchHistory}
               history={history}
+              fetchHistoryDaily={fetchHistoryDaily}
+              historyDaily={historyDaily}
               chartColors={chartColors}
             />
           </Suspense>

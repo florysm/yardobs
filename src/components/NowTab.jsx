@@ -81,12 +81,13 @@ function MetricCard({ icon, label, value, unit, trend }) {
 
 function summarize(obs = []) {
   if (!obs.length) return null;
-  const temps   = obs.map(o => o.imperial?.temp).filter(v => v != null);
+  const highs   = obs.map(o => o.imperial?.tempHigh).filter(v => v != null);
+  const lows    = obs.map(o => o.imperial?.tempLow).filter(v => v != null);
   const precips = obs.map(o => o.imperial?.precipTotal).filter(v => v != null);
   return {
-    tempHigh:     temps.length   ? Math.max(...temps)   : null,
-    tempLow:      temps.length   ? Math.min(...temps)   : null,
-    precipTotal:  precips.length ? Math.max(...precips) : null,
+    tempHigh:    highs.length   ? Math.max(...highs)   : null,
+    tempLow:     lows.length    ? Math.min(...lows)     : null,
+    precipTotal: precips.length ? Math.max(...precips)  : null,
   };
 }
 
@@ -168,7 +169,7 @@ export default function NowTab({ current, isLoading, stationId, fetchHistory, hi
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
             <DeltaCell label="High"    thisVal={todaySum?.tempHigh}    lastVal={lySum?.tempHigh}    unit="°F" />
             <DeltaCell label="Low"     thisVal={todaySum?.tempLow}     lastVal={lySum?.tempLow}     unit="°F" />
-            <DeltaCell label="Rainfall" thisVal={todaySum?.precipTotal} lastVal={lySum?.precipTotal} unit='"' digits={2} />
+            <DeltaCell label="Rainfall" thisVal={current?.precipTotal} lastVal={lySum?.precipTotal} unit='"' digits={2} />
           </div>
           {note && (
             <div style={{

@@ -47,8 +47,8 @@ export default function SettingsDrawer({
         onClick={onClose}
         aria-hidden="true"
         style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)',
-          zIndex: 190, backdropFilter: 'blur(2px)',
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          zIndex: 190, backdropFilter: 'blur(5px)',
         }}
       />
 

@@ -102,3 +102,7 @@ Set `TWC_API_KEY` as an environment variable in the Vercel project dashboard (no
 Six themes are defined as CSS variable blocks on `body.theme-<name>` in [src/index.css](src/index.css). The active theme is resolved automatically from the TWC icon code and `isDay` flag, with a manual override stored in `localStorage` under `yardobs-mode`.
 
 Because SVG chart attributes cannot consume CSS variables, resolved hex values for `--accent` and `--yoy` are mirrored in the `CHART_COLORS` map in [src/App.jsx](src/App.jsx) and passed as props to the Recharts components.
+
+## Documentation
+
+Documentation for the TWC API can be found at https://docs.google.com/document/d/1eKCnKXI9xnoMGRRzOL1xPCBihNV2rOet08qpE_gArAY/edit?tab=t.0

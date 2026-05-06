@@ -7,12 +7,14 @@ export function toDateStr(date) {
 }
 
 export function useWeather(stationId) {
-  const [current, setCurrent]       = useState(null);
-  const [history, setHistory]       = useState({});   // keyed by YYYYMMDD
-  const [forecast, setForecast]     = useState(null);
-  const [isLoading, setIsLoading]   = useState(true);
-  const [error, setError]           = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [current, setCurrent]           = useState(null);
+  const [history, setHistory]           = useState({});       // keyed by YYYYMMDD, hourly obs
+  const historyDailyRef                 = useRef({});         // ref cache keeps callback stable
+  const [historyDaily, setHistoryDaily] = useState({});       // keyed by YYYYMMDD, daily summaries
+  const [forecast, setForecast]         = useState(null);
+  const [isLoading, setIsLoading]       = useState(true);
+  const [error, setError]               = useState(null);
+  const [lastUpdated, setLastUpdated]   = useState(null);
   const locationRef = useRef(null);
 
   const fetchCurrent = useCallback(async () => {
@@ -53,11 +55,12 @@ export function useWeather(stationId) {
     }
   }, [stationId]);
 
-  // Returns observations array; caches by YYYYMMDD key
+  // Hourly history — caches by YYYYMMDD key in state
   const fetchHistory = useCallback(async (dateStr) => {
     if (!stationId) return null;
     const key = dateStr || toDateStr(new Date());
-    if (history[key]) return history[key];
+    const isToday = key === toDateStr(new Date());
+    if (!isToday && history[key]) return history[key];
     try {
       const res = await fetch(
         `/api/weather?type=history&stationId=${encodeURIComponent(stationId)}&date=${key}`
@@ -72,6 +75,26 @@ export function useWeather(stationId) {
       return null;
     }
   }, [stationId, history]);
+
+  // Daily summary history — ref-based cache keeps callback stable across renders
+  const fetchHistoryDaily = useCallback(async (dateStr) => {
+    if (!stationId) return null;
+    if (historyDailyRef.current[dateStr]) return historyDailyRef.current[dateStr];
+    try {
+      const res = await fetch(
+        `/api/weather?type=history-daily&stationId=${encodeURIComponent(stationId)}&date=${dateStr}`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const obs = data.observations ?? [];
+      historyDailyRef.current[dateStr] = obs;
+      setHistoryDaily(prev => ({ ...prev, [dateStr]: obs }));
+      return obs;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    }
+  }, [stationId]);
 
   const fetchForecast = useCallback(async () => {
     const loc = locationRef.current;
@@ -92,5 +115,9 @@ export function useWeather(stationId) {
     return () => clearInterval(interval);
   }, [fetchCurrent]);
 
-  return { current, history, forecast, isLoading, error, lastUpdated, fetchCurrent, fetchHistory, fetchForecast };
+  return {
+    current, history, historyDaily, forecast,
+    isLoading, error, lastUpdated,
+    fetchCurrent, fetchHistory, fetchHistoryDaily, fetchForecast,
+  };
 }

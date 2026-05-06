@@ -126,10 +126,11 @@
   }
   .y-tab:hover:not(.active) { background: var(--soft); color: var(--accent); }
   .y-tab.active {
-    background: var(--accent);
+    background: var(--soft);
     border-color: var(--accent);
-    color: #fff;
-    box-shadow: 0 4px 14px var(--glow);
+    color: var(--accent);
+    font-weight: 600;
+    box-shadow: 0 2px 8px var(--glow);
   }
 
   /* Range / mode pills */

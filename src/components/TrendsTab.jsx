@@ -11,10 +11,10 @@ const RANGES = [
 ];
 
 const METRICS = [
-  { id: 'temp',     label: 'Temperature', unit: '°F',   digits: 0, domain: ['auto','auto'] },
-  { id: 'humidity', label: 'Humidity',    unit: '%',    digits: 0, domain: [0, 100] },
+  { id: 'temp',     label: 'Temperature', unit: '°F',    digits: 0, domain: ['auto','auto'] },
+  { id: 'humidity', label: 'Humidity',    unit: '%',     digits: 0, domain: [0, 100] },
   { id: 'pressure', label: 'Pressure',    unit: ' inHg', digits: 2, domain: ['auto','auto'] },
-  { id: 'precip',   label: 'Rainfall',    unit: '"',    digits: 2, domain: [0,'auto'] },
+  { id: 'precip',   label: 'Rainfall',    unit: '"',     digits: 2, domain: [0,'auto'] },
 ];
 
 function addDays(date, n) {
@@ -23,17 +23,30 @@ function addDays(date, n) {
   return d;
 }
 
+// Hourly history fields: tempAvg/humidityAvg/pressureMax (not temp/humidity/pressure)
 function mergeHourly(obs = []) {
   return obs.map(o => ({
     time:     o.obsTimeLocal?.slice(11, 16) ?? '',
-    temp:     o.imperial?.temp     ?? null,
-    humidity: o.humidity           ?? null,
-    pressure: o.imperial?.pressure ?? null,
+    temp:     o.imperial?.tempAvg     ?? null,
+    humidity: o.humidityAvg           ?? null,
+    pressure: o.imperial?.pressureMax ?? null,
     precip:   o.imperial?.precipTotal ?? null,
   }));
 }
 
-function stats(arr, digits) {
+// Daily summary — one observation object → one chart row
+function mergeDay(o) {
+  if (!o) return null;
+  return {
+    time:     o.obsTimeLocal?.slice(5, 10) ?? '',
+    temp:     o.imperial?.tempAvg     ?? null,
+    humidity: o.humidityAvg           ?? null,
+    pressure: o.imperial?.pressureMax ?? null,
+    precip:   o.imperial?.precipTotal ?? null,
+  };
+}
+
+function stats(arr) {
   const vals = arr.filter(v => v != null);
   if (!vals.length) return { high: null, low: null, avg: null };
   const high = Math.max(...vals);
@@ -60,7 +73,6 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-// Div-based bar chart (matches prototype's `.bar-chart`)
 function BarChart({ values, labels }) {
   const max = Math.max(...values, 0.01);
   return (
@@ -83,46 +95,88 @@ function BarChart({ values, labels }) {
   );
 }
 
-export default function TrendsTab({ stationId, fetchHistory, history, chartColors }) {
+export default function TrendsTab({ stationId, fetchHistory, history, fetchHistoryDaily, historyDaily, chartColors }) {
   const [range,   setRange]   = useState('24h');
   const [metric,  setMetric]  = useState('temp');
   const [showYoY, setShowYoY] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const today   = new Date();
-  const todayKey = toDateStr(today);
-  const lyKey    = toDateStr(addDays(today, -365));
+  const today          = new Date();
+  const todayKey       = toDateStr(today);
+  const yesterdayKey   = toDateStr(addDays(today, -1));
+  const lyKey          = toDateStr(addDays(today, -365));
+  const lyYesterdayKey = toDateStr(addDays(today, -366));
 
-  // Fetch today + last-year on mount/stationId change
+  // Last 7 date keys for the rainfall bar chart (always kept fresh)
+  const last7Keys = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(today, -(6 - i))));
+
   const ensureFetched = useCallback(async (key) => {
     if (!history[key]) await fetchHistory(key);
   }, [history, fetchHistory]);
 
+  // Prefetch last 7 daily summaries on mount for the rainfall bar
+  useEffect(() => {
+    if (!stationId) return;
+    last7Keys.forEach(k => fetchHistoryDaily(k));
+  // fetchHistoryDaily is stable (only depends on stationId via ref cache)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stationId, fetchHistoryDaily]);
+
+  // Range-aware data fetching
   useEffect(() => {
     if (!stationId) return;
     setLoading(true);
-    const tasks = [ensureFetched(todayKey)];
-    if (showYoY) tasks.push(ensureFetched(lyKey));
+    let tasks;
+    if (range === '24h') {
+      tasks = [ensureFetched(todayKey), ensureFetched(yesterdayKey)];
+      if (showYoY) tasks.push(ensureFetched(lyKey), ensureFetched(lyYesterdayKey));
+    } else {
+      const count = range === '30d' ? 30 : 7;
+      const keys = Array.from({ length: count }, (_, i) =>
+        toDateStr(addDays(new Date(), -(count - 1 - i)))
+      );
+      tasks = keys.map(k => fetchHistoryDaily(k));
+    }
     Promise.all(tasks).finally(() => setLoading(false));
-  }, [stationId, todayKey, lyKey, showYoY, ensureFetched]);
+  }, [stationId, range, todayKey, yesterdayKey, lyKey, lyYesterdayKey, showYoY, ensureFetched, fetchHistoryDaily]);
 
-  const currentObs = mergeHourly(history[todayKey] ?? []);
-  const lyObs      = mergeHourly(history[lyKey]    ?? []);
-
-  const chartData = currentObs.map((row, i) => ({
-    ...row,
-    [`ly_${metric}`]: lyObs[i]?.[metric] ?? null,
-  }));
+  // Build chart data based on selected range
+  let chartData;
+  if (range === '24h') {
+    const hourlyObs = [
+      ...mergeHourly(history[yesterdayKey] ?? []),
+      ...mergeHourly(history[todayKey]     ?? []),
+    ].slice(-24);
+    const lyObs = [
+      ...mergeHourly(history[lyYesterdayKey] ?? []),
+      ...mergeHourly(history[lyKey]          ?? []),
+    ].slice(-24);
+    chartData = hourlyObs.map((row, i) => ({
+      ...row,
+      [`ly_${metric}`]: lyObs[i]?.[metric] ?? null,
+    }));
+  } else {
+    const count = range === '30d' ? 30 : 7;
+    const keys  = Array.from({ length: count }, (_, i) =>
+      toDateStr(addDays(today, -(count - 1 - i)))
+    );
+    chartData = keys
+      .map(key => mergeDay((historyDaily[key] ?? [])[0]))
+      .filter(Boolean);
+  }
 
   const metaCurrent = METRICS.find(m => m.id === metric) ?? METRICS[0];
   const { digits, unit, domain } = metaCurrent;
 
-  const metricVals = currentObs.map(r => r[metric]).filter(v => v != null);
-  const { high, low, avg } = stats(metricVals, digits);
+  const metricVals = chartData.map(r => r[metric]).filter(v => v != null);
+  const { high, low, avg } = stats(metricVals);
 
-  // 7-day rainfall bars — use last 7 days of history if available
-  const rainBars   = Array.from({ length: 7 }, () => Math.random() < 0.25 ? +(Math.random() * 0.4).toFixed(2) : 0);
-  const rainLabels = ['M','T','W','T','F','S','S'];
+  // 7-day rainfall bar — real data from historyDaily, day-of-week labels
+  const rainBars   = last7Keys.map(key => (historyDaily[key] ?? [])[0]?.imperial?.precipTotal ?? 0);
+  const rainLabels = last7Keys.map(key => {
+    const d = new Date(`${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}T12:00:00`);
+    return ['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()];
+  });
 
   return (
     <div>
@@ -150,34 +204,35 @@ export default function TrendsTab({ stationId, fetchHistory, history, chartColor
 
       {/* Main chart card */}
       <div className="y-card">
-        {/* Header: label + YoY toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--tm)', fontWeight: 500 }}>
             {metaCurrent.label} · {RANGES.find(r => r.id === range)?.label}
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--ts)', cursor: 'pointer' }}>
-            <span>vs last year</span>
-            <span style={{ position: 'relative', width: 34, height: 19, display: 'inline-block' }}>
-              <input type="checkbox" checked={showYoY} onChange={e => setShowYoY(e.target.checked)}
-                style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
-              <span style={{
-                position: 'absolute', inset: 0,
-                background: showYoY ? 'var(--accent)' : 'var(--border)',
-                borderRadius: 50, transition: 'background 0.3s',
-              }} />
-              <span style={{
-                position: 'absolute', top: 3, left: 3, width: 13, height: 13,
-                background: '#fff', borderRadius: '50%',
-                transform: showYoY ? 'translateX(15px)' : 'translateX(0)',
-                transition: 'transform 0.3s',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-              }} />
-            </span>
-          </label>
+          {/* YoY toggle only makes sense for 24h (single-day comparison) */}
+          {range === '24h' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--ts)', cursor: 'pointer' }}>
+              <span>vs last year</span>
+              <span style={{ position: 'relative', width: 34, height: 19, display: 'inline-block' }}>
+                <input type="checkbox" checked={showYoY} onChange={e => setShowYoY(e.target.checked)}
+                  style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                <span style={{
+                  position: 'absolute', inset: 0,
+                  background: showYoY ? 'var(--accent)' : 'var(--border)',
+                  borderRadius: 50, transition: 'background 0.3s',
+                }} />
+                <span style={{
+                  position: 'absolute', top: 3, left: 3, width: 13, height: 13,
+                  background: '#fff', borderRadius: '50%',
+                  transform: showYoY ? 'translateX(15px)' : 'translateX(0)',
+                  transition: 'transform 0.3s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                }} />
+              </span>
+            </label>
+          )}
         </div>
 
-        {/* YoY legend */}
-        {showYoY && (
+        {showYoY && range === '24h' && (
           <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--tm)', marginBottom: 8 }}>
             <span>
               <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.accent }} />
@@ -207,7 +262,7 @@ export default function TrendsTab({ stationId, fetchHistory, history, chartColor
               <YAxis domain={domain} tick={{ fontSize: 9, fill: chartColors.accent, fontFamily: 'monospace' }}
                 tickLine={false} axisLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              {showYoY && (
+              {showYoY && range === '24h' && (
                 <Line type="monotone" dataKey={`ly_${metric}`} name="Last year"
                   stroke={chartColors.yoy} strokeWidth={1.5} strokeDasharray="6 3"
                   dot={false} connectNulls />
@@ -236,11 +291,13 @@ export default function TrendsTab({ stationId, fetchHistory, history, chartColor
         ))}
       </div>
 
-      {/* 7-Day rainfall bar chart */}
-      <div className="y-card">
-        <div className="y-label">7-Day Rainfall</div>
-        <BarChart values={rainBars} labels={rainLabels} />
-      </div>
+      {/* 7-Day rainfall — only shown when Rainfall metric is active */}
+      {metric === 'precip' && (
+        <div className="y-card">
+          <div className="y-label">7-Day Rainfall</div>
+          <BarChart values={rainBars} labels={rainLabels} />
+        </div>
+      )}
 
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', padding: '6px 0 4px', letterSpacing: '0.3px' }}>
         PWS Daily Summary · Historical API

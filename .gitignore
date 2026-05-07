@@ -24,5 +24,11 @@ Thumbs.db
 .idea/
 
 # Logs
-*.log
+*.logs
 npm-debug.log*
+
+# Docs
+docs/
+
+# MISC
+.nvmrc

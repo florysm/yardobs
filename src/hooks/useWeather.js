@@ -9,6 +9,7 @@ export function toDateStr(date) {
 export function useWeather(stationId) {
   const [current, setCurrent]           = useState(null);
   const [history, setHistory]           = useState({});       // keyed by YYYYMMDD, hourly obs
+  const [historyRecent, setHistoryRecent] = useState([]);     // rolling 7-day hourly, always fresh
   const historyDailyRef                 = useRef({});         // ref cache keeps callback stable
   const [historyDaily, setHistoryDaily] = useState({});       // keyed by YYYYMMDD, daily summaries
   const [forecast, setForecast]         = useState(null);
@@ -76,6 +77,24 @@ export function useWeather(stationId) {
     }
   }, [stationId, history]);
 
+  // Rolling 7-day hourly — always fetched fresh, no cache
+  const fetchHistoryRecent = useCallback(async () => {
+    if (!stationId) return null;
+    try {
+      const res = await fetch(
+        `/api/weather?type=history-recent&stationId=${encodeURIComponent(stationId)}`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const obs = data.observations ?? [];
+      setHistoryRecent(obs);
+      return obs;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    }
+  }, [stationId]);
+
   // Daily summary history — ref-based cache keeps callback stable across renders
   const fetchHistoryDaily = useCallback(async (dateStr) => {
     if (!stationId) return null;
@@ -116,8 +135,8 @@ export function useWeather(stationId) {
   }, [fetchCurrent]);
 
   return {
-    current, history, historyDaily, forecast,
+    current, history, historyRecent, historyDaily, forecast,
     isLoading, error, lastUpdated,
-    fetchCurrent, fetchHistory, fetchHistoryDaily, fetchForecast,
+    fetchCurrent, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast,
   };
 }

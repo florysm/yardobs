@@ -19,6 +19,10 @@ export default async function handler(req, res) {
       if (!stationId || !date) return res.status(400).json({ error: 'stationId and date required' });
       url = `${TWC_BASE}/v2/pws/history/hourly?stationId=${stationId}&format=json&units=e&numericPrecision=decimal&date=${date}&apiKey=${apiKey}`;
       break;
+    case 'history-recent':
+      if (!stationId) return res.status(400).json({ error: 'stationId required' });
+      url = `${TWC_BASE}/v2/pws/observations/hourly/7day?stationId=${stationId}&format=json&units=e&numericPrecision=decimal&apiKey=${apiKey}`;
+      break;
     case 'history-daily':
       if (!stationId || !date) return res.status(400).json({ error: 'stationId and date required' });
       url = `${TWC_BASE}/v2/pws/history/daily?stationId=${stationId}&format=json&units=e&numericPrecision=decimal&date=${date}&apiKey=${apiKey}`;

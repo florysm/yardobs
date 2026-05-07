@@ -95,15 +95,13 @@ function BarChart({ values, labels }) {
   );
 }
 
-export default function TrendsTab({ stationId, fetchHistory, history, fetchHistoryDaily, historyDaily, chartColors }) {
+export default function TrendsTab({ stationId, fetchHistory, history, fetchHistoryRecent, historyRecent, fetchHistoryDaily, historyDaily, chartColors }) {
   const [range,   setRange]   = useState('24h');
   const [metric,  setMetric]  = useState('temp');
   const [showYoY, setShowYoY] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const today          = new Date();
-  const todayKey       = toDateStr(today);
-  const yesterdayKey   = toDateStr(addDays(today, -1));
   const lyKey          = toDateStr(addDays(today, -365));
   const lyYesterdayKey = toDateStr(addDays(today, -366));
 
@@ -128,7 +126,7 @@ export default function TrendsTab({ stationId, fetchHistory, history, fetchHisto
     setLoading(true);
     let tasks;
     if (range === '24h') {
-      tasks = [ensureFetched(todayKey), ensureFetched(yesterdayKey)];
+      tasks = [fetchHistoryRecent()];
       if (showYoY) tasks.push(ensureFetched(lyKey), ensureFetched(lyYesterdayKey));
     } else {
       const count = range === '30d' ? 30 : 7;
@@ -138,15 +136,12 @@ export default function TrendsTab({ stationId, fetchHistory, history, fetchHisto
       tasks = keys.map(k => fetchHistoryDaily(k));
     }
     Promise.all(tasks).finally(() => setLoading(false));
-  }, [stationId, range, todayKey, yesterdayKey, lyKey, lyYesterdayKey, showYoY, ensureFetched, fetchHistoryDaily]);
+  }, [stationId, range, lyKey, lyYesterdayKey, showYoY, ensureFetched, fetchHistoryRecent, fetchHistoryDaily]);
 
   // Build chart data based on selected range
   let chartData;
   if (range === '24h') {
-    const hourlyObs = [
-      ...mergeHourly(history[yesterdayKey] ?? []),
-      ...mergeHourly(history[todayKey]     ?? []),
-    ].slice(-24);
+    const hourlyObs = mergeHourly(historyRecent).slice(-24);
     const lyObs = [
       ...mergeHourly(history[lyYesterdayKey] ?? []),
       ...mergeHourly(history[lyKey]          ?? []),

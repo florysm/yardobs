@@ -61,7 +61,7 @@ export default function App() {
   const [previewCondition, setPreviewCondition] = useState(null);
 
   const stationId = import.meta.env.VITE_PWS_STATION_ID;
-  const { current, history, historyDaily, forecast, isLoading, error, lastUpdated, fetchHistory, fetchHistoryDaily, fetchForecast } = useWeather(stationId);
+  const { current, history, historyRecent, historyDaily, forecast, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast } = useWeather(stationId);
 
   const autoTheme  = resolveAutoTheme(current);
   const activeTheme =
@@ -89,8 +89,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (activeTab === 'forecast' && !forecast) fetchForecast();
-  }, [activeTab, forecast, fetchForecast]);
+    if (!forecast && (current || activeTab === 'forecast')) fetchForecast();
+  }, [current, activeTab, forecast, fetchForecast]);
 
   return (
     <div style={{ maxWidth: 420, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -114,6 +114,7 @@ export default function App() {
             stationId={stationId}
             fetchHistory={fetchHistory}
             history={history}
+            forecast={forecast}
           />
         )}
         {activeTab === 'trends' && (
@@ -126,6 +127,8 @@ export default function App() {
               stationId={stationId}
               fetchHistory={fetchHistory}
               history={history}
+              fetchHistoryRecent={fetchHistoryRecent}
+              historyRecent={historyRecent}
               fetchHistoryDaily={fetchHistoryDaily}
               historyDaily={historyDaily}
               chartColors={chartColors}

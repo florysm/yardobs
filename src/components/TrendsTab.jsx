@@ -95,6 +95,41 @@ function BarChart({ values, labels }) {
   );
 }
 
+function RainfallSummaryCard({ range, currentTotal, lyTotal, bars, labels }) {
+  const delta = currentTotal != null && lyTotal != null ? currentTotal - lyTotal : null;
+  const sign  = delta != null && delta >= 0 ? '+' : '';
+  const deltaColor = delta == null ? 'var(--tm)'
+    : delta >  0.01 ? 'var(--delta-up)'
+    : delta < -0.01 ? 'var(--delta-dn)'
+    : 'var(--tm)';
+  const title = range === '24h' ? "Today's Rainfall"
+              : range === '7d'  ? '7-Day Rainfall'
+              :                   '30-Day Rainfall';
+  return (
+    <div className="y-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: bars ? 4 : 0 }}>
+        <div className="y-label">{title}</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--tp)', fontWeight: 500 }}>
+            {currentTotal != null ? `${currentTotal.toFixed(2)}"` : '—'}
+          </span>
+          {lyTotal != null && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tm)' }}>
+              LY: {lyTotal.toFixed(2)}"
+            </span>
+          )}
+          {delta != null && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 500, color: deltaColor }}>
+              {sign}{delta.toFixed(2)}"
+            </span>
+          )}
+        </div>
+      </div>
+      {bars && <BarChart values={bars} labels={labels} />}
+    </div>
+  );
+}
+
 export default function TrendsTab({ stationId, fetchHistory, history, fetchHistoryRecent, historyRecent, fetchHistoryDaily, historyDaily, chartColors }) {
   const [range,   setRange]   = useState('24h');
   const [metric,  setMetric]  = useState('temp');
@@ -104,6 +139,13 @@ export default function TrendsTab({ stationId, fetchHistory, history, fetchHisto
   const today          = new Date();
   const lyKey          = toDateStr(addDays(today, -365));
   const lyYesterdayKey = toDateStr(addDays(today, -366));
+
+  const lyRainKeys = range === '24h'
+    ? [lyKey]
+    : Array.from(
+        { length: range === '30d' ? 30 : 7 },
+        (_, i) => toDateStr(addDays(today, -((range === '30d' ? 29 : 6) - i) - 365))
+      );
 
   // Last 7 date keys for the rainfall bar chart (always kept fresh)
   const last7Keys = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(today, -(6 - i))));
@@ -138,6 +180,14 @@ export default function TrendsTab({ stationId, fetchHistory, history, fetchHisto
     Promise.all(tasks).finally(() => setLoading(false));
   }, [stationId, range, lyKey, lyYesterdayKey, showYoY, ensureFetched, fetchHistoryRecent, fetchHistoryDaily]);
 
+  // Lazily fetch LY daily data for the rainfall comparison card
+  useEffect(() => {
+    if (metric !== 'precip' || !stationId) return;
+    lyRainKeys.forEach(k => fetchHistoryDaily(k));
+  // lyRainKeys omitted: strings are stable day-to-day; fetchHistoryDaily dedupes via ref cache
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stationId, metric, range, fetchHistoryDaily]);
+
   // Build chart data based on selected range
   let chartData;
   if (range === '24h') {
@@ -165,6 +215,40 @@ export default function TrendsTab({ stationId, fetchHistory, history, fetchHisto
 
   const metricVals = chartData.map(r => r[metric]).filter(v => v != null);
   const { high, low, avg } = stats(metricVals);
+
+  // Rainfall comparison card — current period total and LY equivalent
+  const currentPrecipTotal = (() => {
+    if (metric !== 'precip') return null;
+    if (range === '24h') {
+      const todayISO = today.toISOString().split('T')[0];
+      const todayObs = historyRecent.filter(o => o.obsTimeLocal?.startsWith(todayISO));
+      return todayObs.length ? Math.max(...todayObs.map(o => o.imperial?.precipTotal ?? 0)) : null;
+    }
+    const count = range === '30d' ? 30 : 7;
+    const keys = Array.from({ length: count }, (_, i) => toDateStr(addDays(today, -(count - 1 - i))));
+    return keys.reduce((sum, k) => sum + ((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0), 0);
+  })();
+  const lyPrecipLoaded = metric === 'precip' && lyRainKeys.every(k => historyDaily[k] !== undefined);
+  const lyPrecipTotal  = lyPrecipLoaded
+    ? lyRainKeys.reduce((sum, k) => sum + ((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0), 0)
+    : null;
+
+  // 30-day weekly bar groups (4 bars with MM/DD–MM/DD date-range labels)
+  const [weeklyRainBars, weeklyRainLabels] = range === '30d' ? (() => {
+    const keys30 = Array.from({ length: 30 }, (_, i) => toDateStr(addDays(today, -(29 - i))));
+    const parseKey = k => new Date(`${k.slice(0,4)}-${k.slice(4,6)}-${k.slice(6,8)}T12:00:00`);
+    const fmtMD = d => `${d.getMonth() + 1}/${d.getDate()}`;
+    const groups = [[0, 7], [7, 14], [14, 21], [21, 30]];
+    return [
+      groups.map(([s, e]) =>
+        keys30.slice(s, e).reduce((sum, k) =>
+          sum + ((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0), 0)
+      ),
+      groups.map(([s, e]) =>
+        `${fmtMD(parseKey(keys30[s]))}–${fmtMD(parseKey(keys30[e - 1]))}`
+      ),
+    ];
+  })() : [null, []];
 
   // 7-day rainfall bar — real data from historyDaily, day-of-week labels
   const rainBars   = last7Keys.map(key => (historyDaily[key] ?? [])[0]?.imperial?.precipTotal ?? 0);
@@ -217,7 +301,7 @@ export default function TrendsTab({ stationId, fetchHistory, history, fetchHisto
                 }} />
                 <span style={{
                   position: 'absolute', top: 3, left: 3, width: 13, height: 13,
-                  background: '#fff', borderRadius: '50%',
+                  background: 'var(--bg)', borderRadius: '50%',
                   transform: showYoY ? 'translateX(15px)' : 'translateX(0)',
                   transition: 'transform 0.3s',
                   boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
@@ -286,12 +370,15 @@ export default function TrendsTab({ stationId, fetchHistory, history, fetchHisto
         ))}
       </div>
 
-      {/* 7-Day rainfall — only shown when Rainfall metric is active */}
+      {/* Rainfall summary card — range-aware, with LY comparison */}
       {metric === 'precip' && (
-        <div className="y-card">
-          <div className="y-label">7-Day Rainfall</div>
-          <BarChart values={rainBars} labels={rainLabels} />
-        </div>
+        <RainfallSummaryCard
+          range={range}
+          currentTotal={currentPrecipTotal}
+          lyTotal={lyPrecipTotal}
+          bars={range === '7d' ? rainBars : range === '30d' ? weeklyRainBars : null}
+          labels={range === '7d' ? rainLabels : range === '30d' ? weeklyRainLabels : null}
+        />
       )}
 
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', padding: '6px 0 4px', letterSpacing: '0.3px' }}>

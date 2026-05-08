@@ -6,6 +6,8 @@ import NowTab from './components/NowTab';
 import ForecastTab from './components/ForecastTab';
 import SettingsDrawer from './components/SettingsDrawer';
 import { useWeather } from './hooks/useWeather';
+import { CHART_COLORS, META_COLORS } from './themes.js';
+export { CHART_COLORS };
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 
@@ -42,16 +44,6 @@ function resolveAutoTheme(current) {
   return isDay ? 'light' : 'dark';
 }
 
-// Exact --accent / --yoy values from index.css — needed for recharts (SVG attrs don't support var())
-export const CHART_COLORS = {
-  sunny:  { accent: '#e8760a', yoy: '#c8520a' },
-  cloudy: { accent: '#5b7fa6', yoy: '#3a5f86' },
-  rainy:  { accent: '#4fc3f7', yoy: '#0288d1' },
-  stormy: { accent: '#b388ff', yoy: '#7b1fa2' },
-  light:  { accent: '#1a73e8', yoy: '#0d47a1' },
-  dark:   { accent: '#64b5f6', yoy: '#1565c0' },
-};
-
 export default function App() {
   const [activeTab, setActiveTab]           = useState('now');
   const [settingsOpen, setSettingsOpen]     = useState(false);
@@ -74,6 +66,8 @@ export default function App() {
   // Apply theme class to body so CSS variables cascade everywhere
   useEffect(() => {
     document.body.className = `theme-${activeTheme}`;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', META_COLORS[activeTheme] ?? '#f7f8fa');
   }, [activeTheme]);
 
   const handleSetMode = (m) => {

@@ -89,14 +89,10 @@ export default function HeroCard({ current, isLoading, onLongPress }) {
         transition: 'background var(--tr)',
       }}
     >
-      {/* Decorative circles */}
-      <div style={{ position:'absolute', top:-50, right:-50, width:180, height:180, borderRadius:'50%', background:'rgba(255,255,255,0.07)', pointerEvents:'none' }} />
-      <div style={{ position:'absolute', bottom:-30, left:10, width:110, height:110, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }} />
-
       {/* Long-press hint */}
       <div style={{
         position: 'absolute', bottom: 74, left: '50%', transform: 'translateX(-50%)',
-        background: 'rgba(0,0,0,0.35)', color: 'rgba(255,255,255,0.85)',
+        background: 'var(--overlay-bg)', color: 'var(--overlay-text)',
         fontSize: 10, padding: '4px 10px', borderRadius: 50, whiteSpace: 'nowrap',
         opacity: showHint ? 1 : 0, transition: 'opacity 0.4s', letterSpacing: '0.3px',
         pointerEvents: 'none',
@@ -142,7 +138,7 @@ export default function HeroCard({ current, isLoading, onLongPress }) {
       {/* 3-stat footer strip */}
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 1, background: 'var(--border)',
+        gap: 1,
         borderRadius: 14, overflow: 'hidden',
       }}>
         {[

@@ -97,7 +97,7 @@ function DeltaCell({ label, thisVal, lastVal, unit, digits = 0 }) {
   const rLast  = lastVal != null ? Math.round(lastVal * factor) / factor : null;
   const delta  = rThis != null && rLast != null ? rThis - rLast : null;
   const sign   = delta != null && delta >= 0 ? '+' : '';
-  const color = delta == null ? 'var(--tm)' : delta > 0.05 ? '#22c55e' : delta < -0.05 ? '#ef4444' : 'var(--tm)';
+  const color = delta == null ? 'var(--tm)' : delta > 0.05 ? 'var(--delta-up)' : delta < -0.05 ? 'var(--delta-dn)' : 'var(--tm)';
   return (
     <div style={{ textAlign: 'center', padding: '6px 4px' }}>
       <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 1 }}>{label}</div>
@@ -170,7 +170,9 @@ function yoyInsight({ currentTemp, todayPrecip, lyHourlyObs, lyDailyHigh, lyDail
       }
     } else if (forecastHigh != null && lyDailyHigh != null) {
       const fDir = forecastHigh >= lyDailyHigh ? 'top' : 'fall short of';
-      lead = `Running ${absDiff}° ${dir} last year right now, but today's forecast high of ${Math.round(forecastHigh)}° would ${fDir} last year's ${Math.round(lyDailyHigh)}°.`;
+      const sameDirection = (dir === 'above' && forecastHigh >= lyDailyHigh) || (dir === 'below' && forecastHigh < lyDailyHigh);
+      const conj = sameDirection ? 'and' : 'but';
+      lead = `Running ${absDiff}° ${dir} last year right now, ${conj} today's forecast high of ${Math.round(forecastHigh)}° would ${fDir} last year's ${Math.round(lyDailyHigh)}°.`;
     } else if (lyDailyHigh != null) {
       lead = `Running ${absDiff}° ${dir} last year at this hour vs a ${Math.round(lyDailyHigh)}° high last ${dateStr}.`;
     } else {
@@ -267,6 +269,11 @@ export default function NowTab({ current, isLoading, stationId, fetchHistory, hi
   });
   const hasYoy    = todaySum || lySum;
 
+  const forecastHighToday = forecast?.temperatureMax?.[0] ?? null;
+  const observedHighToday = todaySum?.tempHigh ?? null;
+  const highVals = [observedHighToday, forecastHighToday].filter(v => v != null);
+  const todayDisplayHigh = highVals.length ? Math.max(...highVals) : null;
+
   return (
     <div>
       {/* 4-metric grid */}
@@ -283,7 +290,7 @@ export default function NowTab({ current, isLoading, stationId, fetchHistory, hi
           <div className="y-label">Today vs. One Year Ago</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
             <DeltaCell label="Current"  thisVal={current?.temp}         lastVal={lyCurrentTemp}      unit="°F" />
-            <DeltaCell label="High"     thisVal={todaySum?.tempHigh}    lastVal={lySum?.tempHigh}    unit="°F" />
+            <DeltaCell label="High"     thisVal={todayDisplayHigh}      lastVal={lySum?.tempHigh}    unit="°F" />
             <DeltaCell label="Low"      thisVal={todaySum?.tempLow}     lastVal={lySum?.tempLow}     unit="°F" />
             <DeltaCell label="Rainfall" thisVal={current?.precipTotal}  lastVal={lySum?.precipTotal} unit='"'  digits={2} />
           </div>

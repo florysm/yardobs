@@ -1,11 +1,7 @@
 import { useEffect } from 'react';
+import { CONDITION_PREVIEWS } from '../themes.js';
 
-const CONDITION_PREVIEWS = [
-  { id: 'sunny',  label: 'Sunny',  icon: '☀️' },
-  { id: 'cloudy', label: 'Cloudy', icon: '☁️' },
-  { id: 'rainy',  label: 'Rainy',  icon: '🌧️' },
-  { id: 'stormy', label: 'Stormy', icon: '⛈️' },
-];
+const WEATHER_THEMES = new Set(['sunny', 'cloudy', 'rainy', 'stormy']);
 
 const MODES = [
   { id: 'light', icon: '☀', label: 'Always Light', desc: 'I prefer light regardless of conditions' },
@@ -22,7 +18,7 @@ function RadioDot({ selected }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       flexShrink: 0, transition: 'all 0.2s',
     }}>
-      {selected && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
+      {selected && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--bg)' }} />}
     </div>
   );
 }
@@ -36,8 +32,14 @@ export default function SettingsDrawer({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const activePreview = previewCondition
+    ? CONDITION_PREVIEWS.find(x => x.id === previewCondition) ?? null
+    : null;
+
   const autoLabel = autoTheme
-    ? `Auto-synced · ${autoTheme.charAt(0).toUpperCase() + autoTheme.slice(1)} conditions`
+    ? WEATHER_THEMES.has(autoTheme)
+      ? `Auto-synced · ${autoTheme.charAt(0).toUpperCase() + autoTheme.slice(1)} conditions`
+      : `Auto-synced · ${autoTheme.charAt(0).toUpperCase() + autoTheme.slice(1)} mode`
     : 'Auto-synced to current conditions';
 
   return (
@@ -47,8 +49,11 @@ export default function SettingsDrawer({
         onClick={onClose}
         aria-hidden="true"
         style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          zIndex: 190, backdropFilter: 'blur(5px)',
+          position: 'fixed', inset: 0,
+          background: previewCondition ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.5)',
+          backdropFilter: previewCondition ? 'blur(2px)' : 'blur(5px)',
+          zIndex: 190,
+          transition: 'background 0.35s, backdrop-filter 0.35s',
         }}
       />
 
@@ -104,7 +109,7 @@ export default function SettingsDrawer({
         {mode === 'auto' && (
           <div style={{ marginBottom: 22 }}>
             <div className="y-label">Preview Conditions</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {CONDITION_PREVIEWS.map(c => {
                 const isActive = previewCondition === c.id;
                 return (
@@ -114,14 +119,15 @@ export default function SettingsDrawer({
                     style={{
                       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                       padding: '10px 4px',
-                      background: isActive ? 'var(--soft)' : 'var(--card)',
-                      border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                      background: c.bg,
+                      border: `2px solid ${isActive ? c.accent : 'transparent'}`,
                       borderRadius: 12,
                       cursor: 'pointer',
-                      fontSize: 9, color: isActive ? 'var(--accent)' : 'var(--tm)',
+                      fontSize: 9, color: isActive ? c.accent : c.text,
                       letterSpacing: '0.5px', textTransform: 'uppercase',
-                      transition: 'all 0.2s',
+                      transition: 'border-color 0.2s, color 0.2s',
                       fontFamily: 'var(--font-body)',
+                      boxShadow: isActive ? `0 0 0 3px ${c.accent}33` : 'none',
                     }}
                   >
                     <span style={{ fontSize: 22 }}>{c.icon}</span>
@@ -130,6 +136,33 @@ export default function SettingsDrawer({
                 );
               })}
             </div>
+
+            {activePreview && (
+              <div style={{ marginTop: 10, borderRadius: 16, overflow: 'hidden', border: `1px solid ${activePreview.accent}55` }}>
+                <div style={{
+                  background: activePreview.hero,
+                  padding: '18px 18px 14px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <div>
+                    <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: activePreview.text, fontWeight: 500 }}>
+                      Theme Preview
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: activePreview.text, marginTop: 6, letterSpacing: '-0.5px', fontFamily: 'var(--font-display)' }}>
+                      {activePreview.label}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                      {[activePreview.bg, activePreview.accent, activePreview.text].map((c, i) => (
+                        <div key={i} style={{ width: 14, height: 14, borderRadius: '50%', background: c, border: '1.5px solid rgba(255,255,255,0.25)' }} />
+                      ))}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 56, lineHeight: 1, opacity: 0.9 }} aria-hidden="true">
+                    {activePreview.icon}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

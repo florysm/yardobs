@@ -10,6 +10,7 @@ import { CHART_COLORS, META_COLORS } from './themes.js';
 export { CHART_COLORS };
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
+const RadarTab  = lazy(() => import('./components/RadarTab'));
 
 // Resolves current conditions → one of the 6 theme names.
 // Uses iconCode when the API returns it; falls back to PWS sensor data.
@@ -131,6 +132,19 @@ export default function App() {
         )}
         {activeTab === 'forecast' && (
           <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} />
+        )}
+        {activeTab === 'radar' && (
+          <Suspense fallback={
+            <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>
+              Loading…
+            </div>
+          }>
+            <RadarTab
+              lat={current?.lat ?? null}
+              lon={current?.lon ?? null}
+              isLoading={isLoading}
+            />
+          </Suspense>
         )}
       </div>
 

@@ -229,3 +229,19 @@ body.theme-dark {
 /* Forecast horizontal scroll — hide scrollbar */
 .fc-scroll { scrollbar-width: none; }
 .fc-scroll::-webkit-scrollbar { display: none; }
+
+/* Leaflet map overrides */
+.leaflet-container {
+  border-radius: 12px;
+  font-family: var(--font-body);
+}
+.leaflet-tooltip {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--tp);
+  border-radius: 8px;
+  font-size: 10px;
+  padding: 3px 7px;
+  box-shadow: none;
+}
+.leaflet-tooltip::before { display: none; }

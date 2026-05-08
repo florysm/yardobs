@@ -2,6 +2,7 @@ const TABS = [
   { id: 'now',      label: 'Now' },
   { id: 'trends',   label: 'Trends' },
   { id: 'forecast', label: 'Forecast' },
+  { id: 'radar',    label: 'Radar' },
 ];
 
 export default function NavTabs({ active, onChange }) {

@@ -13,6 +13,7 @@ export function useWeather(stationId) {
   const historyDailyRef                 = useRef({});         // ref cache keeps callback stable
   const [historyDaily, setHistoryDaily] = useState({});       // keyed by YYYYMMDD, daily summaries
   const [forecast, setForecast]         = useState(null);
+  const [hourlyForecast, setHourlyForecast] = useState(null);
   const [isLoading, setIsLoading]       = useState(true);
   const [error, setError]               = useState(null);
   const [lastUpdated, setLastUpdated]   = useState(null);
@@ -128,6 +129,19 @@ export function useWeather(stationId) {
     }
   }, []);
 
+  const fetchHourlyForecast = useCallback(async () => {
+    const loc = locationRef.current;
+    if (!loc) return;
+    try {
+      const res = await fetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setHourlyForecast(data);
+    } catch (err) {
+      setError(err.message);
+    }
+  }, []);
+
   useEffect(() => {
     fetchCurrent();
     const interval = setInterval(fetchCurrent, POLL_MS);
@@ -135,8 +149,8 @@ export function useWeather(stationId) {
   }, [fetchCurrent]);
 
   return {
-    current, history, historyRecent, historyDaily, forecast,
+    current, history, historyRecent, historyDaily, forecast, hourlyForecast,
     isLoading, error, lastUpdated,
-    fetchCurrent, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast,
+    fetchCurrent, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast,
   };
 }

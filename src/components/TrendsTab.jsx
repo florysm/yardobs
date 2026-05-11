@@ -17,6 +17,18 @@ const METRICS = [
   { id: 'precip',   label: 'Rainfall',    unit: '"',     digits: 2, domain: [0,'auto'] },
 ];
 
+function fmtTimeTick(t) {
+  if (!t) return '';
+  const [hStr, mStr] = t.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  const rounded = m >= 30 ? (h + 1) % 24 : h;
+  if (rounded === 0)  return '12am';
+  if (rounded < 12)   return `${rounded}am`;
+  if (rounded === 12) return '12pm';
+  return `${rounded - 12}pm`;
+}
+
 function addDays(date, n) {
   const d = new Date(date);
   d.setDate(d.getDate() + n);
@@ -337,7 +349,7 @@ export default function TrendsTab({ stationId, fetchHistory, history, fetchHisto
             <LineChart data={chartData} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={`${chartColors.accent}22`} />
               <XAxis dataKey="time" tick={{ fontSize: 9, fill: chartColors.accent, fontFamily: 'monospace' }}
-                interval="preserveStartEnd" tickLine={false} />
+                interval="preserveStartEnd" tickLine={false} tickFormatter={range === '24h' ? fmtTimeTick : undefined} />
               <YAxis domain={domain} tick={{ fontSize: 9, fill: chartColors.accent, fontFamily: 'monospace' }}
                 tickLine={false} axisLine={false} />
               <Tooltip content={<CustomTooltip />} />

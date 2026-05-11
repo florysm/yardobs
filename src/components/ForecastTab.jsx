@@ -1,3 +1,5 @@
+import { useRef, useState, useEffect } from 'react';
+
 const ICON_EMOJI = {
   0:'🌪️',1:'🌀',2:'🌀',3:'⛈️',4:'⛈️',5:'🌨️',6:'🌧️',7:'🌧️',8:'🌧️',
   9:'🌦️',10:'🌧️',11:'🌧️',12:'🌧️',13:'🌨️',14:'🌨️',15:'🌨️',16:'❄️',
@@ -10,6 +12,64 @@ const ICON_EMOJI = {
 function fmt(val, digits = 0) {
   if (val == null || isNaN(val)) return '—';
   return Number(val).toFixed(digits);
+}
+
+function fmtHour(isoStr) {
+  const d = new Date(isoStr);
+  const h = d.getMinutes() >= 30 ? (d.getHours() + 1) % 24 : d.getHours();
+  if (h === 0) return '12am';
+  if (h < 12) return `${h}am`;
+  if (h === 12) return '12pm';
+  return `${h - 12}pm`;
+}
+
+const WMO_EMOJI = {
+  0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
+  45:'🌫️', 48:'🌫️',
+  51:'🌦️', 53:'🌧️', 55:'🌧️', 56:'🌧️', 57:'🌧️',
+  61:'🌦️', 63:'🌧️', 65:'🌧️', 66:'🌧️', 67:'🌧️',
+  71:'🌨️', 73:'🌨️', 75:'❄️', 77:'❄️',
+  80:'🌦️', 81:'🌧️', 82:'🌧️', 85:'🌨️', 86:'❄️',
+  95:'⛈️', 96:'⛈️', 99:'⛈️',
+};
+
+function buildHours(hf) {
+  const h = hf?.hourly;
+  if (!h?.time?.length) return [];
+  const now = Date.now();
+  return h.time
+    .map((t, i) => ({
+      time: t,
+      ms: new Date(t).getTime(),
+      icon: WMO_EMOJI[h.weathercode?.[i]] ?? '🌡️',
+      temp: h.temperature_2m?.[i],
+      pop: h.precipitation_probability?.[i] ?? 0,
+    }))
+    .filter(hr => hr.ms >= now - 30 * 60 * 1000)
+    .slice(0, 24)
+    .map((hr, i) => ({ ...hr, isNow: i === 0 }));
+}
+
+function groupByDay(hours) {
+  const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+  const groups = [];
+  let current = null;
+  for (const hr of hours) {
+    const date = hr.time.slice(0, 10);
+    if (!current || current.date !== date) {
+      const d = new Date(date + 'T12:00:00');
+      current = {
+        date,
+        label: date === todayStr
+          ? 'Today'
+          : `${d.toLocaleDateString('en-US', { weekday: 'long' })} ${d.getDate()}`,
+        hours: [],
+      };
+      groups.push(current);
+    }
+    current.hours.push(hr);
+  }
+  return groups;
 }
 
 function buildDays(forecast) {
@@ -54,6 +114,20 @@ function PrecipBars({ days }) {
   );
 }
 
+function HourSkeleton() {
+  return (
+    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 20 }}>
+      {[0,1,2,3,4,5,6].map(i => (
+        <div key={i} style={{
+          flex: '0 0 56px', height: 100, borderRadius: 16,
+          background: 'var(--card)', border: '1px solid var(--border)',
+          opacity: 0.4, animation: 'pulse 1.5s infinite',
+        }} />
+      ))}
+    </div>
+  );
+}
+
 function Skeleton() {
   return (
     <div>
@@ -70,7 +144,17 @@ function Skeleton() {
   );
 }
 
-export default function ForecastTab({ forecast, isLoading }) {
+export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast }) {
+  const scrollRef = useRef(null);
+  const groupRefs = useRef([]);
+  const [activeLabel, setActiveLabel] = useState(null);
+
+  const groups = groupByDay(hourlyForecast ? buildHours(hourlyForecast) : []);
+
+  useEffect(() => {
+    if (groups.length > 0) setActiveLabel(groups[0].label);
+  }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (isLoading) return <Skeleton />;
 
   if (!forecast) {
@@ -86,8 +170,74 @@ export default function ForecastTab({ forecast, isLoading }) {
 
   const days = buildDays(forecast);
 
+  function handleHourlyScroll() {
+    if (!scrollRef.current) return;
+    const { scrollLeft, clientWidth } = scrollRef.current;
+    const center = scrollLeft + clientWidth / 2;
+    let label = groups[0]?.label ?? null;
+    groupRefs.current.forEach((ref, i) => {
+      if (ref && ref.offsetLeft <= center) label = groups[i]?.label ?? label;
+    });
+    if (label) setActiveLabel(label);
+  }
+
   return (
     <div>
+      {/* Hourly section */}
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--tp)', marginBottom: 8, marginTop: 4 }}>
+        Hourly Forecast
+      </div>
+      {!hourlyForecast ? <HourSkeleton /> : (
+        <>
+          <div style={{
+            textAlign: 'center', fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
+            textTransform: 'uppercase', color: 'var(--tm)', marginBottom: 8,
+            fontFamily: 'var(--font-display)', transition: 'opacity 0.2s',
+          }}>
+            {activeLabel ?? groups[0]?.label ?? ''}
+          </div>
+          <div
+            ref={scrollRef}
+            onScroll={handleHourlyScroll}
+            style={{ display: 'flex', overflowX: 'auto', paddingBottom: 4, marginBottom: 20, alignItems: 'flex-start' }}
+          >
+            {groups.map((group, gi) => (
+              <div
+                key={group.date}
+                ref={el => { groupRefs.current[gi] = el; }}
+                style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: gi > 0 ? 16 : 0 }}
+              >
+                {group.hours.map((hr, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      flex: '0 0 56px',
+                      background: hr.isNow ? 'var(--soft)' : 'var(--card)',
+                      border: `1px solid ${hr.isNow ? 'var(--accent)' : 'var(--border)'}`,
+                      borderRadius: 16,
+                      padding: '10px 6px',
+                      textAlign: 'center',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>
+                      {hr.isNow ? 'Now' : fmtHour(hr.time)}
+                    </div>
+                    <div style={{ fontSize: 20, margin: '6px 0 3px' }} aria-hidden="true">{hr.icon}</div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
+                      {fmt(hr.temp)}°
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 3, visibility: hr.pop > 0 ? 'visible' : 'hidden' }}>
+                      {hr.pop}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--tp)', marginBottom: 12, marginTop: 4 }}>
         5-Day Forecast
       </div>

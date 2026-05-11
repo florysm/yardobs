@@ -31,13 +31,21 @@ export default async function handler(req, res) {
       if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
       url = `${TWC_BASE}/v3/wx/forecast/daily/5day?geocode=${lat},${lon}&format=json&units=e&language=en-US&apiKey=${apiKey}`;
       break;
+    case 'hourly-forecast':
+      if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
+      url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation_probability,weathercode,apparent_temperature&forecast_days=2&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto`;
+      break;
     default:
-      return res.status(400).json({ error: 'Invalid type. Use: current, history, history-daily, forecast' });
+      return res.status(400).json({ error: 'Invalid type. Use: current, history, history-daily, forecast, hourly-forecast' });
   }
 
   try {
     const upstream = await fetch(url);
-    const data = await upstream.json();
+    const text = await upstream.text();
+    let data;
+    try { data = JSON.parse(text); } catch {
+      return res.status(502).json({ error: 'Upstream non-JSON response', status: upstream.status, body: text.slice(0, 200) });
+    }
     return res.status(upstream.status).json(data);
   } catch (err) {
     return res.status(502).json({ error: 'Upstream fetch failed', detail: err.message });

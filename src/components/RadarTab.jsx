@@ -5,33 +5,37 @@ import L from 'leaflet';
 const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
 const CARTO_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 const RADAR_OPACITY = 0.8;
-const FRAME_INTERVAL_MS = 500;
+const FRAME_INTERVAL_MS = 600;
+const LAST_FRAME_HOLD_MS = 1500; // pause on most-recent frame before looping
 
-// Representative colors sampled from RainViewer's Universal Blue scheme (color 2)
-// at dBZ 5, 12, 22, 42, 55 — hardcoded because these are tile overlay colors, not theme vars.
+// The free RainViewer API enforces scheme 2 (Universal Blue) regardless of what
+// value is in the URL — paid tier required for any other scheme.
+const COLOR_SCHEME = 2;
+
+// Colors sourced from rainviewer.com/files/rainviewer_api_colors_table.csv
 const LEGEND = [
-  { color: '#007e00', label: 'Light' },
-  { color: '#1068e0', label: 'Moderate' },
-  { color: '#920dac', label: 'Heavy' },
-  { color: '#fce514', label: 'Very Heavy' },
-  { color: '#fd4d0e', label: 'Extreme' },
+  { color: '#087fdb', label: 'Light' },
+  { color: '#6e0dc6', label: 'Moderate' },
+  { color: '#d2883b', label: 'Heavy' },
+  { color: '#fac431', label: 'Very Heavy' },
+  { color: '#fd341c', label: 'Extreme' },
 ];
 
 // Preloads every frame as an invisible tile layer on mount so tiles enter the
 // browser cache before animation starts. Frame transitions swap opacity instead
 // of creating/destroying layers, which eliminates the blank flash between frames.
 function RadarLayer({ host, frames, frameIndex }) {
-  const map       = useMap();
-  const cacheRef  = useRef({});  // index → L.TileLayer
-  const loadedRef = useRef({});  // index → bool (all tiles in viewport fetched)
-  const activeRef = useRef(null);
+  const map        = useMap();
+  const cacheRef   = useRef({});  // index → L.TileLayer
+  const loadedRef  = useRef({});  // index → bool
+  const activeRef  = useRef(null);
+  const pendingRef = useRef(null); // { layer, handler } — cancelled on frame change
 
-  // Create all layers at invisible opacity so tile fetches start immediately.
   useEffect(() => {
     if (!frames.length || !host) return;
     frames.forEach((frame, i) => {
       if (cacheRef.current[i]) return;
-      const url = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+      const url = `${host}${frame.path}/256/{z}/{x}/{y}/${COLOR_SCHEME}/1_1.png`;
       const layer = L.tileLayer(url, {
         tileSize: 256,
         opacity: 0.001,
@@ -48,14 +52,22 @@ function RadarLayer({ host, frames, frameIndex }) {
       cacheRef.current  = {};
       loadedRef.current = {};
       activeRef.current = null;
+      pendingRef.current = null;
     };
   }, [frames, host, map]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Swap opacity to reveal the target frame; wait for its load event if not ready yet.
+  // Cancel any stale load listener before showing the new frame. Without this,
+  // a slow-loading earlier frame can flash briefly after we've already advanced.
   useEffect(() => {
+    if (pendingRef.current) {
+      pendingRef.current.layer.off('load', pendingRef.current.handler);
+      pendingRef.current = null;
+    }
+
     const layer = cacheRef.current[frameIndex];
     if (!layer) return;
     const show = () => {
+      pendingRef.current = null;
       if (activeRef.current && activeRef.current !== layer) {
         activeRef.current.setOpacity(0.001);
       }
@@ -65,6 +77,7 @@ function RadarLayer({ host, frames, frameIndex }) {
     if (loadedRef.current[frameIndex]) {
       show();
     } else {
+      pendingRef.current = { layer, handler: show };
       layer.once('load', show);
     }
   }, [frameIndex]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,6 +96,7 @@ export default function RadarTab({ lat, lon, isLoading }) {
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying]       = useState(false);
   const [fetchError, setFetchError] = useState(null);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,8 +104,8 @@ export default function RadarTab({ lat, lon, isLoading }) {
       .then(r => r.json())
       .then(data => {
         if (cancelled) return;
-        const past     = data?.radar?.past     ?? [];
-        const nowcast  = data?.radar?.nowcast  ?? [];
+        const past    = data?.radar?.past    ?? [];
+        const nowcast = data?.radar?.nowcast ?? [];
         const all = [...past, ...nowcast];
         if (all.length) {
           setHost(data.host);
@@ -106,13 +120,19 @@ export default function RadarTab({ lat, lon, isLoading }) {
 
   useEffect(() => {
     if (!playing || frames.length === 0) return;
-    let id;
     const advance = () => {
-      setFrameIndex(i => (i + 1) % frames.length);
-      id = setTimeout(advance, FRAME_INTERVAL_MS);
+      setFrameIndex(i => {
+        const next = (i + 1) % frames.length;
+        // Hold on the last frame longer so the loop restart feels deliberate
+        timerRef.current = setTimeout(advance, next === 0 ? LAST_FRAME_HOLD_MS : FRAME_INTERVAL_MS);
+        return next;
+      });
     };
-    id = setTimeout(advance, FRAME_INTERVAL_MS);
-    return () => clearTimeout(id);
+    timerRef.current = setTimeout(advance, FRAME_INTERVAL_MS);
+    return () => {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    };
   }, [playing, frames.length]);
 
   const prevFrame = () => {
@@ -135,9 +155,9 @@ export default function RadarTab({ lat, lon, isLoading }) {
     );
   }
 
-  const currentFrame  = frames[frameIndex];
-  const isProjected   = frames.length > 0 && frameIndex >= pastCount;
-  const nowcastCount  = frames.length - pastCount;
+  const currentFrame = frames[frameIndex];
+  const isProjected  = frames.length > 0 && frameIndex >= pastCount;
+  const nowcastCount = frames.length - pastCount;
 
   return (
     <div>

@@ -54,7 +54,7 @@ export default function App() {
   const [previewCondition, setPreviewCondition] = useState(null);
 
   const stationId = import.meta.env.VITE_PWS_STATION_ID;
-  const { current, history, historyRecent, historyDaily, forecast, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast } = useWeather(stationId);
+  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast } = useWeather(stationId);
 
   const autoTheme  = resolveAutoTheme(current);
   const activeTheme =
@@ -85,7 +85,8 @@ export default function App() {
 
   useEffect(() => {
     if (!forecast && (current || activeTab === 'forecast')) fetchForecast();
-  }, [current, activeTab, forecast, fetchForecast]);
+    if (!hourlyForecast && (current || activeTab === 'forecast')) fetchHourlyForecast();
+  }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast]);
 
   return (
     <div style={{ maxWidth: 420, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -131,7 +132,7 @@ export default function App() {
           </Suspense>
         )}
         {activeTab === 'forecast' && (
-          <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} />
+          <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} />
         )}
         {activeTab === 'radar' && (
           <Suspense fallback={

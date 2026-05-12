@@ -25,56 +25,6 @@ function beaufort(mph) {
   return `${n} · ${names[n]}`;
 }
 
-function degreesToCompass(deg) {
-  if (deg == null) return '—';
-  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-  return dirs[Math.round(deg / 22.5) % 16];
-}
-
-// SVG compass matching the prototype exactly
-function WindCompass({ degrees, speed, gust }) {
-  const deg = degrees ?? 225; // SW default for demo
-  const rad = deg * (Math.PI / 180);
-  const endX = 45 + 26 * Math.sin(rad);
-  const endY = 45 - 26 * Math.cos(rad);
-
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 20, padding: '8px 0' }}>
-      <svg width="90" height="90" viewBox="0 0 90 90" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="45" cy="45" r="40" fill="none" stroke="var(--border)" strokeWidth="1.5" />
-        <circle cx="45" cy="45" r="32" fill="var(--glass)" />
-        <text x="45" y="12" textAnchor="middle" fontSize="9" fill="var(--accent)" fontFamily="monospace" fontWeight="bold">N</text>
-        <text x="45" y="84" textAnchor="middle" fontSize="9" fill="var(--tm)"     fontFamily="monospace">S</text>
-        <text x="82" y="49" textAnchor="middle" fontSize="9" fill="var(--tm)"     fontFamily="monospace">E</text>
-        <text x="8"  y="49" textAnchor="middle" fontSize="9" fill="var(--tm)"     fontFamily="monospace">W</text>
-        {degrees != null && (
-          <>
-            <line x1="45" y1="45" x2={endX} y2={endY}
-              stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" />
-            <polygon
-              points={`${endX},${endY} ${endX - 5*Math.cos(rad) - 3*Math.sin(rad)},${endY + 5*Math.sin(rad) - 3*Math.cos(rad)} ${endX - 5*Math.cos(rad) + 3*Math.sin(rad)},${endY + 5*Math.sin(rad) + 3*Math.cos(rad)}`}
-              fill="var(--accent)"
-            />
-            <circle cx="45" cy="45" r="3" fill="var(--accent)" />
-          </>
-        )}
-      </svg>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {[
-          ['Direction', degreesToCompass(degrees)],
-          ['Speed',     speed != null ? `${fmt(speed)} mph` : '—'],
-          ['Gust',      gust  != null ? `${fmt(gust)} mph`  : '—'],
-          ['Beaufort',  beaufort(speed)],
-        ].map(([label, val]) => (
-          <div key={label} style={{ fontSize: 12, color: 'var(--ts)' }}>
-            {label}: <strong style={{ color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>{val}</strong>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function MetricCard({ icon, label, value, unit, trend }) {
   return (
     <div className="y-metric">
@@ -110,12 +60,6 @@ export default function NowTab({ current, isLoading, stationId, hourlyForecast }
         <MetricCard icon="💨" label="Wind Gust" value={fmt(current?.windGust)} unit=" mph" trend={current?.windGust != null ? beaufort(current.windGust) : undefined} />
         <MetricCard icon="🌬️" label="Air Quality" value={fmt(current?.aqi)} unit=" AQI" trend={aqiLabel(current?.aqi)} />
         <MetricCard icon="🌧️" label="Rain Rate" value={fmt(current?.precipRate, 2)} unit='"' />
-      </div>
-
-      {/* Wind compass card */}
-      <div className="y-card">
-        <div className="y-label">Wind Direction</div>
-        <WindCompass degrees={current?.windDir} speed={current?.windSpeed} gust={current?.windGust} />
       </div>
 
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', padding: '6px 0 4px', letterSpacing: '0.3px' }}>

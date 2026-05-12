@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import TopBar from './components/TopBar';
 import HeroCard from './components/HeroCard';
 import NavTabs from './components/NavTabs';
@@ -54,7 +54,11 @@ export default function App() {
   const [previewCondition, setPreviewCondition] = useState(null);
 
   const stationId = import.meta.env.VITE_PWS_STATION_ID;
-  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast } = useWeather(stationId);
+  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(stationId);
+
+  const currentWithAQI = useMemo(() =>
+    current ? { ...current, aqi: airQuality?.current?.us_aqi ?? null } : null,
+  [current, airQuality]);
 
   const autoTheme  = resolveAutoTheme(current);
   const activeTheme =
@@ -86,7 +90,8 @@ export default function App() {
   useEffect(() => {
     if (!forecast && (current || activeTab === 'forecast')) fetchForecast();
     if (!hourlyForecast && (current || activeTab === 'forecast')) fetchHourlyForecast();
-  }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast]);
+    if (!airQuality && current) fetchAirQuality();
+  }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast, airQuality, fetchAirQuality]);
 
   return (
     <div style={{ maxWidth: 420, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -99,18 +104,18 @@ export default function App() {
         current={current}
         isLoading={isLoading}
         onLongPress={() => setSettingsOpen(true)}
+        stationId={stationId}
+        fetchHistoryDaily={fetchHistoryDaily}
       />
       <NavTabs active={activeTab} onChange={setActiveTab} />
 
       <div style={{ flex: 1, padding: '0 16px 24px' }}>
         {activeTab === 'now' && (
           <NowTab
-            current={current}
+            current={currentWithAQI}
             isLoading={isLoading}
             stationId={stationId}
-            fetchHistory={fetchHistory}
-            history={history}
-            forecast={forecast}
+            hourlyForecast={hourlyForecast}
           />
         )}
         {activeTab === 'trends' && (
@@ -121,6 +126,8 @@ export default function App() {
           }>
             <TrendsTab
               stationId={stationId}
+              current={current}
+              forecast={forecast}
               fetchHistory={fetchHistory}
               history={history}
               fetchHistoryRecent={fetchHistoryRecent}

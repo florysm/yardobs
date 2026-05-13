@@ -54,8 +54,10 @@ const FACTOR_DEFS = {
     },
     {
       name: 'Rain Risk',   weight: 0.20,
-      fn:  c => pw(c.precipRate ?? 0, PRECIP_STD),
-      raw: c => `${(c.precipRate ?? 0).toFixed(2)}"/hr`,
+      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
+      raw: c => (c.precipRate ?? 0) > 0
+        ? `${(c.precipRate).toFixed(2)}"/hr`
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
     },
   ],
   garden: [
@@ -81,8 +83,10 @@ const FACTOR_DEFS = {
     },
     {
       name: 'Rain Risk',   weight: 0.15,
-      fn:  c => pw(c.precipRate ?? 0, PRECIP_STD),
-      raw: c => `${(c.precipRate ?? 0).toFixed(2)}"/hr`,
+      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
+      raw: c => (c.precipRate ?? 0) > 0
+        ? `${(c.precipRate).toFixed(2)}"/hr`
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
     },
     {
       name: 'Air Quality', weight: 0.10,
@@ -108,8 +112,10 @@ const FACTOR_DEFS = {
     },
     {
       name: 'Rain Risk',   weight: 0.20,
-      fn:  c => pw(c.precipRate ?? 0, PRECIP_SPORT),
-      raw: c => `${(c.precipRate ?? 0).toFixed(2)}"/hr`,
+      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_SPORT),
+      raw: c => (c.precipRate ?? 0) > 0
+        ? `${(c.precipRate).toFixed(2)}"/hr`
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
     },
     {
       name: 'Air Quality', weight: 0.10,
@@ -135,8 +141,10 @@ const FACTOR_DEFS = {
     },
     {
       name: 'Rain Risk',   weight: 0.15,
-      fn:  c => pw(c.precipRate ?? 0, PRECIP_STD),
-      raw: c => `${(c.precipRate ?? 0).toFixed(2)}"/hr`,
+      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
+      raw: c => (c.precipRate ?? 0) > 0
+        ? `${(c.precipRate).toFixed(2)}"/hr`
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
     },
     {
       name: 'Air Quality', weight: 0.10,
@@ -168,8 +176,10 @@ const FACTOR_DEFS = {
     },
     {
       name: 'Rain Risk',      weight: 0.15,
-      fn:  c => pw(c.precipRate ?? 0, PRECIP_DOG),
-      raw: c => `${(c.precipRate ?? 0).toFixed(2)}"/hr`,
+      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_DOG),
+      raw: c => (c.precipRate ?? 0) > 0
+        ? `${(c.precipRate).toFixed(2)}"/hr`
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
     },
     {
       name: 'Air Quality',    weight: 0.10,
@@ -210,6 +220,18 @@ function precipProbToRate(prob) {
   if (prob < 50) return 0.01;
   if (prob < 75) return 0.05;
   return 0.1;
+}
+
+function getForecastRainThreat(hf) {
+  if (!hf?.hourly?.time) return { rate: 0, maxProb: 0 };
+  const today = new Date().toISOString().split('T')[0];
+  let maxProb = 0;
+  hf.hourly.time.forEach((t, i) => {
+    if (!t.startsWith(today)) return;
+    const prob = hf.hourly.precipitation_probability?.[i] ?? 0;
+    if (prob > maxProb) maxProb = prob;
+  });
+  return { rate: precipProbToRate(maxProb), maxProb };
 }
 
 function getArcData(hf, actId, current) {
@@ -421,7 +443,17 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
   const [insightLoading, setInsightLoading] = useState(false);
   const iCache = useRef({});
 
-  const allScores = useMemo(() => computeAllScores(current), [current]);
+  const { rate: forecastRate, maxProb: forecastMaxProb } = useMemo(
+    () => getForecastRainThreat(hourlyForecast),
+    [hourlyForecast]
+  );
+  const currentWithThreat = useMemo(() => current ? {
+    ...current,
+    rainThreat: Math.max(current.precipRate ?? 0, forecastRate),
+    forecastMaxProb,
+  } : current, [current, forecastRate, forecastMaxProb]);
+
+  const allScores = useMemo(() => computeAllScores(currentWithThreat), [currentWithThreat]);
   const active    = allScores[activeId];
   const arcData   = useMemo(() => getArcData(hourlyForecast, activeId, current), [hourlyForecast, activeId, current]);
   const bestWindow = useMemo(() => getBestWindow(arcData), [arcData]);
@@ -431,8 +463,8 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
 
   // Fetch AI insight whenever the active activity or conditions change meaningfully
   useEffect(() => {
-    if (!current) return;
-    const key = `${activeId}|${Math.round(active.score / 5) * 5}|${Math.round((current.temp ?? 70) / 2) * 2}`;
+    if (!currentWithThreat) return;
+    const key = `${activeId}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
     if (iCache.current[key] !== undefined) {
       setInsight(iCache.current[key]);
       setInsightLoading(false);
@@ -448,7 +480,7 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
         activityLabel: act?.label,
         score: active.score,
         factors: active.factors,
-        current,
+        current: currentWithThreat,
       }),
     })
       .then(r => r.json())
@@ -462,7 +494,7 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
         setInsight('');
       })
       .finally(() => setInsightLoading(false));
-  }, [activeId, current]);
+  }, [activeId, currentWithThreat]);
 
   if (!current) {
     return <div className="y-card" style={{ height: 120, opacity: 0.5 }} />;

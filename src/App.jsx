@@ -106,6 +106,7 @@ export default function App() {
         onLongPress={() => setSettingsOpen(true)}
         stationId={stationId}
         fetchHistoryDaily={fetchHistoryDaily}
+        hourlyForecast={hourlyForecast}
       />
       <NavTabs active={activeTab} onChange={setActiveTab} />
 

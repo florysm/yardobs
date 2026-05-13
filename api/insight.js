@@ -84,9 +84,10 @@ const ALLOWED_ICONS = [
 ];
 
 async function handleDailyInsight(req, res) {
-  const { stationId, date, current: c, yoyReadings } = req.body ?? {};
-  const tempBucket = Math.round((c?.temp ?? 70) / 2) * 2;
-  const key = `daily|${stationId}|${date}|${tempBucket}`;
+  const { stationId, date, current: c, yoyReadings, forecastSummary } = req.body ?? {};
+  const tempBucket    = Math.round((c?.temp ?? 70) / 2) * 2;
+  const precipBucket  = Math.round((forecastSummary?.maxPrecipProb ?? 0) / 20) * 20;
+  const key = `daily|${stationId}|${date}|${tempBucket}|${precipBucket}`;
 
   const hit = cache.get(key);
   if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
@@ -109,6 +110,12 @@ async function handleDailyInsight(req, res) {
     }
   }
 
+  let forecastContext = '';
+  if (forecastSummary?.totalForecastHours > 0) {
+    const { maxPrecipProb, rainyHoursCount, totalForecastHours } = forecastSummary;
+    forecastContext = `\n- Today's rain forecast: peak ${maxPrecipProb}% probability, ${rainyHoursCount} of ${totalForecastHours} forecast hours above 50% chance`;
+  }
+
   const prompt = `Station: ${stationId}
 Date: ${date}
 
@@ -117,7 +124,7 @@ Live readings:
 - Humidity: ${c?.humidity ?? '?'}%, dew point ${c?.dewPoint ?? '?'}°F
 - Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusting ${c?.windGust ?? '?'} mph
 - Pressure: ${c?.pressure ?? '?'} inHg
-- Rain rate: ${c?.precipRate ?? 0}"/hr, ${c?.precipTotal ?? 0}" today${yoyContext}
+- Rain rate: ${c?.precipRate ?? 0}"/hr, ${c?.precipTotal ?? 0}" today${forecastContext}${yoyContext}
 
 Return a JSON object with exactly these fields:
 {

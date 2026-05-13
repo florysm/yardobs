@@ -252,7 +252,23 @@ function InsightView({ insight, isLoading, toggle }) {
 
 // ── HeroCard ──────────────────────────────────────────────────────────────────
 
-export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily }) {
+function buildForecastSummary(hf) {
+  if (!hf?.hourly?.time) return null;
+  const today = new Date().toISOString().split('T')[0];
+  let maxPrecipProb = 0;
+  let rainyHoursCount = 0;
+  let totalForecastHours = 0;
+  hf.hourly.time.forEach((t, i) => {
+    if (!t.startsWith(today)) return;
+    totalForecastHours++;
+    const prob = hf.hourly.precipitation_probability?.[i] ?? 0;
+    if (prob > maxPrecipProb) maxPrecipProb = prob;
+    if (prob > 50) rainyHoursCount++;
+  });
+  return { maxPrecipProb, rainyHoursCount, totalForecastHours };
+}
+
+export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast }) {
   const [showHint,      setShowHint]      = useState(false);
   const [view,          setView]          = useState(() => localStorage.getItem('yardobs-hero-view') || 'conditions');
   const [contentFade,   setContentFade]   = useState(true);
@@ -318,7 +334,10 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
         const res = await fetch('/api/insight', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'daily', stationId, date: today, current, yoyReadings }),
+          body: JSON.stringify({
+            type: 'daily', stationId, date: today, current, yoyReadings,
+            forecastSummary: buildForecastSummary(hourlyForecast),
+          }),
         });
         const json = await res.json();
         if (cancelled) return;

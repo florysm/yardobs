@@ -1,18 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
-
-const ICON_EMOJI = {
-  0:'🌪️',1:'🌀',2:'🌀',3:'⛈️',4:'⛈️',5:'🌨️',6:'🌧️',7:'🌧️',8:'🌧️',
-  9:'🌦️',10:'🌧️',11:'🌧️',12:'🌧️',13:'🌨️',14:'🌨️',15:'🌨️',16:'❄️',
-  17:'🌨️',18:'🌧️',19:'🌫️',20:'🌫️',21:'🌫️',22:'💨',23:'💨',24:'💨',
-  25:'🥶',26:'☁️',27:'☁️',28:'☁️',29:'🌙',30:'⛅',31:'🌙',32:'☀️',
-  33:'🌙',34:'🌤️',35:'🌧️',36:'🌡️',37:'⛈️',38:'⛈️',39:'🌦️',40:'🌧️',
-  41:'🌨️',42:'❄️',43:'🌨️',44:'❓',45:'🌦️',46:'🌨️',47:'⛈️',
-};
-
-function fmt(val, digits = 0) {
-  if (val == null || isNaN(val)) return '—';
-  return Number(val).toFixed(digits);
-}
+import { fmt } from '../utils/format';
+import { ICON_EMOJI } from '../utils/weatherIcons';
 
 function fmtHour(isoStr) {
   const d = new Date(isoStr);
@@ -153,6 +141,8 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
 
   useEffect(() => {
     if (groups.length > 0) setActiveLabel(groups[0].label);
+  // groups is derived from hourlyForecast every render; using it as a dep would
+  // trigger this effect on every render. hourlyForecast is the true signal.
   }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <Skeleton />;
@@ -192,7 +182,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
           <div style={{
             textAlign: 'center', fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
             textTransform: 'uppercase', color: 'var(--tm)', marginBottom: 8,
-            fontFamily: 'var(--font-display)', transition: 'opacity 0.2s',
+            fontFamily: 'var(--font-display)', transition: 'opacity var(--tr-fast)',
           }}>
             {activeLabel ?? groups[0]?.label ?? ''}
           </div>
@@ -217,7 +207,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
                       borderRadius: 16,
                       padding: '10px 6px',
                       textAlign: 'center',
-                      transition: 'all 0.2s',
+                      transition: 'all var(--tr-fast)',
                     }}
                   >
                     <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>

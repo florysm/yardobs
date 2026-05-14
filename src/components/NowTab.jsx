@@ -1,9 +1,5 @@
 import ActivityScoreCard from './ActivityScoreCard';
-
-function fmt(val, digits = 0) {
-  if (val == null || isNaN(val)) return '—';
-  return Number(val).toFixed(digits);
-}
+import { fmt } from '../utils/format';
 
 function aqiLabel(aqi) {
   if (aqi == null) return null;
@@ -29,7 +25,7 @@ function MetricCard({ icon, label, value, unit, trend }) {
   return (
     <div className="y-metric">
       <div style={{ fontSize: 18, marginBottom: 6 }} aria-hidden="true">{icon}</div>
-      <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: '1.5px', textTransform: 'uppercase' }}>{label}</div>
+      <div className="y-label" style={{ marginBottom: 0 }}>{label}</div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, color: 'var(--tp)', marginTop: 2 }}>
         {value}<span style={{ fontSize: 11, color: 'var(--tm)' }}>{unit}</span>
       </div>

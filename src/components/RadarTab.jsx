@@ -54,6 +54,7 @@ function RadarLayer({ host, frames, frameIndex }) {
       activeRef.current = null;
       pendingRef.current = null;
     };
+  // cacheRef/loadedRef/activeRef/pendingRef are stable refs — no dep needed
   }, [frames, host, map]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cancel any stale load listener before showing the new frame. Without this,
@@ -80,6 +81,7 @@ function RadarLayer({ host, frames, frameIndex }) {
       pendingRef.current = { layer, handler: show };
       layer.once('load', show);
     }
+  // cacheRef/loadedRef/activeRef/pendingRef are stable refs — no dep needed
   }, [frameIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;

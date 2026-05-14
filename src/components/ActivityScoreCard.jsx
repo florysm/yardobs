@@ -304,10 +304,9 @@ function restOfInsight(text) {
 // ── Color & verdict ───────────────────────────────────────────────────────────
 
 function scoreColor(s) {
-  if (s >= 80) return '#3B6D11';
-  if (s >= 65) return '#639922';
-  if (s >= 50) return '#BA7517';
-  return '#A32D2D';
+  if (s >= 65) return 'var(--delta-up)';
+  if (s >= 50) return 'var(--score-marginal)';
+  return 'var(--delta-dn)';
 }
 
 function scoreVerdict(s) {
@@ -483,13 +482,14 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
         current: currentWithThreat,
       }),
     })
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(d => {
         const text = d.insight ?? '';
         iCache.current[key] = text;
         setInsight(text);
       })
-      .catch(() => {
+      .catch(err => {
+        console.error('[insight:activity]', err);
         iCache.current[key] = '';
         setInsight('');
       })
@@ -581,16 +581,14 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
 
           {/* Pavement caution (Dog Walk only) */}
           {showPawAlert && (
-            <div style={{
+            <div className="warn-card" style={{
               display: 'flex', alignItems: 'flex-start', gap: 8,
               marginTop: 12, padding: '10px 12px',
-              background: 'rgba(186,117,23,0.12)',
-              border: '1px solid rgba(186,117,23,0.4)',
-              borderRadius: 10, fontSize: 12, color: 'var(--ts)', lineHeight: 1.5,
+              borderRadius: 10, fontSize: 12, lineHeight: 1.5,
             }}>
               <span style={{ fontSize: 16, flexShrink: 0 }}>🐾</span>
-              <div>
-                <strong style={{ color: '#BA7517' }}>Pavement caution</strong>
+              <div style={{ color: 'var(--ts)' }}>
+                <strong style={{ color: 'var(--score-marginal)' }}>Pavement caution</strong>
                 {' '}— Estimated surface ~{active.pavementTemp}°F in direct sun.
                 Use the 7-second rule: if you can't hold the back of your hand on the pavement
                 for 7 seconds, it's too hot for paws.
@@ -625,7 +623,7 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '5px 10px', borderRadius: 8, cursor: 'pointer',
-                  fontSize: 12, transition: 'all 0.2s',
+                  fontSize: 12, transition: 'all var(--tr-fast)',
                   border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
                   background: isActive ? 'var(--soft)' : 'var(--glass)',
                   color: isActive ? 'var(--accent)' : 'var(--ts)',

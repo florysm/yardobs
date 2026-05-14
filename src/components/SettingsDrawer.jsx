@@ -16,7 +16,7 @@ function RadioDot({ selected }) {
       border: `2px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
       background: selected ? 'var(--accent)' : 'transparent',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0, transition: 'all 0.2s',
+      flexShrink: 0, transition: 'all var(--tr-fast)',
     }}>
       {selected && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--bg)' }} />}
     </div>
@@ -125,7 +125,7 @@ export default function SettingsDrawer({
                       cursor: 'pointer',
                       fontSize: 9, color: isActive ? c.accent : c.text,
                       letterSpacing: '0.5px', textTransform: 'uppercase',
-                      transition: 'border-color 0.2s, color 0.2s',
+                      transition: 'border-color var(--tr-fast), color var(--tr-fast)',
                       fontFamily: 'var(--font-body)',
                       boxShadow: isActive ? `0 0 0 3px ${c.accent}33` : 'none',
                     }}

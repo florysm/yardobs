@@ -68,15 +68,7 @@ export default function TopBar({ stationId, lastUpdated, onSettingsOpen }) {
         <button
           onClick={onSettingsOpen}
           aria-label="Open settings"
-          style={{
-            width: 34, height: 34, borderRadius: '50%',
-            border: '1px solid var(--border)', background: 'var(--card)',
-            color: 'var(--tm)', cursor: 'pointer', fontSize: 16,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.2s', backdropFilter: 'blur(8px)',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--accent)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'var(--card)'; e.currentTarget.style.color = 'var(--tm)'; }}
+          className="topbar-settings-btn"
         >
           <GearIcon />
         </button>

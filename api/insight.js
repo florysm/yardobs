@@ -18,6 +18,10 @@ function windDirStr(deg) {
   return deg != null ? WIND_DIRS[Math.round(deg / 22.5) % 16] : 'variable';
 }
 
+function isOverloaded(err) {
+  return err.status === 529 || err.message?.startsWith('529');
+}
+
 // ── Activity insight ──────────────────────────────────────────────────────────
 
 function activityCacheKey(actId, score, c) {
@@ -37,7 +41,7 @@ async function handleActivityInsight(req, res) {
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(200).json({ insight: '' });
+  if (!apiKey) return res.status(503).json({ error: 'Insight service not configured' });
 
   const factorStr = (factors ?? []).map(f => `${f.name}: ${f.score}/100`).join(', ');
   const dir = windDirStr(c?.windDir);
@@ -69,7 +73,7 @@ Write 2-3 sentences using the specific values above. Include one practical tip r
     cache.set(key, { text, ts: Date.now() });
     return res.status(200).json({ insight: text });
   } catch (err) {
-    const overloaded = err.status === 529 || err.message?.startsWith('529');
+    const overloaded = isOverloaded(err);
     console.error(`[insight:activity] API error${overloaded ? ' (overloaded)' : ''}:`, err.message);
     const insight = overloaded ? 'Insight temporarily unavailable — API is busy. Try again in a moment.' : '';
     return res.status(200).json({ insight });
@@ -95,7 +99,7 @@ async function handleDailyInsight(req, res) {
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(200).json({ narrative: '', tags: [] });
+  if (!apiKey) return res.status(503).json({ error: 'Insight service not configured' });
 
   const dir = windDirStr(c?.windDir);
 
@@ -157,7 +161,7 @@ Return 3-4 tags. Return only the JSON object, no markdown, no other text.`;
     cache.set(key, { data, ts: Date.now() });
     return res.status(200).json(data);
   } catch (err) {
-    const overloaded = err.status === 529 || err.message?.startsWith('529');
+    const overloaded = isOverloaded(err);
     console.error(`[insight:daily] API error${overloaded ? ' (overloaded)' : ''}:`, err.message);
     if (overloaded) {
       return res.status(200).json({ narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.', tags: [] });

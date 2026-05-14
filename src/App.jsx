@@ -7,7 +7,6 @@ import ForecastTab from './components/ForecastTab';
 import SettingsDrawer from './components/SettingsDrawer';
 import { useWeather } from './hooks/useWeather';
 import { CHART_COLORS, META_COLORS } from './themes.js';
-export { CHART_COLORS };
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 const RadarTab  = lazy(() => import('./components/RadarTab'));
@@ -49,7 +48,7 @@ export default function App() {
   const [activeTab, setActiveTab]           = useState('now');
   const [settingsOpen, setSettingsOpen]     = useState(false);
   // 'auto' | 'light' | 'dark'
-  const [mode, setMode]                     = useState(() => localStorage.getItem('yardobs-mode') || 'auto');
+  const [mode, setMode]                     = useState(() => { try { return localStorage.getItem('yardobs-mode') || 'auto'; } catch { return 'auto'; } });
   // temporary preview inside the settings drawer (not persisted)
   const [previewCondition, setPreviewCondition] = useState(null);
 
@@ -78,8 +77,7 @@ export default function App() {
   const handleSetMode = (m) => {
     setMode(m);
     setPreviewCondition(null);
-    if (m === 'auto') localStorage.removeItem('yardobs-mode');
-    else localStorage.setItem('yardobs-mode', m);
+    try { if (m === 'auto') localStorage.removeItem('yardobs-mode'); else localStorage.setItem('yardobs-mode', m); } catch {}
   };
 
   const handleCloseSettings = () => {

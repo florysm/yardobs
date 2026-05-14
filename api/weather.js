@@ -40,7 +40,7 @@ export default async function handler(req, res) {
       url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&timezone=auto`;
       break;
     default:
-      return res.status(400).json({ error: 'Invalid type. Use: current, history, history-daily, forecast, hourly-forecast' });
+      return res.status(400).json({ error: 'Invalid type. Use: current, history, history-daily, forecast, hourly-forecast, air-quality' });
   }
 
   try {

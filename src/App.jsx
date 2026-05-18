@@ -138,7 +138,7 @@ export default function App() {
           </Suspense>
         )}
         {activeTab === 'forecast' && (
-          <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} />
+          <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} lat={current?.lat} lon={current?.lon} />
         )}
         {activeTab === 'radar' && (
           <Suspense fallback={

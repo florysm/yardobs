@@ -1,16 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import SunCalc from 'suncalc';
-import { fmt } from '../utils/format';
+import { fmt, fmtHourIso, fmtSunTime, fmtMoonTime } from '../utils/format';
 import { ICON_EMOJI } from '../utils/weatherIcons';
 
-function fmtHour(isoStr) {
-  const d = new Date(isoStr);
-  const h = d.getMinutes() >= 30 ? (d.getHours() + 1) % 24 : d.getHours();
-  if (h === 0) return '12am';
-  if (h < 12) return `${h}am`;
-  if (h === 12) return '12pm';
-  return `${h - 12}pm`;
-}
 
 const WMO_EMOJI = {
   0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
@@ -88,24 +80,12 @@ function buildDays(forecast) {
   }));
 }
 
-function fmtSunTime(isoStr) {
-  if (!isoStr) return '--';
-  const d = new Date(isoStr);
-  const h = d.getHours(), m = d.getMinutes().toString().padStart(2, '0');
-  return `${h % 12 || 12}:${m} ${h < 12 ? 'AM' : 'PM'}`;
-}
-
 function fmtDaylight(riseStr, setStr) {
   if (!riseStr || !setStr) return null;
   const mins = Math.round((new Date(setStr) - new Date(riseStr)) / 60000);
   return `${Math.floor(mins / 60)}h ${mins % 60}m daylight`;
 }
 
-function fmtMoonTime(date) {
-  if (!date) return '--';
-  const h = date.getHours(), m = date.getMinutes().toString().padStart(2, '0');
-  return `${h % 12 || 12}:${m} ${h < 12 ? 'AM' : 'PM'}`;
-}
 
 function resolveMoonWindow(lat, lon) {
   const today = new Date();
@@ -250,18 +230,16 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
                 {group.hours.map((hr, i) => (
                   <div
                     key={i}
+                    className="fc-card"
                     style={{
                       flex: '0 0 56px',
-                      background: hr.isNow ? 'var(--soft)' : 'var(--card)',
-                      border: `1px solid ${hr.isNow ? 'var(--accent)' : 'var(--border)'}`,
-                      borderRadius: 16,
                       padding: '10px 6px',
                       textAlign: 'center',
-                      transition: 'all var(--tr-fast)',
+                      ...(hr.isNow ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
                     }}
                   >
                     <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>
-                      {hr.isNow ? 'Now' : fmtHour(hr.time)}
+                      {hr.isNow ? 'Now' : fmtHourIso(hr.time)}
                     </div>
                     <div style={{ fontSize: 20, margin: '6px 0 3px' }} aria-hidden="true">{hr.icon}</div>
                     <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
@@ -287,15 +265,13 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
         {days.map((day, i) => (
           <div
             key={i}
+            className="fc-card"
             style={{
               flex: '0 0 70px',
-              background: day.isToday ? 'var(--soft)' : 'var(--card)',
-              border: `1px solid ${day.isToday ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 16,
               padding: '12px 8px',
               textAlign: 'center',
-              transition: 'all 0.2s',
               cursor: 'default',
+              ...(day.isToday ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
             }}
           >
             <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>

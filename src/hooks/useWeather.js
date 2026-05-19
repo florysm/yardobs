@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { apiFetch } from '../utils/apiFetch';
 
 const POLL_MS = 5 * 60 * 1000;
 
@@ -49,13 +50,18 @@ export function useWeather(stationId) {
   const [error, setError]               = useState(null);
   const [lastUpdated, setLastUpdated]   = useState(null);
   const locationRef = useRef(null);
+  const abortRef = useRef(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    return () => controller.abort();
+  }, []);
 
   const fetchCurrent = useCallback(async () => {
     if (!stationId) { setIsLoading(false); return; }
     try {
-      const res = await fetch(`/api/weather?type=current&stationId=${encodeURIComponent(stationId)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/weather?type=current&stationId=${encodeURIComponent(stationId)}`, { signal: abortRef.current?.signal });
       const obs = data.observations?.[0];
       if (!obs) throw new Error('No observation in response');
 
@@ -84,7 +90,7 @@ export function useWeather(stationId) {
         lon: obs.lon,
       });
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -97,16 +103,15 @@ export function useWeather(stationId) {
     const isToday = key === toDateStr(new Date());
     if (!isToday && history[key]) return history[key];
     try {
-      const res = await fetch(
-        `/api/weather?type=history&stationId=${encodeURIComponent(stationId)}&date=${key}`
+      const data = await apiFetch(
+        `/api/weather?type=history&stationId=${encodeURIComponent(stationId)}&date=${key}`,
+        { signal: abortRef.current?.signal }
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
       const obs = data.observations ?? [];
       setHistory(prev => ({ ...prev, [key]: obs }));
       return obs;
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
       return null;
     }
   }, [stationId, history]);
@@ -115,16 +120,15 @@ export function useWeather(stationId) {
   const fetchHistoryRecent = useCallback(async () => {
     if (!stationId) return null;
     try {
-      const res = await fetch(
-        `/api/weather?type=history-recent&stationId=${encodeURIComponent(stationId)}`
+      const data = await apiFetch(
+        `/api/weather?type=history-recent&stationId=${encodeURIComponent(stationId)}`,
+        { signal: abortRef.current?.signal }
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
       const obs = data.observations ?? [];
       setHistoryRecent(obs);
       return obs;
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
       return null;
     }
   }, [stationId]);
@@ -134,17 +138,16 @@ export function useWeather(stationId) {
     if (!stationId) return null;
     if (historyDailyRef.current[dateStr]) return historyDailyRef.current[dateStr];
     try {
-      const res = await fetch(
-        `/api/weather?type=history-daily&stationId=${encodeURIComponent(stationId)}&date=${dateStr}`
+      const data = await apiFetch(
+        `/api/weather?type=history-daily&stationId=${encodeURIComponent(stationId)}&date=${dateStr}`,
+        { signal: abortRef.current?.signal }
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
       const obs = data.observations ?? [];
       historyDailyRef.current[dateStr] = obs;
       setHistoryDaily(prev => ({ ...prev, [dateStr]: obs }));
       return obs;
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
       return null;
     }
   }, [stationId]);
@@ -153,12 +156,10 @@ export function useWeather(stationId) {
     const loc = locationRef.current;
     if (!loc) return;
     try {
-      const res = await fetch(`/api/weather?type=forecast&lat=${loc.lat}&lon=${loc.lon}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/weather?type=forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
       setForecast(data);
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
     }
   }, []);
 
@@ -166,12 +167,10 @@ export function useWeather(stationId) {
     const loc = locationRef.current;
     if (!loc) return;
     try {
-      const res = await fetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
       setHourlyForecast(data);
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
     }
   }, []);
 
@@ -179,12 +178,10 @@ export function useWeather(stationId) {
     const loc = locationRef.current;
     if (!loc) return;
     try {
-      const res = await fetch(`/api/weather?type=air-quality&lat=${loc.lat}&lon=${loc.lon}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/weather?type=air-quality&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
       setAirQuality(data);
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
     }
   }, []);
 

@@ -3,6 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { toDateStr } from '../hooks/useWeather';
+import { fmtTimeTick } from '../utils/format';
 
 const RANGES = [
   { id: '24h', label: '24h' },
@@ -17,17 +18,6 @@ const METRICS = [
   { id: 'precip',   label: 'Rainfall',    unit: '"',     digits: 2, domain: [0,'auto'] },
 ];
 
-function fmtTimeTick(t) {
-  if (!t) return '';
-  const [hStr, mStr] = t.split(':');
-  const h = parseInt(hStr, 10);
-  const m = parseInt(mStr, 10);
-  const rounded = m >= 30 ? (h + 1) % 24 : h;
-  if (rounded === 0)  return '12am';
-  if (rounded < 12)   return `${rounded}am`;
-  if (rounded === 12) return '12pm';
-  return `${rounded - 12}pm`;
-}
 
 function addDays(date, n) {
   const d = new Date(date);

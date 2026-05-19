@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { fmt, degreesToCompass } from '../utils/format';
+import { STORAGE_KEYS } from '../utils/storageKeys';
 import { ICONS, LABELS } from '../utils/weatherIcons';
 
 // ── Tabler-style SVG icon primitives for signal tags ─────────────────────────
@@ -237,9 +238,9 @@ function buildForecastSummary(hf) {
   return { maxPrecipProb, rainyHoursCount, totalForecastHours };
 }
 
-export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast }) {
+export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, onError }) {
   const [showHint,      setShowHint]      = useState(false);
-  const [view,          setView]          = useState(() => localStorage.getItem('yardobs-hero-view') || 'conditions');
+  const [view,          setView]          = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.HERO_VIEW) || 'conditions'; } catch { return 'conditions'; } });
   const [contentFade,   setContentFade]   = useState(true);
   const [insight,       setInsight]       = useState(null);
   const [insightLoading, setInsightLoading] = useState(false);
@@ -263,7 +264,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     setTimeout(() => {
       setView(newView);
       setContentFade(true);
-      localStorage.setItem('yardobs-hero-view', newView);
+      localStorage.setItem(STORAGE_KEYS.HERO_VIEW, newView);
     }, 200);
   };
 
@@ -272,7 +273,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     if (view !== 'insights' || !current || !stationId) return;
 
     const today = new Date().toISOString().split('T')[0];
-    const lsKey = `yardobs-insight-${stationId}-${today}`;
+    const lsKey = STORAGE_KEYS.insightKey(stationId, today);
 
     try {
       const raw = localStorage.getItem(lsKey);
@@ -295,7 +296,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
       const yoyDate = lastYear.toISOString().split('T')[0].replace(/-/g, '');
 
       let yoyReadings = [];
-      try { yoyReadings = (await fetchHistoryDaily?.(yoyDate)) ?? []; } catch {}
+      try { yoyReadings = (await fetchHistoryDaily?.(yoyDate)) ?? []; } catch { onError?.('Could not load historical data'); }
 
       if (cancelled) return;
 
@@ -316,7 +317,10 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
         try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
         setInsight(stored);
       } catch {
-        if (!cancelled) setInsight({ narrative: '', tags: [], updatedAt: '' });
+        if (!cancelled) {
+          setInsight({ narrative: '', tags: [], updatedAt: '' });
+          onError?.('Could not load daily insight');
+        }
       } finally {
         if (!cancelled) setInsightLoading(false);
       }

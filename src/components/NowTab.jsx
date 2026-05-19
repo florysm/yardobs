@@ -1,4 +1,5 @@
 import ActivityScoreCard from './ActivityScoreCard';
+import MetricCard from './MetricCard';
 import { fmt } from '../utils/format';
 
 function aqiLabel(aqi) {
@@ -21,20 +22,8 @@ function beaufort(mph) {
   return `${n} · ${names[n]}`;
 }
 
-function MetricCard({ icon, label, value, unit, trend }) {
-  return (
-    <div className="y-metric">
-      <div style={{ fontSize: 18, marginBottom: 6 }} aria-hidden="true">{icon}</div>
-      <div className="y-label" style={{ marginBottom: 0 }}>{label}</div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, color: 'var(--tp)', marginTop: 2 }}>
-        {value}<span style={{ fontSize: 11, color: 'var(--tm)' }}>{unit}</span>
-      </div>
-      {trend && <div style={{ fontSize: 10, color: 'var(--accent)', marginTop: 4 }}>{trend}</div>}
-    </div>
-  );
-}
 
-export default function NowTab({ current, isLoading, stationId, hourlyForecast }) {
+export default function NowTab({ current, isLoading, stationId, hourlyForecast, onError }) {
   if (isLoading) {
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -48,7 +37,7 @@ export default function NowTab({ current, isLoading, stationId, hourlyForecast }
   return (
     <div>
       {/* Activity score card */}
-      <ActivityScoreCard current={current} hourlyForecast={hourlyForecast} />
+      <ActivityScoreCard current={current} hourlyForecast={hourlyForecast} onError={onError} />
 
       {/* 4-metric grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>

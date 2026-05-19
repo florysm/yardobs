@@ -123,12 +123,14 @@ export default function RadarTab({ lat, lon, isLoading }) {
   useEffect(() => {
     if (!playing || frames.length === 0) return;
     const advance = () => {
+      let next;
       setFrameIndex(i => {
-        const next = (i + 1) % frames.length;
-        // Hold on the last frame longer so the loop restart feels deliberate
-        timerRef.current = setTimeout(advance, next === 0 ? LAST_FRAME_HOLD_MS : FRAME_INTERVAL_MS);
+        next = (i + 1) % frames.length;
         return next;
       });
+      // Schedule outside the updater — updaters run twice in Strict Mode,
+      // which would create two timers per tick and cause runaway speedup.
+      timerRef.current = setTimeout(advance, next === 0 ? LAST_FRAME_HOLD_MS : FRAME_INTERVAL_MS);
     };
     timerRef.current = setTimeout(advance, FRAME_INTERVAL_MS);
     return () => {
@@ -174,9 +176,6 @@ export default function RadarTab({ lat, lon, isLoading }) {
 
       <div
         style={{
-          marginLeft: -16,
-          marginRight: -16,
-          width: 'calc(100% + 32px)',
           overflow: 'hidden',
           borderRadius: 12,
         }}

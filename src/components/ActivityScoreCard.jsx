@@ -1,14 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-
-// ── Activity definitions ──────────────────────────────────────────────────────
-
-const ACTIVITIES = [
-  { id: 'bbq',     label: 'BBQ & Smoking',     short: 'BBQ',      icon: '🔥' },
-  { id: 'garden',  label: 'Gardening',          short: 'Gardening', icon: '🌱' },
-  { id: 'sports',  label: 'Sports & Rec',       short: 'Sports',   icon: '⚽' },
-  { id: 'leisure', label: 'Outdoor Leisure',    short: 'Leisure',  icon: '🌿' },
-  { id: 'dogwalk', label: 'Dog Walk',           short: 'Dog Walk', icon: '🐾' },
-];
+import { fmtHourShort } from '../utils/format';
+import { ACTIVITIES } from '../utils/activities';
 
 // ── Scoring helpers ───────────────────────────────────────────────────────────
 
@@ -274,11 +266,6 @@ function getArcData(hf, actId, current) {
   return result;
 }
 
-function fmtHour(h) {
-  if (h === 12) return '12P';
-  if (h === 0)  return '12A';
-  return h > 12 ? `${h - 12}P` : `${h}A`;
-}
 
 function getBestWindow(arcData) {
   if (arcData.length < 3) return null;
@@ -432,7 +419,7 @@ function TimeArc({ arcData, bestWindow }) {
             flex: 1, textAlign: 'center',
             fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)',
           }}>
-            {fmtHour(hour)}
+            {fmtHourShort(hour)}
           </div>
         ))}
       </div>
@@ -450,7 +437,7 @@ function TimeArc({ arcData, bestWindow }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ActivityScoreCard({ current, hourlyForecast }) {
+export default function ActivityScoreCard({ current, hourlyForecast, onError }) {
   const [activeId,       setActiveId]       = useState('bbq');
   const [expanded,       setExpanded]       = useState(false);
   const [insight,        setInsight]        = useState(null);
@@ -479,7 +466,9 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
 
   const showPawAlert = activeId === 'dogwalk' && (active.pavementTemp ?? 0) >= 100;
 
-  // Fetch AI insight whenever the active activity or conditions change meaningfully
+  // Fetch AI insight whenever the active activity or conditions change meaningfully.
+  // Debounced so rapid successive updates (current then hourlyForecast arriving) don't
+  // each trigger a separate API call.
   useEffect(() => {
     if (!currentWithThreat) return;
     const key = `${activeId}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
@@ -490,37 +479,41 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
     }
     setInsightLoading(true);
     setInsight(null);
-    fetch('/api/insight', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        activity: activeId,
-        activityLabel: act?.label,
-        score: active.score,
-        factors: active.factors,
-        stationId: current?.stationId,
-        current: {
-          ...currentWithThreat,
-          ...(activeId === 'dogwalk' && active.pavementTemp != null
-            ? { pavementTemp: active.pavementTemp }
-            : {}),
-        },
-        firstRainyHour,
-        lastRainyHour,
-      }),
-    })
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(d => {
-        const text = d.insight ?? '';
-        iCache.current[key] = text;
-        setInsight(text);
+    const timer = setTimeout(() => {
+      fetch('/api/insight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activity: activeId,
+          activityLabel: act?.label,
+          score: active.score,
+          factors: active.factors,
+          stationId: current?.stationId,
+          current: {
+            ...currentWithThreat,
+            ...(activeId === 'dogwalk' && active.pavementTemp != null
+              ? { pavementTemp: active.pavementTemp }
+              : {}),
+          },
+          firstRainyHour,
+          lastRainyHour,
+        }),
       })
-      .catch(err => {
-        console.error('[insight:activity]', err);
-        iCache.current[key] = '';
-        setInsight('');
-      })
-      .finally(() => setInsightLoading(false));
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(d => {
+          const text = d.insight ?? '';
+          iCache.current[key] = text;
+          setInsight(text);
+        })
+        .catch(err => {
+          console.error('[insight:activity]', err);
+          iCache.current[key] = '';
+          setInsight('');
+          onError?.('Could not load activity insight');
+        })
+        .finally(() => setInsightLoading(false));
+    }, 400);
+    return () => clearTimeout(timer);
   }, [activeId, currentWithThreat]);
 
   if (!current) {
@@ -541,25 +534,27 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {showPawAlert && (
-              <div style={{
-                fontSize: 11, fontWeight: 600,
-                color: 'var(--score-marginal)',
-                background: 'rgba(217,119,6,0.14)',
-                border: '1px solid rgba(217,119,6,0.35)',
-                padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap',
-              }}>
-                🐾 Hot pavement
-              </div>
-            )}
-            {bestWindow && (
-              <div style={{
-                fontSize: 11, color: 'var(--accent)', background: 'var(--soft)',
-                padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap',
-              }}>
-                {bestWindow}
-              </div>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              {bestWindow && (
+                <div style={{
+                  fontSize: 11, color: 'var(--accent)', background: 'var(--soft)',
+                  padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap',
+                }}>
+                  {bestWindow}
+                </div>
+              )}
+              {showPawAlert && (
+                <div style={{
+                  fontSize: 11, fontWeight: 600,
+                  color: 'var(--score-marginal)',
+                  background: 'rgba(217,119,6,0.14)',
+                  border: '1px solid rgba(217,119,6,0.35)',
+                  padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap',
+                }}>
+                  🐾 Hot pavement
+                </div>
+              )}
+            </div>
             <div style={{
               width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'var(--tm)', transition: 'transform 0.3s',

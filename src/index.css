@@ -119,6 +119,14 @@ body.theme-dark {
   }
   .y-metric:hover { background: var(--card-h); transform: translateY(-1px); }
 
+  /* Forecast scroll card (hourly + 5-day strips) */
+  .fc-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    transition: all var(--tr-fast);
+  }
+
   /* Section/card label */
   .y-label {
     font-size: 10px;

@@ -2,8 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const cache = new Map();
 const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_MAX_SIZE = 500;
 
-const WIND_DIRS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+import { COMPASS_DIRS } from '../utils/compass.js';
 
 function aqiCategory(v) {
   if (v == null) return 'unknown';
@@ -15,7 +16,7 @@ function aqiCategory(v) {
 }
 
 function windDirStr(deg) {
-  return deg != null ? WIND_DIRS[Math.round(deg / 22.5) % 16] : 'variable';
+  return deg != null ? COMPASS_DIRS[Math.round(deg / 22.5) % 16] : 'variable';
 }
 
 function isOverloaded(err) {
@@ -37,7 +38,8 @@ async function handleActivityInsight(req, res) {
   const key = activityCacheKey(stationId ?? 'unknown', activity, score, c);
 
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
+  const age = hit ? Date.now() - hit.ts : Infinity;
+  if (age >= 0 && age < CACHE_TTL_MS) {
     return res.status(200).json({ insight: hit.text });
   }
 
@@ -88,13 +90,14 @@ In 2 sentences: assess conditions using the limiting factors and specific values
       messages: [{ role: 'user', content: prompt }],
     });
     const text = msg.content[0]?.text?.trim() ?? '';
+    if (cache.size >= CACHE_MAX_SIZE) cache.delete(cache.keys().next().value);
     cache.set(key, { text, ts: Date.now() });
     return res.status(200).json({ insight: text });
   } catch (err) {
     const overloaded = isOverloaded(err);
     console.error(`[insight:activity] API error${overloaded ? ' (overloaded)' : ''}:`, err.message);
-    const insight = overloaded ? 'Insight temporarily unavailable — API is busy. Try again in a moment.' : '';
-    return res.status(200).json({ insight });
+    if (overloaded) return res.status(200).json({ insight: 'Insight temporarily unavailable — API is busy. Try again in a moment.' });
+    return res.status(502).json({ error: 'Insight service error' });
   }
 }
 
@@ -112,7 +115,8 @@ async function handleDailyInsight(req, res) {
   const key = `daily|${stationId}|${date}|${tempBucket}|${precipBucket}`;
 
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
+  const age = hit ? Date.now() - hit.ts : Infinity;
+  if (age >= 0 && age < CACHE_TTL_MS) {
     return res.status(200).json(hit.data);
   }
 
@@ -183,15 +187,14 @@ Return only the JSON object, no markdown, no other text.`;
       console.error('[insight:daily] JSON parse error:', parseErr.message);
     }
 
+    if (cache.size >= CACHE_MAX_SIZE) cache.delete(cache.keys().next().value);
     cache.set(key, { data, ts: Date.now() });
     return res.status(200).json(data);
   } catch (err) {
     const overloaded = isOverloaded(err);
     console.error(`[insight:daily] API error${overloaded ? ' (overloaded)' : ''}:`, err.message);
-    if (overloaded) {
-      return res.status(200).json({ narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.', tags: [] });
-    }
-    return res.status(200).json({ narrative: '', tags: [] });
+    if (overloaded) return res.status(200).json({ narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.', tags: [] });
+    return res.status(502).json({ error: 'Insight service error' });
   }
 }
 

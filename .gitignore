@@ -33,3 +33,5 @@ docs/
 # MISC
 .nvmrc
 notes/
+KnownBugs.md
+TechDebt.md

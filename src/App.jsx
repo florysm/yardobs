@@ -5,8 +5,10 @@ import NavTabs from './components/NavTabs';
 import NowTab from './components/NowTab';
 import ForecastTab from './components/ForecastTab';
 import SettingsDrawer from './components/SettingsDrawer';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useWeather } from './hooks/useWeather';
 import { CHART_COLORS, META_COLORS } from './themes.js';
+import { STORAGE_KEYS } from './utils/storageKeys';
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 const RadarTab  = lazy(() => import('./components/RadarTab'));
@@ -48,9 +50,10 @@ export default function App() {
   const [activeTab, setActiveTab]           = useState('now');
   const [settingsOpen, setSettingsOpen]     = useState(false);
   // 'auto' | 'light' | 'dark'
-  const [mode, setMode]                     = useState(() => { try { return localStorage.getItem('yardobs-mode') || 'auto'; } catch { return 'auto'; } });
+  const [mode, setMode]                     = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || 'auto'; } catch { return 'auto'; } });
   // temporary preview inside the settings drawer (not persisted)
   const [previewCondition, setPreviewCondition] = useState(null);
+  const [componentError, setComponentError]     = useState(null);
 
   const stationId = import.meta.env.VITE_PWS_STATION_ID;
   const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(stationId);
@@ -77,7 +80,7 @@ export default function App() {
   const handleSetMode = (m) => {
     setMode(m);
     setPreviewCondition(null);
-    try { if (m === 'auto') localStorage.removeItem('yardobs-mode'); else localStorage.setItem('yardobs-mode', m); } catch {}
+    try { if (m === 'auto') localStorage.removeItem(STORAGE_KEYS.MODE); else localStorage.setItem(STORAGE_KEYS.MODE, m); } catch {}
   };
 
   const handleCloseSettings = () => {
@@ -107,6 +110,7 @@ export default function App() {
         stationId={stationId}
         fetchHistoryDaily={fetchHistoryDaily}
         hourlyForecast={hourlyForecast}
+        onError={setComponentError}
       />
       <NavTabs active={activeTab} onChange={setActiveTab} />
 
@@ -117,43 +121,48 @@ export default function App() {
             isLoading={isLoading}
             stationId={stationId}
             hourlyForecast={hourlyForecast}
+            onError={setComponentError}
           />
         )}
         {activeTab === 'trends' && (
-          <Suspense fallback={
-            <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>
-              Loading…
-            </div>
-          }>
-            <TrendsTab
-              stationId={stationId}
-              current={current}
-              forecast={forecast}
-              fetchHistory={fetchHistory}
-              history={history}
-              fetchHistoryRecent={fetchHistoryRecent}
-              historyRecent={historyRecent}
-              fetchHistoryDaily={fetchHistoryDaily}
-              historyDaily={historyDaily}
-              chartColors={chartColors}
-            />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={
+              <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>
+                Loading…
+              </div>
+            }>
+              <TrendsTab
+                stationId={stationId}
+                current={current}
+                forecast={forecast}
+                fetchHistory={fetchHistory}
+                history={history}
+                fetchHistoryRecent={fetchHistoryRecent}
+                historyRecent={historyRecent}
+                fetchHistoryDaily={fetchHistoryDaily}
+                historyDaily={historyDaily}
+                chartColors={chartColors}
+              />
+            </Suspense>
+          </ErrorBoundary>
         )}
         {activeTab === 'forecast' && (
           <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} lat={current?.lat} lon={current?.lon} />
         )}
         {activeTab === 'radar' && (
-          <Suspense fallback={
-            <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>
-              Loading…
-            </div>
-          }>
-            <RadarTab
-              lat={current?.lat ?? null}
-              lon={current?.lon ?? null}
-              isLoading={isLoading}
-            />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={
+              <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>
+                Loading…
+              </div>
+            }>
+              <RadarTab
+                lat={current?.lat ?? null}
+                lon={current?.lon ?? null}
+                isLoading={isLoading}
+              />
+            </Suspense>
+          </ErrorBoundary>
         )}
       </div>
 
@@ -169,13 +178,13 @@ export default function App() {
         />
       )}
 
-      {error && !isLoading && (
+      {((error && !isLoading) || componentError) && (
         <div style={{
           position: 'fixed', bottom: 16, left: 16, right: 16, maxWidth: 388, margin: '0 auto',
           background: '#dc2626', color: '#fff', fontSize: 12, padding: '8px 14px',
           borderRadius: 12, zIndex: 300,
         }}>
-          {error}
+          {error || componentError}
         </div>
       )}
     </div>

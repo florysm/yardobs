@@ -95,6 +95,8 @@ export default function App() {
     <div style={{ maxWidth: 420, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopBar
         stationId={stationId}
+        neighborhood={current?.neighborhood}
+        country={current?.country}
         lastUpdated={lastUpdated}
         onSettingsOpen={() => setSettingsOpen(true)}
       />

@@ -18,7 +18,13 @@ function GearIcon() {
   );
 }
 
-export default function TopBar({ stationId, lastUpdated, onSettingsOpen }) {
+function parseState(stationId) {
+  if (!stationId) return null;
+  const m = stationId.match(/^K([A-Z]{2})/);
+  return m ? m[1] : null;
+}
+
+export default function TopBar({ stationId, neighborhood, country, lastUpdated, onSettingsOpen }) {
   const [ago, setAgo] = useState(() => timeAgo(lastUpdated));
 
   useEffect(() => {
@@ -48,6 +54,13 @@ export default function TopBar({ stationId, lastUpdated, onSettingsOpen }) {
           fontFamily: 'var(--font-mono)',
         }}>
           {stationId ?? 'No station set'}
+          {(() => {
+            const state = country === 'US' ? parseState(stationId) : country;
+            const parts = [neighborhood, state].filter(Boolean);
+            return parts.length > 0
+              ? <span style={{ color: 'var(--ts)', marginLeft: 6 }}>· {parts.join(', ')}</span>
+              : null;
+          })()}
         </div>
       </div>
 

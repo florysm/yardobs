@@ -24,16 +24,17 @@ function isOverloaded(err) {
 
 // ── Activity insight ──────────────────────────────────────────────────────────
 
-function activityCacheKey(actId, score, c) {
+function activityCacheKey(stationId, actId, score, c) {
   const t = Math.round((c?.temp ?? 70) / 2) * 2;
   const w = Math.round((c?.windSpeed ?? 0) / 2) * 2;
   const s = Math.round(score / 5) * 5;
-  return `act|${actId}|${s}|${t}|${w}`;
+  return `act|${stationId}|${actId}|${s}|${t}|${w}`;
 }
 
 async function handleActivityInsight(req, res) {
-  const { activity, activityLabel, score, factors, current: c } = req.body ?? {};
-  const key = activityCacheKey(activity, score, c);
+  const { activity, activityLabel, score, factors, current: c,
+          firstRainyHour, lastRainyHour, stationId } = req.body ?? {};
+  const key = activityCacheKey(stationId ?? 'unknown', activity, score, c);
 
   const hit = cache.get(key);
   if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
@@ -43,30 +44,47 @@ async function handleActivityInsight(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'Insight service not configured' });
 
-  const factorStr = (factors ?? []).map(f => `${f.name}: ${f.score}/100`).join(', ');
+  const topFactors = [...(factors ?? [])]
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 3)
+    .map(f => `${f.name} (${f.score}/100)`)
+    .join(', ');
+
+  const feelsLikeLabel = (c?.feelsLike ?? c?.temp ?? 70) < (c?.temp ?? 70)
+    ? 'wind chill' : 'heat index';
+
   const dir = windDirStr(c?.windDir);
 
-  const prompt = `Activity: ${activityLabel}
-Overall score: ${score}/100
-Factor breakdown: ${factorStr}
+  const forecastProb = c?.forecastMaxProb ?? 0;
+  const forecastLine = forecastProb >= 20
+    ? `${forecastProb}% chance of rain in today's forecast`
+    : 'no rain expected today';
+  const rainWindow = firstRainyHour != null
+    ? `Rain window: ${firstRainyHour}:00–${lastRainyHour + 1}:00 (hours with ≥50% probability)`
+    : 'Rain window: none expected';
+  const pavementLine = c?.pavementTemp != null
+    ? `\n- Pavement temp (direct sun): ~${c.pavementTemp}°F` : '';
 
-Live station readings:
-- Temperature: ${c?.temp ?? '?'}°F, feels like ${c?.feelsLike ?? '?'}°F
-- Humidity: ${c?.humidity ?? '?'}%, dew point ${c?.dewPoint ?? '?'}°F
-- Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusting to ${c?.windGust ?? '?'} mph
-- UV index: ${c?.uv ?? '?'}, solar radiation: ${c?.solar ?? '?'} W/m²
-- Air quality (US AQI): ${c?.aqi ?? '?'} — ${aqiCategory(c?.aqi)}
-- Rain rate: ${c?.precipRate ?? 0}"/hr, ${c?.precipTotal ?? 0}" accumulated today
-- Pressure: ${c?.pressure ?? '?'} inHg
+  const prompt = `Activity: ${activityLabel} — Overall score: ${score}/100
+Limiting factors: ${topFactors}
+${rainWindow}
 
-Write 2-3 sentences using the specific values above. Include one practical tip relevant to the activity.`;
+Conditions right now:
+- ${c?.temp ?? '?'}°F, feels like ${c?.feelsLike ?? '?'}°F (${feelsLikeLabel}), dew point ${c?.dewPoint ?? '?'}°F
+- Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusts to ${c?.windGust ?? '?'} mph
+- Humidity: ${c?.humidity ?? '?'}%, UV ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi)})
+- Rain: ${c?.precipRate ?? 0}"/hr now, ${c?.precipTotal ?? 0}" today; ${forecastLine}${pavementLine}
+
+In 2 sentences: assess conditions using the limiting factors and specific values. End with one actionable tip (timing, gear, or modification).`;
+
+  const ACTIVITY_SYSTEM = 'You are a concise, practical weather advisor for YardObs, a personal backyard weather station app. You write for someone standing at their back door deciding whether to go outside. Be direct. Use the actual measured numbers. Never start with the activity name. Return exactly 2 plain sentences followed by one actionable tip — no bullets, headers, or sign-off phrases. Factor scores are 0–100 where higher = better conditions. Score guide: 80–100 = excellent, 60–79 = good, 40–59 = marginal, 20–39 = poor, 0–19 = very poor. If any single factor is below 25, treat it as the primary constraint and lead with it even if the overall score is moderate.';
 
   try {
     const client = new Anthropic({ apiKey, maxRetries: 3 });
     const msg = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 160,
-      system: 'You are a hyperlocal weather insight engine for a backyard weather station app called YardObs. Return exactly 2-3 plain sentences — no bullets, headers, or sign-off phrases. Cite specific measured values. Be direct and practical.',
+      system: [{ type: 'text', text: ACTIVITY_SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: prompt }],
     });
     const text = msg.content[0]?.text?.trim() ?? '';
@@ -103,16 +121,17 @@ async function handleDailyInsight(req, res) {
 
   const dir = windDirStr(c?.windDir);
 
-  let yoyContext = '';
-  const yoy = Array.isArray(yoyReadings) ? yoyReadings[0] : null;
-  if (yoy) {
-    const avgTemp  = yoy.imperial?.tempAvg  ?? yoy.imperial?.temp  ?? null;
-    const highTemp = yoy.imperial?.tempHigh ?? null;
-    const precip   = yoy.imperial?.precipTotal ?? 0;
-    if (avgTemp != null) {
-      yoyContext = `\nSame date last year: avg ${avgTemp}°F (high ${highTemp ?? '?'}°F), ${precip}" total precip.`;
-    }
-  }
+  const yoyDelta = (() => {
+    const yoy = Array.isArray(yoyReadings) ? yoyReadings[0] : null;
+    if (!yoy || c?.temp == null) return '';
+    const avg = yoy.imperial?.tempAvg ?? yoy.imperial?.temp ?? null;
+    if (avg == null) return '';
+    const diff = Math.round(c.temp - avg);
+    const precip = yoy.imperial?.precipTotal ?? 0;
+    return diff !== 0
+      ? `\nVs. last year same date: ${diff > 0 ? '+' : ''}${diff}°F on temp, ${precip}" precip.`
+      : '\nSame date last year was nearly identical in temperature.';
+  })();
 
   let forecastContext = '';
   if (forecastSummary?.totalForecastHours > 0) {
@@ -120,32 +139,38 @@ async function handleDailyInsight(req, res) {
     forecastContext = `\n- Today's rain forecast: peak ${maxPrecipProb}% probability, ${rainyHoursCount} of ${totalForecastHours} forecast hours above 50% chance`;
   }
 
-  const prompt = `Station: ${stationId}
-Date: ${date}
+  const prompt = `Station: ${stationId} — ${date}
 
-Live readings:
-- Temperature: ${c?.temp ?? '?'}°F, feels like ${c?.feelsLike ?? '?'}°F
-- Humidity: ${c?.humidity ?? '?'}%, dew point ${c?.dewPoint ?? '?'}°F
+Right now:
+- Temp: ${c?.temp ?? '?'}°F (feels ${c?.feelsLike ?? '?'}°F), humidity ${c?.humidity ?? '?'}%, dew point ${c?.dewPoint ?? '?'}°F
 - Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusting ${c?.windGust ?? '?'} mph
 - Pressure: ${c?.pressure ?? '?'} inHg
-- Rain rate: ${c?.precipRate ?? 0}"/hr, ${c?.precipTotal ?? 0}" today${forecastContext}${yoyContext}
+- UV index: ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi)})
+- Rain: ${c?.precipRate ?? 0}"/hr, ${c?.precipTotal ?? 0}" today${forecastContext}${yoyDelta}
 
-Return a JSON object with exactly these fields:
+Return:
 {
-  "narrative": "2-3 sentences in second person, hyperlocal, referencing actual measured values. Compare to last year if meaningfully different. Direct, informed tone — like a knowledgeable neighbor.",
+  "narrative": "2-3 sentences. Lead with the most notable condition. ${yoyDelta ? 'Reference the year-over-year difference in the final sentence.' : 'No year-over-year data — omit any comparisons.'} Knowledgeable-neighbor tone, second person.",
   "tags": [
-    { "label": "2-3 word label", "type": "positive|caution|neutral", "icon": "one of: ${ALLOWED_ICONS.join('|')}" }
+    { "label": "2-3 words", "type": "positive|caution|neutral", "icon": "one of: ${ALLOWED_ICONS.join('|')}" }
   ]
 }
 
-Return 3-4 tags. Return only the JSON object, no markdown, no other text.`;
+Rules for tags:
+- Exactly 3-4 tags
+- Each tag covers a different aspect: e.g. temperature, precipitation, wind, air quality
+- No two tags should convey the same theme
+- type=caution only when a value is genuinely limiting or hazardous
+Return only the JSON object, no markdown, no other text.`;
+
+  const DAILY_SYSTEM = 'You are a hyperlocal weather insight engine for YardObs. Return valid JSON only — no markdown fences, no preamble. Write in second person using actual measured values. Each tag must cover a distinct aspect of conditions — never repeat the same theme across tags.';
 
   try {
     const client = new Anthropic({ apiKey, maxRetries: 3 });
     const msg = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 320,
-      system: 'You are a hyperlocal weather insight engine for YardObs. Return valid JSON only — no markdown fences, no preamble. Second person, specific values, direct tone.',
+      max_tokens: 400,
+      system: [{ type: 'text', text: DAILY_SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: prompt }],
     });
 

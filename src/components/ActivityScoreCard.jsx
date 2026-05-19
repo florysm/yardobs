@@ -53,7 +53,7 @@ const FACTOR_DEFS = {
       raw: c => c.humidity != null ? `${Math.round(c.humidity)}%` : '—',
     },
     {
-      name: 'Rain Risk',   weight: 0.20,
+      name: 'Precipitation', weight: 0.20,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
       raw: c => (c.precipRate ?? 0) > 0
         ? `${(c.precipRate).toFixed(2)}"/hr`
@@ -82,7 +82,7 @@ const FACTOR_DEFS = {
       raw: c => c.windSpeed != null ? `${Math.round(c.windSpeed)} mph` : '—',
     },
     {
-      name: 'Rain Risk',   weight: 0.15,
+      name: 'Precipitation', weight: 0.15,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
       raw: c => (c.precipRate ?? 0) > 0
         ? `${(c.precipRate).toFixed(2)}"/hr`
@@ -111,7 +111,7 @@ const FACTOR_DEFS = {
       raw: c => c.windSpeed != null ? `${Math.round(c.windSpeed)} mph` : '—',
     },
     {
-      name: 'Rain Risk',   weight: 0.20,
+      name: 'Precipitation', weight: 0.20,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_SPORT),
       raw: c => (c.precipRate ?? 0) > 0
         ? `${(c.precipRate).toFixed(2)}"/hr`
@@ -140,7 +140,7 @@ const FACTOR_DEFS = {
       raw: c => c.windSpeed != null ? `${Math.round(c.windSpeed)} mph` : '—',
     },
     {
-      name: 'Rain Risk',   weight: 0.15,
+      name: 'Precipitation', weight: 0.15,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
       raw: c => (c.precipRate ?? 0) > 0
         ? `${(c.precipRate).toFixed(2)}"/hr`
@@ -175,7 +175,7 @@ const FACTOR_DEFS = {
       raw: c => c.humidity != null ? `${Math.round(c.humidity)}%` : '—',
     },
     {
-      name: 'Rain Risk',      weight: 0.15,
+      name: 'Precipitation',   weight: 0.15,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_DOG),
       raw: c => (c.precipRate ?? 0) > 0
         ? `${(c.precipRate).toFixed(2)}"/hr`
@@ -232,6 +232,21 @@ function getForecastRainThreat(hf) {
     if (prob > maxProb) maxProb = prob;
   });
   return { rate: precipProbToRate(maxProb), maxProb };
+}
+
+function getRainyHourWindow(hf) {
+  if (!hf?.hourly?.time) return { firstRainyHour: null, lastRainyHour: null };
+  const today = new Date().toISOString().split('T')[0];
+  let first = null, last = null;
+  hf.hourly.time.forEach((t, i) => {
+    if (!t.startsWith(today)) return;
+    const prob = hf.hourly.precipitation_probability?.[i] ?? 0;
+    if (prob < 50) return;
+    const hour = parseInt(t.split('T')[1], 10);
+    if (first === null) first = hour;
+    last = hour;
+  });
+  return { firstRainyHour: first, lastRainyHour: last };
 }
 
 function getArcData(hf, actId, current) {
@@ -446,6 +461,10 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
     () => getForecastRainThreat(hourlyForecast),
     [hourlyForecast]
   );
+  const { firstRainyHour, lastRainyHour } = useMemo(
+    () => getRainyHourWindow(hourlyForecast),
+    [hourlyForecast]
+  );
   const currentWithThreat = useMemo(() => current ? {
     ...current,
     rainThreat: Math.max(current.precipRate ?? 0, forecastRate),
@@ -479,7 +498,15 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
         activityLabel: act?.label,
         score: active.score,
         factors: active.factors,
-        current: currentWithThreat,
+        stationId: current?.stationId,
+        current: {
+          ...currentWithThreat,
+          ...(activeId === 'dogwalk' && active.pavementTemp != null
+            ? { pavementTemp: active.pavementTemp }
+            : {}),
+        },
+        firstRainyHour,
+        lastRainyHour,
       }),
     })
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -514,6 +541,17 @@ export default function ActivityScoreCard({ current, hourlyForecast }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {showPawAlert && (
+              <div style={{
+                fontSize: 11, fontWeight: 600,
+                color: 'var(--score-marginal)',
+                background: 'rgba(217,119,6,0.14)',
+                border: '1px solid rgba(217,119,6,0.35)',
+                padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap',
+              }}>
+                🐾 Hot pavement
+              </div>
+            )}
             {bestWindow && (
               <div style={{
                 fontSize: 11, color: 'var(--accent)', background: 'var(--soft)',

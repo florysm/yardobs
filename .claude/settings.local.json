@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(vercel --version)",
+      "Bash(grep -n \"nvm\\\\|npm-global\\\\|PATH\" ~/.zshrc)",
+      "Read(//Users/steve/**)"
+    ]
+  }
+}

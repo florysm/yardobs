@@ -12,8 +12,6 @@ dist/
 # Vercel
 .vercel
 
-# Claude Code
-.claude
 
 # OS
 .DS_Store
@@ -27,11 +25,7 @@ Thumbs.db
 *.logs
 npm-debug.log*
 
-# Docs
-docs/
+
 
 # MISC
 .nvmrc
-notes/
-KnownBugs.md
-TechDebt.md

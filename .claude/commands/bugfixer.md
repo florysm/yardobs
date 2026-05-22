@@ -33,3 +33,13 @@ Fix one bug from `KnownBugs.md`, verify the build, and remove the resolved entry
 - Do not mark a bug as fixed without running `npm run build`.
 - Do not attempt bugs classified as "requires new feature" — flag them and stop.
 - Do not add tests, comments, or unrelated cleanup as part of the fix.
+
+## Additional verification for API-layer bugs
+
+If the bug is in any file under `api/` (including `api/lib/supabase.js`, `api/lib/crypto.js`, `api/settings.js`, `api/weather.js`), after `npm run build` passes, also run:
+
+```
+vercel dev
+```
+
+Manually exercise the affected endpoint with and without a valid Bearer token to confirm the fix behaves correctly at runtime. Do not mark the bug resolved based on build alone when the defect is in server-side request handling.

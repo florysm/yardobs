@@ -479,10 +479,12 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError }) 
     }
     setInsightLoading(true);
     setInsight(null);
+    const controller = new AbortController();
     const timer = setTimeout(() => {
       fetch('/api/insight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           activity: activeId,
           activityLabel: act?.label,
@@ -506,14 +508,15 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError }) 
           setInsight(text);
         })
         .catch(err => {
+          if (err.name === 'AbortError') return;
           console.error('[insight:activity]', err);
           iCache.current[key] = '';
           setInsight('');
           onError?.('Could not load activity insight');
         })
-        .finally(() => setInsightLoading(false));
+        .finally(() => { if (!controller.signal.aborted) setInsightLoading(false); });
     }, 400);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [activeId, currentWithThreat]);
 
   if (!current) {

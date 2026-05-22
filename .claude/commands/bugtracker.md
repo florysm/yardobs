@@ -49,6 +49,33 @@ A concrete, verifiable defect — wrong behavior, a fetch that leaves state dang
 - Theme `body.theme-*` CSS variable blocks placed inside an `@layer base` or any `@layer` rule — Tailwind's unlayered utilities win the cascade and silently override them; blocks must remain unlayered
 - Recharts `stroke` / `fill` / `color` attributes set to `var(--some-css-variable)` — SVG presentation attributes cannot resolve CSS custom properties; must use resolved hex values from `CHART_COLORS` in `src/themes.js`
 
+## Search targets — auth and settings layer
+
+**`src/hooks/useAuth.js`:**
+- `onAuthStateChange` registers a subscription — verify the `useEffect` cleanup calls `subscription.unsubscribe()`; if absent, listeners accumulate on every re-mount (event leak)
+- When `supabase` is `null` (dev mode, no VITE_SUPABASE vars), verify `setUser(null)` is called before returning; if absent, `isLoading` stays `true` and the app hangs
+
+**`src/hooks/useUserSettings.js`:**
+- `loadSettings()` is `async` and called from a `useEffect` that re-runs when `session` changes — if session changes before the request resolves, the stale response overwrites newer state; look for an AbortController or generation-counter guard; absence is a bug
+- `error` state is returned from the hook but check whether `App.jsx` actually destructures and displays it; if not, settings load/save errors are silently swallowed
+
+**`src/components/AuthGate.jsx`:**
+- `handleSubmit` is `async` — if the component unmounts while the OTP request is in flight, `setStatus` / `setErrorMsg` fire on a dead component; look for an `isMounted` ref or unmount guard; absence is a bug
+
+**`src/utils/apiFetch.js`:**
+- `supabase.auth.getSession()` is wrapped in a `try/catch {}` with an empty catch body — if `getSession()` rejects, the error is swallowed and `fetch()` proceeds without an Authorization header; server returns 401 which surfaces as `Error: HTTP 401`, hiding the real auth failure; the empty catch is the defect
+
+**`api/weather.js` (auth mode credential resolution):**
+- If `ENCRYPTION_KEY` rotates after keys were stored, `decrypt()` throws — verify the surrounding try/catch returns a meaningful 500 with a message rather than an unhandled propagation
+- Dev mode branch: if `stationId` query param is missing when `TWC_API_KEY` is set, verify the route returns a clear 400 rather than a silent 500
+
+**`api/settings.js`:**
+- POST handler: when first-time save omits `twcApiKey`, verify the 400 error message is actually surfaced in the `StationForm` UI and not silently discarded
+- Input validation for `stationId`: verify empty or whitespace-only strings are rejected (`.trim()` should be applied before the falsy check)
+
+**`api/lib/supabase.js`:**
+- `getUserFromRequest` extracts the token by slicing after `'Bearer '` — a header value of `'Bearer '` with no token produces an empty string; verify `client.auth.getUser('')` behavior; if it returns a non-null user or throws instead of returning null, this is a security bug
+
 ## Entry format
 
 New entries must follow this format:

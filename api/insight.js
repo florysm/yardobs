@@ -4,6 +4,17 @@ const cache = new Map();
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const CACHE_MAX_SIZE = 500;
 
+function evictOne() {
+  const now = Date.now();
+  let evictKey = null;
+  let oldestTs = Infinity;
+  for (const [k, v] of cache) {
+    if (now - v.ts >= CACHE_TTL_MS) { evictKey = k; break; }
+    if (v.ts < oldestTs) { oldestTs = v.ts; evictKey = k; }
+  }
+  if (evictKey !== null) cache.delete(evictKey);
+}
+
 import { COMPASS_DIRS } from '../utils/compass.js';
 
 function aqiCategory(v) {
@@ -90,7 +101,7 @@ In 2 sentences: assess conditions using the limiting factors and specific values
       messages: [{ role: 'user', content: prompt }],
     });
     const text = msg.content[0]?.text?.trim() ?? '';
-    if (cache.size >= CACHE_MAX_SIZE) cache.delete(cache.keys().next().value);
+    if (cache.size >= CACHE_MAX_SIZE) evictOne();
     cache.set(key, { text, ts: Date.now() });
     return res.status(200).json({ insight: text });
   } catch (err) {
@@ -187,7 +198,7 @@ Return only the JSON object, no markdown, no other text.`;
       console.error('[insight:daily] JSON parse error:', parseErr.message);
     }
 
-    if (cache.size >= CACHE_MAX_SIZE) cache.delete(cache.keys().next().value);
+    if (cache.size >= CACHE_MAX_SIZE) evictOne();
     cache.set(key, { data, ts: Date.now() });
     return res.status(200).json(data);
   } catch (err) {

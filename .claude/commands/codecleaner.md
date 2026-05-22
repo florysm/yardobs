@@ -57,6 +57,19 @@ Concrete duplication, inconsistency, or missing abstraction — verifiable by re
 - Repeated `fetch(url)` + response status check boilerplate across `api/weather.js` route branches — count duplicated patterns; candidate for a shared internal helper
 - `api/insight.js` in-memory cache: entries are added on every new request but never evicted — no max-size limit or LRU policy; long-running serverless instances will accumulate stale entries indefinitely
 
+## Search targets — auth and settings layer
+
+**`src/components/SettingsDrawer.jsx`:**
+- `StationForm` is defined inline and is 135+ lines of self-contained form logic — if it has no closure dependencies on `SettingsDrawer` state (verify by reading the component), it is a candidate for extraction to `src/components/StationForm.jsx`
+
+**`api/` auth boilerplate:**
+- `getUserFromRequest` is called in both `api/settings.js` and `api/weather.js` with nearly identical error-response patterns after the call — compare the error handling code immediately after each call; duplicated auth-failure boilerplate belongs in `api/lib/`
+- CORS headers: `api/settings.js` and `api/weather.js` both set CORS headers manually — count how many files do this; any pattern set in 2+ files is a duplication candidate for a shared `setCorsHeaders(res)` helper in `api/lib/`
+
+**Auth error surfacing:**
+- `useUserSettings` exposes an `error` field in its return value — verify whether `App.jsx` destructures and wires it into the error banner; if not, this is a missing error-pipeline connection
+- `useAuth.js`: check for any internal error state that is similarly not surfaced to `App.jsx`'s error banner — auth errors (e.g., OTP send failures beyond what `AuthGate` handles internally) may have no user-visible path
+
 ## Entry format
 
 Match the existing format in `TechDebt.md` — bold numbered title, description paragraph, affected file list with line numbers where relevant.

@@ -34,7 +34,7 @@ A change is **mechanical** if it meets all of these:
 - No behavioral change — inputs/outputs stay identical, only the location of code moves
 - The affected files are already known and listed in `TechDebt.md`
 
-**Examples:** extracting a duplicated utility function, moving `calcFeelsLike` to `src/utils/`, consolidating localStorage key strings into a constants object, moving a constant array from two component files into `src/utils/`.
+**Examples:** extracting a duplicated utility function, moving `calcFeelsLike` to `src/utils/`, consolidating localStorage key strings into a constants object, moving a constant array from two component files into `src/utils/`, extracting `StationForm` from `SettingsDrawer.jsx` into its own file, extracting a shared `setCorsHeaders(res)` helper into `api/lib/`.
 
 **Process:** Read all affected files → make the changes → run `npm run build` → update `TechDebt.md`.
 
@@ -47,6 +47,7 @@ A change is **structural** if it involves:
 - Changing how state or errors flow through the component tree
 - Replacing a pattern across multiple pages/components (e.g., adopting a centralized theme constant)
 - Changes to `api/` that alter request/response shapes
+- Connecting a new error source into the existing error-banner pipeline in `App.jsx` (e.g., wiring `useUserSettings` `error` state or auth errors into the bottom-banner display)
 
 **Process:**
 1. Read all affected files.

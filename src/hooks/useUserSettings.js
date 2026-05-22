@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '../utils/apiFetch';
 
 export function useUserSettings(session) {
@@ -6,18 +6,22 @@ export function useUserSettings(session) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving]   = useState(false);
   const [error, setError]         = useState(null);
+  const generation = useRef(0);
 
   const loadSettings = useCallback(async () => {
     if (!session) { setSettings(null); return; }
+    const gen = ++generation.current;
     setIsLoading(true);
     setError(null);
     try {
       const data = await apiFetch('/api/settings');
+      if (gen !== generation.current) return;
       setSettings(data); // null means user has no settings yet
     } catch (err) {
+      if (gen !== generation.current) return;
       setError(err.message);
     } finally {
-      setIsLoading(false);
+      if (gen === generation.current) setIsLoading(false);
     }
   }, [session]);
 

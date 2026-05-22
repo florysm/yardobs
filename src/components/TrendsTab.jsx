@@ -206,8 +206,8 @@ function yoyInsight({ currentTemp, todayPrecip, lyHourlyObs, lyDailyHigh, lyDail
     }
     const todayP = todayPrecip ?? 0;
     const lyP = lyHourPrecip ?? 0;
-    if (todayP >= 0.1 && lyP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain so far vs ${lyP.toFixed(2)}" last year at this time.`;
-    else if (todayP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain already; last year was dry at this hour.`;
+    if (todayP >= 0.01 && lyP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain so far vs ${lyP.toFixed(2)}" last year at this time.`;
+    else if (todayP >= 0.01) precipClause = `${todayP.toFixed(2)}" of rain already; last year was dry at this hour.`;
     else if (lyP >= 0.1) precipClause = `Dry so far, but last year had ${lyP.toFixed(2)}" by this time.`;
 
   } else if (phase === 'midday') {
@@ -233,8 +233,8 @@ function yoyInsight({ currentTemp, todayPrecip, lyHourlyObs, lyDailyHigh, lyDail
     }
     const todayP = todayPrecip ?? 0;
     const lyP = lyHourPrecip ?? 0;
-    if (todayP >= 0.1 && lyP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain so far vs ${lyP.toFixed(2)}" last year by now.`;
-    else if (todayP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain already; last year was dry at this point.`;
+    if (todayP >= 0.01 && lyP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain so far vs ${lyP.toFixed(2)}" last year by now.`;
+    else if (todayP >= 0.01) precipClause = `${todayP.toFixed(2)}" of rain already; last year was dry at this point.`;
     else if (lyP >= 0.1) precipClause = `Dry so far; last year had ${lyP.toFixed(2)}" by now.`;
 
   } else if (phase === 'afternoon') {
@@ -262,8 +262,8 @@ function yoyInsight({ currentTemp, todayPrecip, lyHourlyObs, lyDailyHigh, lyDail
     }
     const todayP = todayPrecip ?? 0;
     const lyP = lyHourPrecip ?? lyDailyPrecip ?? 0;
-    if (todayP >= 0.1 && lyP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain vs ${lyP.toFixed(2)}" last year by now.`;
-    else if (todayP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain so far; last year was dry at this point.`;
+    if (todayP >= 0.01 && lyP >= 0.1) precipClause = `${todayP.toFixed(2)}" of rain vs ${lyP.toFixed(2)}" last year by now.`;
+    else if (todayP >= 0.01) precipClause = `${todayP.toFixed(2)}" of rain so far; last year was dry at this point.`;
     else if (lyP >= 0.1) precipClause = `Dry so far; last year had ${lyP.toFixed(2)}" by now.`;
 
   } else {

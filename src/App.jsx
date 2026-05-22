@@ -51,7 +51,7 @@ function resolveAutoTheme(current) {
 
 export default function App() {
   const { user, session, signIn, signOut, isLoading: authLoading } = useAuth();
-  const { settings, isSaving, saveSettings, reloadSettings } = useUserSettings(session);
+  const { settings, isSaving, saveSettings, reloadSettings, error: settingsError } = useUserSettings(session);
 
   const [activeTab, setActiveTab]           = useState('now');
   const [settingsOpen, setSettingsOpen]     = useState(false);
@@ -219,13 +219,13 @@ export default function App() {
         />
       )}
 
-      {((error && !isLoading) || componentError) && (
+      {((error && !isLoading) || componentError || settingsError) && (
         <div style={{
           position: 'fixed', bottom: 16, left: 16, right: 16, maxWidth: 388, margin: '0 auto',
           background: '#dc2626', color: '#fff', fontSize: 12, padding: '8px 14px',
           borderRadius: 12, zIndex: 300,
         }}>
-          {error || componentError}
+          {error || componentError || settingsError}
         </div>
       )}
     </div>

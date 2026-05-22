@@ -5,6 +5,7 @@ export async function getUserFromRequest(req) {
   const auth = req.headers['authorization'];
   if (!auth?.startsWith('Bearer ')) return null;
   const token = auth.slice(7);
+  if (!token) return null;
 
   const client = createClient(
     process.env.SUPABASE_URL,

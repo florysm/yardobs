@@ -4,12 +4,10 @@ export async function apiFetch(url, options = {}) {
   const headers = { ...options.headers };
 
   if (supabase) {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-    } catch {}
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
   }
 
   const res = await fetch(url, { ...options, headers });

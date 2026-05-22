@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export default function AuthGate({ signIn }) {
   const [email, setEmail]       = useState('');
   const [status, setStatus]     = useState('idle'); // idle | sending | sent | error
   const [errorMsg, setErrorMsg] = useState('');
+  const isMounted = useRef(true);
+  useEffect(() => () => { isMounted.current = false; }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -11,6 +13,7 @@ export default function AuthGate({ signIn }) {
     setStatus('sending');
     setErrorMsg('');
     const err = await signIn(email.trim());
+    if (!isMounted.current) return;
     if (err) {
       setStatus('error');
       setErrorMsg(err.message ?? 'Failed to send link. Check your email and try again.');

@@ -1,14 +1,48 @@
+import { getUserFromRequest, createServiceClient } from './lib/supabase.js';
+import { decrypt } from './lib/crypto.js';
+
 const TWC_BASE = 'https://api.weather.com';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const apiKey = process.env.TWC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'TWC_API_KEY not configured' });
+  const { type, date, lat, lon } = req.query;
 
-  const { type, stationId, date, lat, lon } = req.query;
+  // ── Credential resolution ──────────────────────────────────────────────────
+  // Auth mode: bearer token present → look up user's own station + API key.
+  // Dev mode:  no bearer token, but TWC_API_KEY env var + stationId query param exist.
+  let apiKey, stationId;
 
+  const user = await getUserFromRequest(req).catch(() => null);
+
+  if (user) {
+    const supabase = createServiceClient();
+    const { data: settings, error } = await supabase
+      .from('user_weather_settings')
+      .select('station_id, encrypted_twc_api_key')
+      .eq('user_id', user.id)
+      .single();
+
+    if (error?.code === 'PGRST116' || !settings) {
+      return res.status(400).json({ error: 'No station configured. Open Settings to add your station.' });
+    }
+    if (error) return res.status(500).json({ error: error.message });
+
+    try {
+      apiKey    = decrypt(settings.encrypted_twc_api_key);
+    } catch {
+      return res.status(500).json({ error: 'Failed to decrypt API key. Check ENCRYPTION_KEY.' });
+    }
+    stationId = settings.station_id;
+  } else {
+    // Dev / legacy mode — requires env var + query param
+    apiKey    = process.env.TWC_API_KEY;
+    stationId = req.query.stationId;
+    if (!apiKey) return res.status(401).json({ error: 'Unauthenticated and TWC_API_KEY not configured' });
+  }
+
+  // ── Route dispatch ─────────────────────────────────────────────────────────
   let url;
   switch (type) {
     case 'current':

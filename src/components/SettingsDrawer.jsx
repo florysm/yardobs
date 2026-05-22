@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { CONDITION_PREVIEWS } from '../themes.js';
 
 const WEATHER_THEMES = new Set(['sunny', 'cloudy', 'rainy', 'stormy']);
@@ -23,8 +23,149 @@ function RadioDot({ selected }) {
   );
 }
 
+function StationForm({ userSettings, isSaving, onSave }) {
+  const [stationId, setStationId]   = useState(userSettings?.station_id ?? '');
+  const [stationLabel, setStationLabel] = useState(userSettings?.station_label ?? '');
+  const [twcApiKey, setTwcApiKey]   = useState('');
+  const [saveStatus, setSaveStatus] = useState('idle'); // idle | success | error
+  const [saveError, setSaveError]   = useState('');
+
+  const isNew = !userSettings;
+  const hasChanges = stationId !== (userSettings?.station_id ?? '') ||
+                     stationLabel !== (userSettings?.station_label ?? '') ||
+                     twcApiKey.trim() !== '';
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!stationId.trim()) return;
+    if (isNew && !twcApiKey.trim()) return;
+
+    setSaveStatus('idle');
+    setSaveError('');
+
+    const payload = { stationId: stationId.trim(), stationLabel: stationLabel.trim() };
+    if (twcApiKey.trim()) payload.twcApiKey = twcApiKey.trim();
+    // If updating and no new key entered, pass the old encrypted key indicator
+    if (!isNew && !twcApiKey.trim()) {
+      // No key change — send a sentinel so the server keeps the existing key.
+      // We handle this by just omitting twcApiKey when it's unchanged.
+      // But our POST handler requires twcApiKey... we'll need to either:
+      // 1. Make twcApiKey optional on update, OR
+      // 2. Always require it.
+      // For simplicity, require it on first save only and make it optional on update.
+      // The server will skip re-encrypting if twcApiKey is absent.
+    }
+
+    const result = await onSave(payload);
+    if (result.success) {
+      setSaveStatus('success');
+      setTwcApiKey('');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } else {
+      setSaveStatus('error');
+      setSaveError(result.error ?? 'Save failed');
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '10px 12px',
+    background: 'var(--bg)', border: '1px solid var(--border)',
+    borderRadius: 10, fontSize: 13, color: 'var(--tp)',
+    fontFamily: 'var(--font-mono)', outline: 'none',
+    boxSizing: 'border-box',
+  };
+
+  const labelStyle = {
+    fontSize: 11, color: 'var(--ts)', marginBottom: 5,
+    display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px',
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {isNew && (
+        <div style={{
+          background: 'var(--soft)', border: '1px solid var(--border)',
+          borderRadius: 10, padding: '10px 12px', marginBottom: 14,
+          fontSize: 12, color: 'var(--ts)', lineHeight: 1.5,
+        }}>
+          Connect your Weather Underground station to see live data.
+        </div>
+      )}
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Station ID</label>
+        <input
+          style={inputStyle}
+          placeholder="e.g. KFLMIAMI123"
+          value={stationId}
+          onChange={e => setStationId(e.target.value)}
+          required
+        />
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>Station Label (optional)</label>
+        <input
+          style={{ ...inputStyle, fontFamily: 'var(--font-body)' }}
+          placeholder="e.g. Backyard"
+          value={stationLabel}
+          onChange={e => setStationLabel(e.target.value)}
+        />
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={labelStyle}>TWC API Key {!isNew && '(leave blank to keep existing)'}</label>
+        <input
+          style={inputStyle}
+          type="password"
+          placeholder={isNew ? 'Your Weather Company API key' : '••••••••  (unchanged)'}
+          value={twcApiKey}
+          onChange={e => setTwcApiKey(e.target.value)}
+          required={isNew}
+          autoComplete="off"
+        />
+      </div>
+
+      {saveStatus === 'error' && (
+        <div style={{
+          fontSize: 12, color: '#dc2626', marginBottom: 10,
+          background: '#fef2f2', borderRadius: 8, padding: '8px 12px',
+        }}>
+          {saveError}
+        </div>
+      )}
+
+      {saveStatus === 'success' && (
+        <div style={{
+          fontSize: 12, color: '#16a34a', marginBottom: 10,
+          background: '#f0fdf4', borderRadius: 8, padding: '8px 12px',
+        }}>
+          Station saved.
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={isSaving || (!hasChanges && !isNew)}
+        style={{
+          width: '100%', padding: '12px 0', borderRadius: 12,
+          background: 'var(--accent)', border: 'none',
+          color: '#fff', fontSize: 13, fontWeight: 600,
+          cursor: isSaving ? 'not-allowed' : 'pointer',
+          fontFamily: 'var(--font-body)',
+          opacity: (isSaving || (!hasChanges && !isNew)) ? 0.6 : 1,
+          transition: 'opacity 0.2s',
+        }}
+      >
+        {isSaving ? 'Saving…' : isNew ? 'Connect Station' : 'Save Changes'}
+      </button>
+    </form>
+  );
+}
+
 export default function SettingsDrawer({
   onClose, mode, onSetMode, autoTheme, previewCondition, onSetPreview, stationId,
+  user, userSettings, isSaving, onSaveSettings, onSignOut,
 }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -169,20 +310,55 @@ export default function SettingsDrawer({
         {/* Station section */}
         <div style={{ marginBottom: 22 }}>
           <div className="y-label">Station</div>
-          <div className="y-pref-row" style={{ cursor: 'default' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontSize: 18, width: 22, textAlign: 'center' }}>📡</div>
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--tp)', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>
-                  {stationId ?? 'Not configured'}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--ts)', marginTop: 1 }}>
-                  Set VITE_PWS_STATION_ID in .env
+
+          {user ? (
+            <StationForm
+              userSettings={userSettings}
+              isSaving={isSaving}
+              onSave={onSaveSettings}
+            />
+          ) : (
+            <div className="y-pref-row" style={{ cursor: 'default' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontSize: 18, width: 22, textAlign: 'center' }}>📡</div>
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--tp)', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>
+                    {stationId ?? 'Not configured'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--ts)', marginTop: 1 }}>
+                    Set VITE_PWS_STATION_ID in .env
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
+
+        {/* Account section — only when signed in */}
+        {user && (
+          <div style={{ marginBottom: 22 }}>
+            <div className="y-label">Account</div>
+            <div className="y-pref-row" style={{ cursor: 'default' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontSize: 18, width: 22, textAlign: 'center' }}>👤</div>
+                <div style={{ fontSize: 13, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
+                  {user.email}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={onSignOut}
+              style={{
+                width: '100%', marginTop: 8, padding: '12px 0', borderRadius: 12,
+                background: 'var(--soft)', border: '1px solid var(--border)',
+                color: 'var(--ts)', fontSize: 13, fontWeight: 500,
+                cursor: 'pointer', fontFamily: 'var(--font-body)',
+              }}
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
 
         {/* Done button */}
         <button

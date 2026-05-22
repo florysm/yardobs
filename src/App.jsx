@@ -5,8 +5,11 @@ import NavTabs from './components/NavTabs';
 import NowTab from './components/NowTab';
 import ForecastTab from './components/ForecastTab';
 import SettingsDrawer from './components/SettingsDrawer';
+import AuthGate from './components/AuthGate';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useWeather } from './hooks/useWeather';
+import { useAuth } from './hooks/useAuth';
+import { useUserSettings } from './hooks/useUserSettings';
 import { CHART_COLORS, META_COLORS } from './themes.js';
 import { STORAGE_KEYS } from './utils/storageKeys';
 
@@ -47,15 +50,20 @@ function resolveAutoTheme(current) {
 }
 
 export default function App() {
+  const { user, session, signIn, signOut, isLoading: authLoading } = useAuth();
+  const { settings, isSaving, saveSettings, reloadSettings } = useUserSettings(session);
+
   const [activeTab, setActiveTab]           = useState('now');
   const [settingsOpen, setSettingsOpen]     = useState(false);
-  // 'auto' | 'light' | 'dark'
   const [mode, setMode]                     = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || 'auto'; } catch { return 'auto'; } });
-  // temporary preview inside the settings drawer (not persisted)
   const [previewCondition, setPreviewCondition] = useState(null);
   const [componentError, setComponentError]     = useState(null);
 
-  const stationId = import.meta.env.VITE_PWS_STATION_ID;
+  // Auth mode: use station from user's saved settings.
+  // Dev mode: fall back to build-time env var (VITE_PWS_STATION_ID).
+  const devStationId = import.meta.env.VITE_PWS_STATION_ID;
+  const stationId    = user ? (settings?.station_id ?? null) : devStationId;
+
   const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(stationId);
 
   const currentWithAQI = useMemo(() =>
@@ -77,6 +85,13 @@ export default function App() {
     if (meta) meta.setAttribute('content', META_COLORS[activeTheme] ?? '#f7f8fa');
   }, [activeTheme]);
 
+  // Auto-open settings when signed in but station not yet configured
+  useEffect(() => {
+    if (user && settings === null && !settingsOpen) {
+      setSettingsOpen(true);
+    }
+  }, [user, settings, settingsOpen]);
+
   const handleSetMode = (m) => {
     setMode(m);
     setPreviewCondition(null);
@@ -93,6 +108,23 @@ export default function App() {
     if (!hourlyForecast && (current || activeTab === 'forecast')) fetchHourlyForecast();
     if (!airQuality && current) fetchAirQuality();
   }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast, airQuality, fetchAirQuality]);
+
+  // Auth still initializing — show nothing to avoid flash
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--bg)',
+      }}>
+        <div style={{ fontSize: 13, color: 'var(--ts)' }}>Loading…</div>
+      </div>
+    );
+  }
+
+  // Production: no session and no dev station → show login
+  if (!user && !devStationId) {
+    return <AuthGate signIn={signIn} />;
+  }
 
   return (
     <div style={{ maxWidth: 420, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -175,6 +207,15 @@ export default function App() {
           previewCondition={previewCondition}
           onSetPreview={setPreviewCondition}
           stationId={stationId}
+          user={user}
+          userSettings={settings}
+          isSaving={isSaving}
+          onSaveSettings={async (data) => {
+            const result = await saveSettings(data);
+            if (result.success) reloadSettings();
+            return result;
+          }}
+          onSignOut={signOut}
         />
       )}
 

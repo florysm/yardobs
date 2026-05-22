@@ -313,6 +313,7 @@ export default function SettingsDrawer({
 
           {user ? (
             <StationForm
+              key={userSettings?.id ?? 'new'}
               userSettings={userSettings}
               isSaving={isSaving}
               onSave={onSaveSettings}

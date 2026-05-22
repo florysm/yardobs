@@ -50,7 +50,7 @@ function resolveAutoTheme(current) {
 }
 
 export default function App() {
-  const { user, session, signIn, signOut, isLoading: authLoading } = useAuth();
+  const { user, session, signIn, verifyOtp, signOut, isLoading: authLoading } = useAuth();
   const { settings, isSaving, saveSettings, reloadSettings, error: settingsError } = useUserSettings(session);
 
   const [activeTab, setActiveTab]           = useState('now');
@@ -123,7 +123,7 @@ export default function App() {
 
   // Production: no session and no dev station → show login
   if (!user && !devStationId) {
-    return <AuthGate signIn={signIn} />;
+    return <AuthGate signIn={signIn} verifyOtp={verifyOtp} />;
   }
 
   return (

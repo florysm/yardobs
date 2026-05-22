@@ -31,8 +31,18 @@ export function useAuth() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        shouldCreateUser: false, // only allow pre-invited accounts
+        shouldCreateUser: false,
       },
+    });
+    return error ?? null;
+  };
+
+  const verifyOtp = async (email, token) => {
+    if (!supabase) return new Error('Supabase not configured');
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
     });
     return error ?? null;
   };
@@ -46,6 +56,7 @@ export function useAuth() {
     user,
     session,
     signIn,
+    verifyOtp,
     signOut,
     isLoading: user === undefined,
   };

@@ -18,13 +18,7 @@ function GearIcon() {
   );
 }
 
-function parseState(stationId) {
-  if (!stationId) return null;
-  const m = stationId.match(/^K([A-Z]{2})/);
-  return m ? m[1] : null;
-}
-
-export default function TopBar({ stationId, neighborhood, country, lastUpdated, onSettingsOpen }) {
+export default function TopBar({ profile, lastUpdated, onSettingsOpen, neighborhood }) {
   const [ago, setAgo] = useState(() => timeAgo(lastUpdated));
 
   useEffect(() => {
@@ -33,9 +27,12 @@ export default function TopBar({ stationId, neighborhood, country, lastUpdated, 
     return () => clearInterval(tick);
   }, [lastUpdated]);
 
+  const isPreview = profile?.mode === 'preview';
+  const stationId = profile?.stationId ?? null;
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 20px 12px' }}>
-      {/* App name + station */}
+      {/* App name + location/station subtitle */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div style={{
           fontFamily: 'var(--font-display)',
@@ -47,21 +44,46 @@ export default function TopBar({ stationId, neighborhood, country, lastUpdated, 
         }}>
           Yard<span style={{ color: 'var(--accent)', fontStyle: 'italic' }}>Obs</span>
         </div>
-        <div style={{
-          fontSize: 11,
-          color: 'var(--tm)',
-          letterSpacing: '0.5px',
-          fontFamily: 'var(--font-mono)',
-        }}>
-          {stationId ?? 'No station set'}
-          {(() => {
-            const state = country === 'US' ? parseState(stationId) : country;
-            const parts = [neighborhood, state].filter(Boolean);
-            return parts.length > 0
-              ? <span style={{ color: 'var(--ts)', marginLeft: 6 }}>· {parts.join(', ')}</span>
-              : null;
-          })()}
-        </div>
+
+        {isPreview ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              fontSize: 11,
+              color: 'var(--tm)',
+              letterSpacing: '0.3px',
+              fontFamily: 'var(--font-mono)',
+            }}>
+              Preview: {profile.label ?? 'Your Location'}
+            </span>
+            <button
+              onClick={onSettingsOpen}
+              style={{
+                fontSize: 9,
+                color: 'var(--accent)',
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.3px',
+                background: 'var(--soft)',
+                border: '1px solid var(--border)',
+                borderRadius: 50,
+                padding: '2px 7px',
+                cursor: 'pointer',
+                lineHeight: 1.6,
+                fontWeight: 600,
+              }}
+            >
+              Connect →
+            </button>
+          </div>
+        ) : (
+          <div style={{
+            fontSize: 11,
+            color: 'var(--tm)',
+            letterSpacing: '0.5px',
+            fontFamily: 'var(--font-mono)',
+          }}>
+            {neighborhood ?? stationId ?? 'No station set'}
+          </div>
+        )}
       </div>
 
       {/* Right: live pill + settings */}

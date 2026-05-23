@@ -156,7 +156,7 @@ function InsightView({ insight, isLoading, toggle }) {
           color: 'rgba(255,255,255,0.7)', fontWeight: 500,
           textShadow: '0 1px 4px rgba(0,0,0,0.5)',
         }}>
-          Your backyard today
+          {insight?._sourceType === 'forecast_model' ? 'Forecast for your area' : 'Your backyard today'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>
           <div className="live-dot" style={{ background: 'rgba(255,255,255,0.45)' }} />
@@ -270,10 +270,12 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
 
   // Fetch AI daily insight when insights view is active
   useEffect(() => {
-    if (view !== 'insights' || !current || !stationId) return;
+    if (view !== 'insights' || !current) return;
 
+    // Use location label as cache/API key in preview mode
+    const insightId = stationId || current?.neighborhood || 'preview';
     const today = new Date().toISOString().split('T')[0];
-    const lsKey = STORAGE_KEYS.insightKey(stationId, today);
+    const lsKey = STORAGE_KEYS.insightKey(insightId, today);
 
     try {
       const raw = localStorage.getItem(lsKey);
@@ -305,15 +307,16 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            type: 'daily', stationId, date: today, current, yoyReadings,
+            type: 'daily', stationId: insightId, date: today, current, yoyReadings,
             forecastSummary: buildForecastSummary(hourlyForecast),
+            sourceType: current?.sourceType,
           }),
         });
         if (!res.ok) throw new Error(res.status);
         const json = await res.json();
         if (cancelled) return;
         const updatedAt = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        const stored = { ...json, updatedAt };
+        const stored = { ...json, updatedAt, _sourceType: current?.sourceType };
         try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
         setInsight(stored);
       } catch {
@@ -328,7 +331,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
 
     run();
     return () => { cancelled = true; };
-  }, [view, current, stationId, fetchHistoryDaily]);
+  }, [view, current, stationId, fetchHistoryDaily]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function deriveFromSensors(obs) {
     const precip = obs.precipRate ?? 0;
@@ -479,7 +482,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
               {[
                 { label: 'Wind',     val: windLabel },
                 { label: 'Pressure', val: current ? `${fmt(current.pressure, 2)}"` : '—' },
-                { label: 'Precip',   val: current ? `${fmt(current.precipTotal, 2)}"` : '—' },
+                { label: 'Precip',   val: current ? (current.precipTotal != null ? `${fmt(current.precipTotal, 2)}"` : '—') : '—' },
               ].map(({ label, val }) => (
                 <div key={label} style={{ background: 'var(--glass)', padding: '10px 8px', textAlign: 'center', backdropFilter: 'blur(8px)' }}>
                   <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--tm)' }}>{label}</div>

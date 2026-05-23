@@ -34,6 +34,8 @@ export default function NowTab({ current, isLoading, stationId, hourlyForecast, 
     );
   }
 
+  const isPreview = current?.sourceType === 'forecast_model';
+
   return (
     <div>
       {/* Activity score card */}
@@ -44,11 +46,33 @@ export default function NowTab({ current, isLoading, stationId, hourlyForecast, 
         <MetricCard icon="🌡️" label="Dew Point" value={fmt(current?.dewPoint)} unit="°F" />
         <MetricCard icon="💨" label="Wind Gust" value={fmt(current?.windGust)} unit=" mph" trend={current?.windGust != null ? beaufort(current.windGust) : undefined} />
         <MetricCard icon="🌬️" label="Air Quality" value={fmt(current?.aqi)} unit=" AQI" trend={aqiLabel(current?.aqi)} />
-        <MetricCard icon="🌧️" label="Rain Rate" value={fmt(current?.precipRate, 2)} unit='"' />
+        <MetricCard
+          icon="🌧️"
+          label="Rain Rate"
+          value={isPreview ? '—' : fmt(current?.precipRate, 2)}
+          unit={isPreview ? '' : '"'}
+          trend={isPreview ? 'Not available' : undefined}
+        />
       </div>
 
+      {/* Preview mode educational hint */}
+      {isPreview && (
+        <div style={{
+          textAlign: 'center',
+          fontSize: 11,
+          color: 'var(--ts)',
+          padding: '6px 0 2px',
+          lineHeight: 1.5,
+          letterSpacing: '0.2px',
+        }}>
+          Forecast data · rainfall, solar &amp; station readings require a weather station
+        </div>
+      )}
+
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', padding: '6px 0 4px', letterSpacing: '0.3px' }}>
-        {stationId} · PWS Observations API
+        {isPreview
+          ? `${current?.neighborhood ?? 'Forecast'} · Open-Meteo`
+          : `${stationId} · PWS Observations API`}
       </div>
     </div>
   );

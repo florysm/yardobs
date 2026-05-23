@@ -1,8 +1,20 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 const cache = new Map();
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_TTL_MS = 15 * 60 * 1000;
 const CACHE_MAX_SIZE = 500;
+
+// Per-IP rate limiter — max 10 calls per TTL window per IP
+const ipLog = new Map();
+function isRateLimited(ip) {
+  const now = Date.now();
+  const window = ipLog.get(ip) ?? [];
+  const recent = window.filter(ts => now - ts < CACHE_TTL_MS);
+  if (recent.length >= 10) return true;
+  recent.push(now);
+  ipLog.set(ip, recent);
+  return false;
+}
 
 function evictOne() {
   const now = Date.now();
@@ -45,8 +57,9 @@ function activityCacheKey(stationId, actId, score, c) {
 
 async function handleActivityInsight(req, res) {
   const { activity, activityLabel, score, factors, current: c,
-          firstRainyHour, lastRainyHour, stationId } = req.body ?? {};
-  const key = activityCacheKey(stationId ?? 'unknown', activity, score, c);
+          firstRainyHour, lastRainyHour, stationId, sourceType } = req.body ?? {};
+  const isPreview = sourceType === 'forecast_model';
+  const key = (isPreview ? 'preview|' : '') + activityCacheKey(stationId ?? 'unknown', activity, score, c);
 
   const hit = cache.get(key);
   const age = hit ? Date.now() - hit.ts : Infinity;
@@ -78,6 +91,11 @@ async function handleActivityInsight(req, res) {
   const pavementLine = c?.pavementTemp != null
     ? `\n- Pavement temp (direct sun): ~${c.pavementTemp}°F` : '';
 
+  // Preview mode omits actual rain rate/total since Open-Meteo doesn't provide them
+  const rainLine = isPreview
+    ? `Forecast rain risk: ${forecastLine}`
+    : `Rain: ${c?.precipRate ?? 0}"/hr now, ${c?.precipTotal ?? 0}" today; ${forecastLine}`;
+
   const prompt = `Activity: ${activityLabel} — Overall score: ${score}/100
 Limiting factors: ${topFactors}
 ${rainWindow}
@@ -86,16 +104,18 @@ Conditions right now:
 - ${c?.temp ?? '?'}°F, feels like ${c?.feelsLike ?? '?'}°F (${feelsLikeLabel}), dew point ${c?.dewPoint ?? '?'}°F
 - Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusts to ${c?.windGust ?? '?'} mph
 - Humidity: ${c?.humidity ?? '?'}%, UV ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi)})
-- Rain: ${c?.precipRate ?? 0}"/hr now, ${c?.precipTotal ?? 0}" today; ${forecastLine}${pavementLine}
+- ${rainLine}${pavementLine}
 
 In 2 sentences: assess conditions using the limiting factors and specific values. End with one actionable tip (timing, gear, or modification).`;
 
-  const ACTIVITY_SYSTEM = 'You are a concise, practical weather advisor for YardObs, a personal backyard weather station app. You write for someone standing at their back door deciding whether to go outside. Be direct. Use the actual measured numbers. Never start with the activity name. Return exactly 2 plain sentences followed by one actionable tip — no bullets, headers, or sign-off phrases. Factor scores are 0–100 where higher = better conditions. Score guide: 80–100 = excellent, 60–79 = good, 40–59 = marginal, 20–39 = poor, 0–19 = very poor. If any single factor is below 25, treat it as the primary constraint and lead with it even if the overall score is moderate.';
+  const ACTIVITY_SYSTEM_STATION = 'You are a concise, practical weather advisor for YardObs, a personal backyard weather station app. You write for someone standing at their back door deciding whether to go outside. Be direct. Use the actual measured numbers. Never start with the activity name. Return exactly 2 plain sentences followed by one actionable tip — no bullets, headers, or sign-off phrases. Factor scores are 0–100 where higher = better conditions. Score guide: 80–100 = excellent, 60–79 = good, 40–59 = marginal, 20–39 = poor, 0–19 = very poor. If any single factor is below 25, treat it as the primary constraint and lead with it even if the overall score is moderate.';
+  const ACTIVITY_SYSTEM_PREVIEW = 'You are a concise, practical weather advisor for YardObs. Help someone decide whether conditions are right for outdoor activities using city-level forecast data. Be direct. Use actual forecast values. Never start with the activity name. Return exactly 2 plain sentences followed by one actionable tip — no bullets, headers, or sign-off phrases. Factor scores are 0–100 where higher = better conditions. Score guide: 80–100 = excellent, 60–79 = good, 40–59 = marginal, 20–39 = poor, 0–19 = very poor. If any single factor is below 25, treat it as the primary constraint and lead with it even if the overall score is moderate.';
+  const ACTIVITY_SYSTEM = isPreview ? ACTIVITY_SYSTEM_PREVIEW : ACTIVITY_SYSTEM_STATION;
 
   try {
     const client = new Anthropic({ apiKey, maxRetries: 3 });
     const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 160,
       system: [{ type: 'text', text: ACTIVITY_SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: prompt }],
@@ -120,10 +140,11 @@ const ALLOWED_ICONS = [
 ];
 
 async function handleDailyInsight(req, res) {
-  const { stationId, date, current: c, yoyReadings, forecastSummary } = req.body ?? {};
+  const { stationId, date, current: c, yoyReadings, forecastSummary, sourceType } = req.body ?? {};
+  const isPreview = sourceType === 'forecast_model';
   const tempBucket    = Math.round((c?.temp ?? 70) / 2) * 2;
   const precipBucket  = Math.round((forecastSummary?.maxPrecipProb ?? 0) / 20) * 20;
-  const key = `daily|${stationId}|${date}|${tempBucket}|${precipBucket}`;
+  const key = `${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${precipBucket}`;
 
   const hit = cache.get(key);
   const age = hit ? Date.now() - hit.ts : Infinity;
@@ -136,7 +157,9 @@ async function handleDailyInsight(req, res) {
 
   const dir = windDirStr(c?.windDir);
 
+  // No year-over-year data in preview mode (no historical data available)
   const yoyDelta = (() => {
+    if (isPreview) return '';
     const yoy = Array.isArray(yoyReadings) ? yoyReadings[0] : null;
     if (!yoy || c?.temp == null) return '';
     const avg = yoy.imperial?.tempAvg ?? yoy.imperial?.temp ?? null;
@@ -154,18 +177,27 @@ async function handleDailyInsight(req, res) {
     forecastContext = `\n- Today's rain forecast: peak ${maxPrecipProb}% probability, ${rainyHoursCount} of ${totalForecastHours} forecast hours above 50% chance`;
   }
 
-  const prompt = `Station: ${stationId} — ${date}
+  // Preview mode: no rain rate/total; use forecast context only
+  const rainLine = isPreview
+    ? (forecastContext ? '' : '\n- No rain expected today')
+    : `\n- Rain: ${c?.precipRate ?? 0}"/hr, ${c?.precipTotal ?? 0}" today`;
+
+  const locationLabel = isPreview ? 'Location' : 'Station';
+  const yoyInstruction = isPreview
+    ? 'No year-over-year data available — omit any comparisons.'
+    : (yoyDelta ? 'Reference the year-over-year difference in the final sentence.' : 'No year-over-year data — omit any comparisons.');
+
+  const prompt = `${locationLabel}: ${stationId} — ${date}
 
 Right now:
 - Temp: ${c?.temp ?? '?'}°F (feels ${c?.feelsLike ?? '?'}°F), humidity ${c?.humidity ?? '?'}%, dew point ${c?.dewPoint ?? '?'}°F
 - Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusting ${c?.windGust ?? '?'} mph
 - Pressure: ${c?.pressure ?? '?'} inHg
-- UV index: ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi)})
-- Rain: ${c?.precipRate ?? 0}"/hr, ${c?.precipTotal ?? 0}" today${forecastContext}${yoyDelta}
+- UV index: ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi)})${rainLine}${forecastContext}${yoyDelta}
 
 Return:
 {
-  "narrative": "2-3 sentences. Lead with the most notable condition. ${yoyDelta ? 'Reference the year-over-year difference in the final sentence.' : 'No year-over-year data — omit any comparisons.'} Knowledgeable-neighbor tone, second person.",
+  "narrative": "2-3 sentences. Lead with the most notable condition. ${yoyInstruction} Knowledgeable-neighbor tone, second person.",
   "tags": [
     { "label": "2-3 words", "type": "positive|caution|neutral", "icon": "one of: ${ALLOWED_ICONS.join('|')}" }
   ]
@@ -178,12 +210,14 @@ Rules for tags:
 - type=caution only when a value is genuinely limiting or hazardous
 Return only the JSON object, no markdown, no other text.`;
 
-  const DAILY_SYSTEM = 'You are a hyperlocal weather insight engine for YardObs. Return valid JSON only — no markdown fences, no preamble. Write in second person using actual measured values. Each tag must cover a distinct aspect of conditions — never repeat the same theme across tags.';
+  const DAILY_SYSTEM_STATION = 'You are a hyperlocal weather insight engine for YardObs. Return valid JSON only — no markdown fences, no preamble. Write in second person using actual measured values. Each tag must cover a distinct aspect of conditions — never repeat the same theme across tags.';
+  const DAILY_SYSTEM_PREVIEW = 'You are a weather insight engine for YardObs. Return valid JSON only — no markdown fences, no preamble. Write in second person using forecast values for the area. Each tag must cover a distinct aspect of conditions — never repeat the same theme across tags.';
+  const DAILY_SYSTEM = isPreview ? DAILY_SYSTEM_PREVIEW : DAILY_SYSTEM_STATION;
 
   try {
     const client = new Anthropic({ apiKey, maxRetries: 3 });
     const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
       system: [{ type: 'text', text: DAILY_SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: prompt }],
@@ -215,6 +249,9 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? 'unknown';
+  if (isRateLimited(ip)) return res.status(429).json({ error: 'Rate limit exceeded. Try again shortly.' });
 
   if (req.body?.type === 'daily') return handleDailyInsight(req, res);
   return handleActivityInsight(req, res);

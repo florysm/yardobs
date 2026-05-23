@@ -178,6 +178,7 @@ export default function RadarTab({ lat, lon, isLoading }) {
         style={{
           overflow: 'hidden',
           borderRadius: 12,
+          isolation: 'isolate',
         }}
       >
         <MapContainer

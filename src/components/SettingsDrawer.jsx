@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CONDITION_PREVIEWS } from '../themes.js';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+import { forwardGeocode } from '../utils/geocode';
 
 const WEATHER_THEMES = new Set(['sunny', 'cloudy', 'rainy', 'stormy']);
 
@@ -23,48 +25,26 @@ function RadioDot({ selected }) {
   );
 }
 
-function StationForm({ userSettings, isSaving, onSave }) {
-  const [stationId, setStationId]   = useState(userSettings?.station_id ?? '');
-  const [stationLabel, setStationLabel] = useState(userSettings?.station_label ?? '');
-  const [twcApiKey, setTwcApiKey]   = useState('');
-  const [saveStatus, setSaveStatus] = useState('idle'); // idle | success | error
-  const [saveError, setSaveError]   = useState('');
+// Station connect form — used in both preview mode (Connect Your Station) and station mode (edit)
+function StationForm({ initialStationId, onSave }) {
+  const [stationId, setStationId] = useState(initialStationId ?? '');
+  const [twcApiKey, setTwcApiKey] = useState('');
+  const [saveStatus, setSaveStatus] = useState('idle');
 
-  const isNew = !userSettings;
-  const hasChanges = stationId !== (userSettings?.station_id ?? '') ||
-                     stationLabel !== (userSettings?.station_label ?? '') ||
-                     twcApiKey.trim() !== '';
+  const storedKey = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_API_KEY) || ''; } catch { return ''; } })();
+  const hasKey = storedKey.length > 0;
+  const hasChanges = stationId.trim() !== (initialStationId ?? '') || twcApiKey.trim() !== '';
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!stationId.trim()) return;
-    if (isNew && !twcApiKey.trim()) return;
-
-    setSaveStatus('idle');
-    setSaveError('');
-
-    const payload = { stationId: stationId.trim(), stationLabel: stationLabel.trim() };
-    if (twcApiKey.trim()) payload.twcApiKey = twcApiKey.trim();
-    // If updating and no new key entered, pass the old encrypted key indicator
-    if (!isNew && !twcApiKey.trim()) {
-      // No key change — send a sentinel so the server keeps the existing key.
-      // We handle this by just omitting twcApiKey when it's unchanged.
-      // But our POST handler requires twcApiKey... we'll need to either:
-      // 1. Make twcApiKey optional on update, OR
-      // 2. Always require it.
-      // For simplicity, require it on first save only and make it optional on update.
-      // The server will skip re-encrypting if twcApiKey is absent.
-    }
-
-    const result = await onSave(payload);
-    if (result.success) {
-      setSaveStatus('success');
-      setTwcApiKey('');
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    } else {
-      setSaveStatus('error');
-      setSaveError(result.error ?? 'Save failed');
-    }
+    try {
+      if (twcApiKey.trim()) localStorage.setItem(STORAGE_KEYS.TWC_API_KEY, twcApiKey.trim());
+    } catch {}
+    onSave(stationId.trim());
+    setSaveStatus('success');
+    setTwcApiKey('');
+    setTimeout(() => setSaveStatus('idle'), 3000);
   };
 
   const inputStyle = {
@@ -74,7 +54,6 @@ function StationForm({ userSettings, isSaving, onSave }) {
     fontFamily: 'var(--font-mono)', outline: 'none',
     boxSizing: 'border-box',
   };
-
   const labelStyle = {
     fontSize: 11, color: 'var(--ts)', marginBottom: 5,
     display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px',
@@ -82,96 +61,97 @@ function StationForm({ userSettings, isSaving, onSave }) {
 
   return (
     <form onSubmit={handleSubmit}>
-      {isNew && (
-        <div style={{
-          background: 'var(--soft)', border: '1px solid var(--border)',
-          borderRadius: 10, padding: '10px 12px', marginBottom: 14,
-          fontSize: 12, color: 'var(--ts)', lineHeight: 1.5,
-        }}>
-          Connect your Weather Underground station to see live data.
-        </div>
-      )}
-
       <div style={{ marginBottom: 12 }}>
         <label style={labelStyle}>Station ID</label>
-        <input
-          style={inputStyle}
-          placeholder="e.g. KFLMIAMI123"
-          value={stationId}
-          onChange={e => setStationId(e.target.value)}
-          required
-        />
+        <input style={inputStyle} placeholder="e.g. KFLMIAMI123"
+          value={stationId} onChange={e => setStationId(e.target.value)} required />
       </div>
-
-      <div style={{ marginBottom: 12 }}>
-        <label style={labelStyle}>Station Label (optional)</label>
-        <input
-          style={{ ...inputStyle, fontFamily: 'var(--font-body)' }}
-          placeholder="e.g. Backyard"
-          value={stationLabel}
-          onChange={e => setStationLabel(e.target.value)}
-        />
-      </div>
-
       <div style={{ marginBottom: 14 }}>
-        <label style={labelStyle}>TWC API Key {!isNew && '(leave blank to keep existing)'}</label>
-        <input
-          style={inputStyle}
-          type="password"
-          placeholder={isNew ? 'Your Weather Company API key' : '••••••••  (unchanged)'}
-          value={twcApiKey}
-          onChange={e => setTwcApiKey(e.target.value)}
-          required={isNew}
-          autoComplete="off"
-        />
+        <label style={labelStyle}>TWC API Key{hasKey ? ' (leave blank to keep existing)' : ''}</label>
+        <input style={inputStyle} type="password"
+          placeholder={hasKey ? '••••••••  (unchanged)' : 'Your Weather Company API key'}
+          value={twcApiKey} onChange={e => setTwcApiKey(e.target.value)} autoComplete="off" />
       </div>
-
-      {saveStatus === 'error' && (
-        <div style={{
-          fontSize: 12, color: '#dc2626', marginBottom: 10,
-          background: '#fef2f2', borderRadius: 8, padding: '8px 12px',
-        }}>
-          {saveError}
-        </div>
-      )}
-
       {saveStatus === 'success' && (
-        <div style={{
-          fontSize: 12, color: '#16a34a', marginBottom: 10,
-          background: '#f0fdf4', borderRadius: 8, padding: '8px 12px',
-        }}>
-          Station saved.
+        <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 10, background: '#f0fdf4', borderRadius: 8, padding: '8px 12px' }}>
+          Station connected.
         </div>
       )}
+      <button type="submit" disabled={!hasChanges} style={{
+        width: '100%', padding: '12px 0', borderRadius: 12,
+        background: 'var(--accent)', border: 'none', color: '#fff',
+        fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)',
+        cursor: !hasChanges ? 'not-allowed' : 'pointer',
+        opacity: !hasChanges ? 0.6 : 1, transition: 'opacity 0.2s',
+      }}>
+        Save Changes
+      </button>
+    </form>
+  );
+}
 
-      <button
-        type="submit"
-        disabled={isSaving || (!hasChanges && !isNew)}
-        style={{
-          width: '100%', padding: '12px 0', borderRadius: 12,
-          background: 'var(--accent)', border: 'none',
-          color: '#fff', fontSize: 13, fontWeight: 600,
-          cursor: isSaving ? 'not-allowed' : 'pointer',
-          fontFamily: 'var(--font-body)',
-          opacity: (isSaving || (!hasChanges && !isNew)) ? 0.6 : 1,
-          transition: 'opacity 0.2s',
-        }}
-      >
-        {isSaving ? 'Saving…' : isNew ? 'Connect Station' : 'Save Changes'}
+// Location edit form for preview mode
+function LocationForm({ currentLabel, onSave }) {
+  const [input, setInput] = useState(currentLabel ?? '');
+  const [status, setStatus] = useState('idle'); // idle | saving | error
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const hasChanges = input.trim() !== (currentLabel ?? '');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || !hasChanges) return;
+    setStatus('saving');
+    setErrorMsg('');
+    try {
+      const { lat, lon, label } = await forwardGeocode(input.trim());
+      onSave(lat, lon, label);
+      setStatus('idle');
+    } catch (err) {
+      setErrorMsg(err.message);
+      setStatus('error');
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '10px 12px',
+    background: 'var(--bg)', border: '1px solid var(--border)',
+    borderRadius: 10, fontSize: 13, color: 'var(--tp)',
+    fontFamily: 'var(--font-mono)', outline: 'none',
+    boxSizing: 'border-box', marginBottom: 10,
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input style={inputStyle} placeholder="e.g. Columbus, OH or 43215"
+        value={input} onChange={e => setInput(e.target.value)} />
+      {errorMsg && (
+        <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8 }}>{errorMsg}</div>
+      )}
+      <button type="submit" disabled={!hasChanges || status === 'saving'} style={{
+        width: '100%', padding: '10px 0', borderRadius: 12,
+        background: 'var(--accent)', border: 'none', color: '#fff',
+        fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)',
+        cursor: (!hasChanges || status === 'saving') ? 'not-allowed' : 'pointer',
+        opacity: (!hasChanges || status === 'saving') ? 0.6 : 1,
+      }}>
+        {status === 'saving' ? 'Looking up…' : 'Update Location'}
       </button>
     </form>
   );
 }
 
 export default function SettingsDrawer({
-  onClose, mode, onSetMode, autoTheme, previewCondition, onSetPreview, stationId,
-  user, userSettings, isSaving, onSaveSettings, onSignOut,
+  onClose, mode, onSetMode, autoTheme, previewCondition, onSetPreview,
+  profile, onSaveProfile, currentLat, currentLon,
 }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  const isPreview = profile?.mode === 'preview';
 
   const activePreview = previewCondition
     ? CONDITION_PREVIEWS.find(x => x.id === previewCondition) ?? null
@@ -182,6 +162,18 @@ export default function SettingsDrawer({
       ? `Auto-synced · ${autoTheme.charAt(0).toUpperCase() + autoTheme.slice(1)} conditions`
       : `Auto-synced · ${autoTheme.charAt(0).toUpperCase() + autoTheme.slice(1)} mode`
     : 'Auto-synced to current conditions';
+
+  const handleReturnToPreview = () => {
+    const lat = currentLat ?? profile?.lat ?? null;
+    const lon = currentLon ?? profile?.lon ?? null;
+    if (lat && lon) {
+      onSaveProfile({ mode: 'preview', lat, lon, label: profile?.label ?? 'Your Location' });
+    } else {
+      // No coords available — clear profile so LocationSetup re-runs
+      onSaveProfile(null);
+    }
+    onClose();
+  };
 
   return (
     <>
@@ -217,11 +209,21 @@ export default function SettingsDrawer({
           Theme adapts to your conditions by default. Override anytime.
         </div>
 
+        {/* Preview mode: Location section */}
+        {isPreview && (
+          <div style={{ marginBottom: 22 }}>
+            <div className="y-label">Preview Location</div>
+            <LocationForm
+              currentLabel={profile?.label}
+              onSave={(lat, lon, label) => onSaveProfile({ ...profile, lat, lon, label })}
+            />
+          </div>
+        )}
+
         {/* Display Mode section */}
         <div style={{ marginBottom: 22 }}>
           <div className="y-label">Display Mode</div>
 
-          {/* Auto indicator pill */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '10px 14px', background: 'var(--soft)',
@@ -309,57 +311,48 @@ export default function SettingsDrawer({
 
         {/* Station section */}
         <div style={{ marginBottom: 22 }}>
-          <div className="y-label">Station</div>
-
-          {user ? (
-            <StationForm
-              key={userSettings?.id ?? 'new'}
-              userSettings={userSettings}
-              isSaving={isSaving}
-              onSave={onSaveSettings}
-            />
-          ) : (
-            <div className="y-pref-row" style={{ cursor: 'default' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ fontSize: 18, width: 22, textAlign: 'center' }}>📡</div>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--tp)', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>
-                    {stationId ?? 'Not configured'}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--ts)', marginTop: 1 }}>
-                    Set VITE_PWS_STATION_ID in .env
-                  </div>
-                </div>
-              </div>
+          <div className="y-label">{isPreview ? 'Connect Your Station' : 'Station'}</div>
+          {isPreview && (
+            <div style={{ fontSize: 12, color: 'var(--ts)', marginBottom: 12, lineHeight: 1.5 }}>
+              Enter your Weather Underground station ID and TWC API key to unlock hyperlocal data, historical trends, and year-over-year insights.
             </div>
           )}
+          <StationForm
+            initialStationId={profile?.stationId ?? ''}
+            onSave={(sid) => onSaveProfile({ mode: 'station', stationId: sid })}
+          />
         </div>
 
-        {/* Account section — only when signed in */}
-        {user && (
-          <div style={{ marginBottom: 22 }}>
-            <div className="y-label">Account</div>
-            <div className="y-pref-row" style={{ cursor: 'default' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ fontSize: 18, width: 22, textAlign: 'center' }}>👤</div>
-                <div style={{ fontSize: 13, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                  {user.email}
-                </div>
-              </div>
-            </div>
+        {/* Station mode: return to preview option */}
+        {!isPreview && (
+          <div style={{ marginBottom: 22, textAlign: 'center' }}>
             <button
-              onClick={onSignOut}
+              onClick={handleReturnToPreview}
               style={{
-                width: '100%', marginTop: 8, padding: '12px 0', borderRadius: 12,
-                background: 'var(--soft)', border: '1px solid var(--border)',
-                color: 'var(--ts)', fontSize: 13, fontWeight: 500,
-                cursor: 'pointer', fontFamily: 'var(--font-body)',
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 12, color: 'var(--ts)',
+                fontFamily: 'var(--font-body)', padding: '4px 0',
+                textDecoration: 'underline', textUnderlineOffset: 3,
               }}
             >
-              Sign Out
+              Switch to preview mode
             </button>
           </div>
         )}
+
+        {/* Support section */}
+        <div style={{ marginBottom: 22 }}>
+          <div className="y-label">Support</div>
+          <div className="y-pref-row" style={{ opacity: 0.45, cursor: 'default' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ fontSize: 18, width: 22, textAlign: 'center' }}>☕</div>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--tp)', fontWeight: 500 }}>Support YardObs</div>
+                <div style={{ fontSize: 11, color: 'var(--ts)', marginTop: 1 }}>Coming soon</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Done button */}
         <button

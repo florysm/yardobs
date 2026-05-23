@@ -5,15 +5,14 @@ import NavTabs from './components/NavTabs';
 import NowTab from './components/NowTab';
 import ForecastTab from './components/ForecastTab';
 import SettingsDrawer from './components/SettingsDrawer';
-import AuthGate from './components/AuthGate';
 import ErrorBoundary from './components/ErrorBoundary';
+import LocationSetup from './components/LocationSetup';
 import { useWeather } from './hooks/useWeather';
-import { useAuth } from './hooks/useAuth';
-import { useUserSettings } from './hooks/useUserSettings';
 import { CHART_COLORS, META_COLORS } from './themes.js';
 import { STORAGE_KEYS } from './utils/storageKeys';
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
+const TrendsLockedPlaceholder = lazy(() => import('./components/TrendsLockedPlaceholder'));
 const RadarTab  = lazy(() => import('./components/RadarTab'));
 
 // Resolves current conditions → one of the 6 theme names.
@@ -49,22 +48,41 @@ function resolveAutoTheme(current) {
   return isDay ? 'light' : 'dark';
 }
 
-export default function App() {
-  const { user, session, signIn, verifyOtp, signOut, isLoading: authLoading } = useAuth();
-  const { settings, isSaving, saveSettings, reloadSettings, error: settingsError } = useUserSettings(session);
+function initProfile() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
+    if (raw) return JSON.parse(raw);
+    // Migration: existing station user has STATION_ID but no PROFILE yet
+    const sid = localStorage.getItem(STORAGE_KEYS.STATION_ID);
+    if (sid) {
+      const p = { mode: 'station', stationId: sid };
+      localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(p));
+      return p;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
-  const [activeTab, setActiveTab]           = useState('now');
-  const [settingsOpen, setSettingsOpen]     = useState(false);
-  const [mode, setMode]                     = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || 'auto'; } catch { return 'auto'; } });
+export default function App() {
+  const [profile, setProfile] = useState(initProfile);
+
+  const [activeTab, setActiveTab]               = useState('now');
+  const [settingsOpen, setSettingsOpen]         = useState(false);
+  const [mode, setMode]                         = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || 'auto'; } catch { return 'auto'; } });
   const [previewCondition, setPreviewCondition] = useState(null);
   const [componentError, setComponentError]     = useState(null);
 
-  // Auth mode: use station from user's saved settings.
-  // Dev mode: fall back to build-time env var (VITE_PWS_STATION_ID).
-  const devStationId = import.meta.env.VITE_PWS_STATION_ID;
-  const stationId    = user ? (settings?.station_id ?? null) : devStationId;
+  const saveProfile = (p) => {
+    setProfile(p);
+    try { localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(p)); } catch {}
+  };
 
-  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(stationId);
+  // Alias for components that still reference stationId directly
+  const stationId = profile?.stationId ?? null;
+
+  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(profile);
 
   const currentWithAQI = useMemo(() =>
     current ? { ...current, aqi: airQuality?.current?.us_aqi ?? null } : null,
@@ -78,19 +96,11 @@ export default function App() {
 
   const chartColors = CHART_COLORS[activeTheme] ?? CHART_COLORS.light;
 
-  // Apply theme class to body so CSS variables cascade everywhere
   useEffect(() => {
     document.body.className = `theme-${activeTheme}`;
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', META_COLORS[activeTheme] ?? '#f7f8fa');
   }, [activeTheme]);
-
-  // Auto-open settings when signed in but station not yet configured
-  useEffect(() => {
-    if (user && settings === null && !settingsOpen) {
-      setSettingsOpen(true);
-    }
-  }, [user, settings, settingsOpen]);
 
   const handleSetMode = (m) => {
     setMode(m);
@@ -109,34 +119,27 @@ export default function App() {
     if (!airQuality && current) fetchAirQuality();
   }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast, airQuality, fetchAirQuality]);
 
-  // Auth still initializing — show nothing to avoid flash
-  if (authLoading) {
+  // First-run: no profile yet — show location setup
+  if (!profile) {
     return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--bg)',
-      }}>
-        <div style={{ fontSize: 13, color: 'var(--ts)' }}>Loading…</div>
-      </div>
+      <LocationSetup
+        onResolved={(lat, lon, label) => saveProfile({ mode: 'preview', lat, lon, label })}
+      />
     );
   }
 
-  // Production: no session and no dev station → show login
-  if (!user && !devStationId) {
-    return <AuthGate signIn={signIn} verifyOtp={verifyOtp} />;
-  }
+  const isPreview = profile.mode === 'preview';
 
   return (
     <div style={{ maxWidth: 420, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopBar
-        stationId={stationId}
-        neighborhood={current?.neighborhood}
-        country={current?.country}
+        profile={profile}
         lastUpdated={lastUpdated}
         onSettingsOpen={() => setSettingsOpen(true)}
+        neighborhood={current?.neighborhood ?? null}
       />
       <HeroCard
-        current={current}
+        current={currentWithAQI}
         isLoading={isLoading}
         onLongPress={() => setSettingsOpen(true)}
         stationId={stationId}
@@ -163,18 +166,22 @@ export default function App() {
                 Loading…
               </div>
             }>
-              <TrendsTab
-                stationId={stationId}
-                current={current}
-                forecast={forecast}
-                fetchHistory={fetchHistory}
-                history={history}
-                fetchHistoryRecent={fetchHistoryRecent}
-                historyRecent={historyRecent}
-                fetchHistoryDaily={fetchHistoryDaily}
-                historyDaily={historyDaily}
-                chartColors={chartColors}
-              />
+              {isPreview ? (
+                <TrendsLockedPlaceholder onOpenSettings={() => setSettingsOpen(true)} />
+              ) : (
+                <TrendsTab
+                  stationId={stationId}
+                  current={current}
+                  forecast={forecast}
+                  fetchHistory={fetchHistory}
+                  history={history}
+                  fetchHistoryRecent={fetchHistoryRecent}
+                  historyRecent={historyRecent}
+                  fetchHistoryDaily={fetchHistoryDaily}
+                  historyDaily={historyDaily}
+                  chartColors={chartColors}
+                />
+              )}
             </Suspense>
           </ErrorBoundary>
         )}
@@ -206,26 +213,20 @@ export default function App() {
           autoTheme={autoTheme}
           previewCondition={previewCondition}
           onSetPreview={setPreviewCondition}
-          stationId={stationId}
-          user={user}
-          userSettings={settings}
-          isSaving={isSaving}
-          onSaveSettings={async (data) => {
-            const result = await saveSettings(data);
-            if (result.success) reloadSettings();
-            return result;
-          }}
-          onSignOut={signOut}
+          profile={profile}
+          onSaveProfile={saveProfile}
+          currentLat={current?.lat}
+          currentLon={current?.lon}
         />
       )}
 
-      {((error && !isLoading) || componentError || settingsError) && (
+      {((error && !isLoading) || componentError) && (
         <div style={{
           position: 'fixed', bottom: 16, left: 16, right: 16, maxWidth: 388, margin: '0 auto',
           background: '#dc2626', color: '#fff', fontSize: 12, padding: '8px 14px',
           borderRadius: 12, zIndex: 300,
         }}>
-          {error || componentError || settingsError}
+          {error || componentError}
         </div>
       )}
     </div>

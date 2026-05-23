@@ -1,6 +1,19 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { fmtHourShort } from '../utils/format';
 import { ACTIVITIES } from '../utils/activities';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+
+const INSIGHT_TTL = 60 * 60 * 1000; // 1 hour
+
+function isNotableWeatherChange(stored, current) {
+  const c = stored.conditions;
+  if (!c) return true;
+  const tempChanged  = Math.abs((current.temp      ?? 70) - (c.temp      ?? 70)) > 10;
+  const windChanged  = Math.abs((current.windSpeed ?? 0)  - (c.windSpeed ?? 0))  > 5;
+  const rainChanged  = (current.rainThreat >= 0.3) !== (c.rainThreat >= 0.3);
+  const scoreChanged = Math.abs(current.score - c.score) > 10;
+  return tempChanged || windChanged || rainChanged || scoreChanged;
+}
 
 // ── Scoring helpers ───────────────────────────────────────────────────────────
 
@@ -471,12 +484,35 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError }) 
   // each trigger a separate API call.
   useEffect(() => {
     if (!currentWithThreat) return;
-    const key = `${activeId}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
-    if (iCache.current[key] !== undefined) {
-      setInsight(iCache.current[key]);
+
+    // Fast in-session path: useRef avoids re-renders when switching activities
+    const iKey = `${activeId}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
+    if (iCache.current[iKey] !== undefined) {
+      setInsight(iCache.current[iKey]);
       setInsightLoading(false);
       return;
     }
+
+    // Persistent path: localStorage survives page refreshes; only bypass on notable weather change
+    const storageKey = STORAGE_KEYS.activityInsightKey(current?.stationId ?? 'preview', activeId);
+    try {
+      const stored = JSON.parse(localStorage.getItem(storageKey));
+      if (stored && Date.now() - stored.ts < INSIGHT_TTL) {
+        const currentSnapshot = {
+          temp: currentWithThreat.temp,
+          windSpeed: currentWithThreat.windSpeed,
+          rainThreat: currentWithThreat.rainThreat,
+          score: active.score,
+        };
+        if (!isNotableWeatherChange(stored, currentSnapshot)) {
+          iCache.current[iKey] = stored.insight;
+          setInsight(stored.insight);
+          setInsightLoading(false);
+          return;
+        }
+      }
+    } catch { /* ignore malformed cache entries */ }
+
     setInsightLoading(true);
     setInsight(null);
     const controller = new AbortController();
@@ -491,6 +527,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError }) 
           score: active.score,
           factors: active.factors,
           stationId: current?.stationId,
+          sourceType: current?.sourceType,
           current: {
             ...currentWithThreat,
             ...(activeId === 'dogwalk' && active.pavementTemp != null
@@ -504,13 +541,25 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError }) 
         .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
         .then(d => {
           const text = d.insight ?? '';
-          iCache.current[key] = text;
+          iCache.current[iKey] = text;
+          try {
+            localStorage.setItem(storageKey, JSON.stringify({
+              insight: text,
+              ts: Date.now(),
+              conditions: {
+                temp: currentWithThreat.temp ?? 70,
+                windSpeed: currentWithThreat.windSpeed ?? 0,
+                rainThreat: currentWithThreat.rainThreat ?? 0,
+                score: active.score,
+              },
+            }));
+          } catch { /* ignore storage quota errors */ }
           setInsight(text);
         })
         .catch(err => {
           if (err.name === 'AbortError') return;
           console.error('[insight:activity]', err);
-          iCache.current[key] = '';
+          iCache.current[iKey] = '';
           setInsight('');
           onError?.('Could not load activity insight');
         })
@@ -596,7 +645,9 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError }) 
           fontSize: 10, color: 'var(--tm)',
         }}>
           <div className="live-dot" />
-          AI insight powered by your live station data
+          {current?.sourceType === 'forecast_model'
+            ? 'AI insight · forecast data'
+            : 'AI insight powered by your live station data'}
         </div>
       </div>
 

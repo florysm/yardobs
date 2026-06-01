@@ -48,6 +48,18 @@ function mergeDay(o) {
   };
 }
 
+function fixMidnightReset(arr) {
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i].precip != null && arr[i - 1].precip != null && arr[i].precip < arr[i - 1].precip) {
+      const offset = arr[i - 1].precip;
+      return arr.map((row, j) =>
+        j >= i ? { ...row, precip: row.precip != null ? row.precip + offset : null } : row
+      );
+    }
+  }
+  return arr;
+}
+
 function stats(arr) {
   const vals = arr.filter(v => v != null);
   if (!vals.length) return { high: null, low: null, avg: null };
@@ -357,7 +369,7 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
   // Build chart data based on selected range
   let chartData;
   if (range === '24h') {
-    const hourlyObs = mergeHourly(historyRecent).slice(-24);
+    const hourlyObs = fixMidnightReset(mergeHourly(historyRecent).slice(-24));
     const lyObs = [
       ...mergeHourly(history[lyYesterdayKey] ?? []),
       ...mergeHourly(history[lyKey]          ?? []),

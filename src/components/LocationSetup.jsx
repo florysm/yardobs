@@ -1,12 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { reverseGeocode, forwardGeocode } from '../utils/geocode';
+import { useState, useEffect } from 'react';
+import { reverseGeocode } from '../utils/geocode';
+import LocationSearchInput from './LocationSearchInput';
 
 export default function LocationSetup({ onResolved }) {
-  const [stage, setStage]     = useState('locating'); // locating | denied | resolving | error
-  const [input, setInput]     = useState('');
-  const [geoError, setGeoError] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const inputRef = useRef(null);
+  const [stage, setStage] = useState('locating'); // locating | denied
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -20,29 +17,12 @@ export default function LocationSetup({ onResolved }) {
           const label = await reverseGeocode(lat, lon);
           onResolved(lat, lon, label);
         },
-        () => {
-          setStage('denied');
-          setTimeout(() => inputRef.current?.focus(), 100);
-        },
+        () => setStage('denied'),
         { timeout: 10000 }
       );
     }, 500);
     return () => clearTimeout(timer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-    setIsSearching(true);
-    setGeoError('');
-    try {
-      const { lat, lon, label } = await forwardGeocode(input.trim());
-      onResolved(lat, lon, label);
-    } catch (err) {
-      setGeoError(err.message);
-      setIsSearching(false);
-    }
-  };
 
   const containerStyle = {
     maxWidth: 420,
@@ -82,33 +62,6 @@ export default function LocationSetup({ onResolved }) {
     textAlign: 'center',
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '11px 14px',
-    background: 'var(--bg)',
-    border: '1px solid var(--border)',
-    borderRadius: 12,
-    fontSize: 14,
-    color: 'var(--tp)',
-    fontFamily: 'var(--font-body)',
-    outline: 'none',
-    boxSizing: 'border-box',
-    marginBottom: 10,
-  };
-
-  const btnStyle = {
-    width: '100%',
-    padding: '12px 0',
-    borderRadius: 12,
-    background: 'var(--accent)',
-    border: 'none',
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: isSearching ? 'not-allowed' : 'pointer',
-    fontFamily: 'var(--font-body)',
-    opacity: isSearching ? 0.6 : 1,
-  };
 
   return (
     <div style={containerStyle}>
@@ -133,7 +86,7 @@ export default function LocationSetup({ onResolved }) {
         )}
 
         {stage === 'denied' && (
-          <form onSubmit={handleSearch}>
+          <div>
             <div style={{ fontSize: 32, marginBottom: 14 }}>🔍</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tp)', marginBottom: 6 }}>
               Enter your location to get started
@@ -141,24 +94,13 @@ export default function LocationSetup({ onResolved }) {
             <div style={{ fontSize: 12, color: 'var(--ts)', marginBottom: 20, lineHeight: 1.5 }}>
               Enter a city name or ZIP code to preview your local weather.
             </div>
-            <input
-              ref={inputRef}
-              style={inputStyle}
+            <LocationSearchInput
+              autoFocus
               placeholder="e.g. Columbus, OH or 43215"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              autoComplete="off"
-              disabled={isSearching}
+              onSelect={(lat, lon, label) => onResolved(lat, lon, label)}
+              variant="default"
             />
-            {geoError && (
-              <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 10, textAlign: 'left' }}>
-                {geoError}
-              </div>
-            )}
-            <button type="submit" style={btnStyle} disabled={isSearching}>
-              {isSearching ? 'Looking up…' : 'Show My Weather'}
-            </button>
-          </form>
+          </div>
         )}
       </div>
 

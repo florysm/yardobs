@@ -23,7 +23,7 @@ function beaufort(mph) {
 }
 
 
-export default function NowTab({ current, isLoading, stationId, hourlyForecast, onError }) {
+export default function NowTab({ current, isLoading, stationId, hourlyForecast, onError, defaultActivity }) {
   if (isLoading) {
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -39,7 +39,7 @@ export default function NowTab({ current, isLoading, stationId, hourlyForecast, 
   return (
     <div>
       {/* Activity score card */}
-      <ActivityScoreCard current={current} hourlyForecast={hourlyForecast} onError={onError} />
+      <ActivityScoreCard current={current} hourlyForecast={hourlyForecast} onError={onError} defaultActivity={defaultActivity} />
 
       {/* 4-metric grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>

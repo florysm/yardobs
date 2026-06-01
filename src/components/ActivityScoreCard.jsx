@@ -450,8 +450,8 @@ function TimeArc({ arcData, bestWindow }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ActivityScoreCard({ current, hourlyForecast, onError }) {
-  const [activeId,       setActiveId]       = useState('bbq');
+export default function ActivityScoreCard({ current, hourlyForecast, onError, defaultActivity }) {
+  const [activeId,       setActiveId]       = useState(defaultActivity ?? 'bbq');
   const [expanded,       setExpanded]       = useState(false);
   const [insight,        setInsight]        = useState(null);
   const [insightLoading, setInsightLoading] = useState(false);

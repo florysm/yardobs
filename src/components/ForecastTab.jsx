@@ -227,9 +227,9 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
                 ref={el => { groupRefs.current[gi] = el; }}
                 style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: gi > 0 ? 16 : 0 }}
               >
-                {group.hours.map((hr, i) => (
+                {group.hours.map((hr) => (
                   <div
-                    key={i}
+                    key={hr.time}
                     className="fc-card"
                     style={{
                       flex: '0 0 56px',

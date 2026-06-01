@@ -124,7 +124,7 @@ body.theme-dark {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 16px;
-    transition: all var(--tr-fast);
+    transition: background var(--tr-fast), border-color var(--tr-fast);
   }
 
   /* Section/card label */

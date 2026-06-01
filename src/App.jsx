@@ -73,14 +73,23 @@ export default function App() {
   const [mode, setMode]                         = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || 'auto'; } catch { return 'auto'; } });
   const [previewCondition, setPreviewCondition] = useState(null);
   const [componentError, setComponentError]     = useState(null);
+  const [defaultActivity, setDefaultActivity]   = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.DEFAULT_ACTIVITY) || 'bbq'; } catch { return 'bbq'; } });
 
   const saveProfile = (p) => {
     setProfile(p);
     try { localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(p)); } catch {}
   };
 
+  const handleSetExplore = (lat, lon, label) => saveProfile({ ...profile, exploring: { lat, lon, label } });
+  const handleClearExplore = () => {
+    const { exploring: _, ...rest } = profile;
+    saveProfile(rest);
+  };
+  const handleUpdatePreviewLocation = (lat, lon, label) => saveProfile({ ...profile, lat, lon, label });
+
   // Alias for components that still reference stationId directly
   const stationId = profile?.stationId ?? null;
+  const isExploring = profile?.mode === 'station' && !!profile?.exploring;
 
   const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(profile);
 
@@ -106,6 +115,11 @@ export default function App() {
     setMode(m);
     setPreviewCondition(null);
     try { if (m === 'auto') localStorage.removeItem(STORAGE_KEYS.MODE); else localStorage.setItem(STORAGE_KEYS.MODE, m); } catch {}
+  };
+
+  const saveDefaultActivity = (id) => {
+    setDefaultActivity(id);
+    try { localStorage.setItem(STORAGE_KEYS.DEFAULT_ACTIVITY, id); } catch {}
   };
 
   const handleCloseSettings = () => {
@@ -137,6 +151,9 @@ export default function App() {
         lastUpdated={lastUpdated}
         onSettingsOpen={() => setSettingsOpen(true)}
         neighborhood={current?.neighborhood ?? null}
+        onSetExplore={handleSetExplore}
+        onClearExplore={handleClearExplore}
+        onUpdatePreviewLocation={handleUpdatePreviewLocation}
       />
       <HeroCard
         current={currentWithAQI}
@@ -157,6 +174,7 @@ export default function App() {
             stationId={stationId}
             hourlyForecast={hourlyForecast}
             onError={setComponentError}
+            defaultActivity={defaultActivity}
           />
         )}
         {activeTab === 'trends' && (
@@ -166,7 +184,7 @@ export default function App() {
                 Loading…
               </div>
             }>
-              {isPreview ? (
+              {(isPreview || isExploring) ? (
                 <TrendsLockedPlaceholder onOpenSettings={() => setSettingsOpen(true)} />
               ) : (
                 <TrendsTab
@@ -217,6 +235,10 @@ export default function App() {
           onSaveProfile={saveProfile}
           currentLat={current?.lat}
           currentLon={current?.lon}
+          defaultActivity={defaultActivity}
+          onSetDefaultActivity={saveDefaultActivity}
+          isExploring={isExploring}
+          onClearExplore={handleClearExplore}
         />
       )}
 

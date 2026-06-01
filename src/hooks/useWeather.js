@@ -75,8 +75,15 @@ export function useWeather(profile) {
   const locationRef = useRef(null);
   const abortRef = useRef(null);
 
-  const isPreview = profile?.mode === 'preview';
-  const stationId = profile?.stationId ?? null;
+  const isPreview   = profile?.mode === 'preview';
+  const isExploring = profile?.mode === 'station' && !!profile?.exploring;
+  const isPreviewMode = isPreview || isExploring;
+  const stationId   = profile?.stationId ?? null;
+
+  // Effective coordinates for the preview/explore data path
+  const previewLat   = isExploring ? profile.exploring.lat   : profile?.lat;
+  const previewLon   = isExploring ? profile.exploring.lon   : profile?.lon;
+  const previewLabel = isExploring ? profile.exploring.label : profile?.label;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -125,12 +132,11 @@ export function useWeather(profile) {
     }
   }, [stationId]);
 
-  // ── Preview mode: fetch current conditions from Open-Meteo ────────────────
+  // ── Preview/explore mode: fetch current conditions from Open-Meteo ──────────
   const fetchCurrentPreview = useCallback(async () => {
-    if (!profile?.lat || !profile?.lon) { setIsLoading(false); return; }
-    const { lat, lon } = profile;
+    if (!previewLat || !previewLon) { setIsLoading(false); return; }
     try {
-      const url = `${OM_BASE}?latitude=${lat}&longitude=${lon}` +
+      const url = `${OM_BASE}?latitude=${previewLat}&longitude=${previewLon}` +
         `&current=temperature_2m,apparent_temperature,relative_humidity_2m,` +
         `dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,` +
         `surface_pressure,weather_code,is_day,uv_index` +
@@ -139,7 +145,7 @@ export function useWeather(profile) {
       const c = data.current;
       if (!c) throw new Error('No current data from Open-Meteo');
 
-      locationRef.current = { lat, lon };
+      locationRef.current = { lat: previewLat, lon: previewLon };
       setLastUpdated(new Date());
       setCurrent({
         temp:        c.temperature_2m           ?? null,
@@ -158,11 +164,11 @@ export function useWeather(profile) {
         iconCode:    wmoToTwc(c.weather_code),
         isDay:       c.is_day                   ?? 1,
         stationId:   null,
-        neighborhood: profile.label             ?? null,
+        neighborhood: previewLabel              ?? null,
         country:     null,
         obsTimeLocal: c.time,
-        lat,
-        lon,
+        lat: previewLat,
+        lon: previewLon,
         sourceType:  'forecast_model',
         sourceLabel: 'Weather Forecast',
       });
@@ -171,13 +177,13 @@ export function useWeather(profile) {
     } finally {
       setIsLoading(false);
     }
-  }, [profile]);
+  }, [profile]); // profile is the root source for previewLat/previewLon/previewLabel
 
-  const fetchCurrent = isPreview ? fetchCurrentPreview : fetchCurrentStation;
+  const fetchCurrent = isPreviewMode ? fetchCurrentPreview : fetchCurrentStation;
 
-  // ── History functions — no-op in preview mode ────────────────────────────
+  // ── History functions — no-op in preview/explore mode ────────────────────
   const fetchHistory = useCallback(async (dateStr) => {
-    if (isPreview) return null;
+    if (isPreviewMode) return null;
     if (!stationId) return null;
     const key = dateStr || toDateStr(new Date());
     const isToday = key === toDateStr(new Date());
@@ -194,10 +200,10 @@ export function useWeather(profile) {
       if (err.name !== 'AbortError') setError(err.message);
       return null;
     }
-  }, [isPreview, stationId, history]);
+  }, [isPreviewMode, stationId, history]);
 
   const fetchHistoryRecent = useCallback(async () => {
-    if (isPreview) return null;
+    if (isPreviewMode) return null;
     if (!stationId) return null;
     try {
       const data = await apiFetch(
@@ -211,10 +217,10 @@ export function useWeather(profile) {
       if (err.name !== 'AbortError') setError(err.message);
       return null;
     }
-  }, [isPreview, stationId]);
+  }, [isPreviewMode, stationId]);
 
   const fetchHistoryDaily = useCallback(async (dateStr) => {
-    if (isPreview) return null;
+    if (isPreviewMode) return null;
     if (!stationId) return null;
     if (historyDailyRef.current[dateStr]) return historyDailyRef.current[dateStr];
     try {
@@ -230,14 +236,14 @@ export function useWeather(profile) {
       if (err.name !== 'AbortError') setError(err.message);
       return null;
     }
-  }, [isPreview, stationId]);
+  }, [isPreviewMode, stationId]);
 
-  // ── Forecast — station mode uses TWC; preview uses Open-Meteo daily ───────
+  // ── Forecast — station mode uses TWC; preview/explore uses Open-Meteo daily ─
   const fetchForecast = useCallback(async () => {
     const loc = locationRef.current;
     if (!loc) return;
 
-    if (isPreview) {
+    if (isPreviewMode) {
       try {
         const { lat, lon } = loc;
         const url = `${OM_BASE}?latitude=${lat}&longitude=${lon}` +
@@ -268,14 +274,14 @@ export function useWeather(profile) {
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     }
-  }, [isPreview]);
+  }, [isPreviewMode]);
 
-  // ── Hourly forecast — station uses proxy; preview calls Open-Meteo directly
+  // ── Hourly forecast — station uses proxy; preview/explore calls Open-Meteo ─
   const fetchHourlyForecast = useCallback(async () => {
     const loc = locationRef.current;
     if (!loc) return;
 
-    if (isPreview) {
+    if (isPreviewMode) {
       try {
         const { lat, lon } = loc;
         const url = `${OM_BASE}?latitude=${lat}&longitude=${lon}` +
@@ -295,14 +301,14 @@ export function useWeather(profile) {
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     }
-  }, [isPreview]);
+  }, [isPreviewMode]);
 
-  // ── Air quality — station uses proxy; preview calls Open-Meteo directly ───
+  // ── Air quality — station uses proxy; preview/explore calls Open-Meteo ────
   const fetchAirQuality = useCallback(async () => {
     const loc = locationRef.current;
     if (!loc) return;
 
-    if (isPreview) {
+    if (isPreviewMode) {
       try {
         const { lat, lon } = loc;
         const url = `${OM_AQ}?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&timezone=auto`;
@@ -320,7 +326,19 @@ export function useWeather(profile) {
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     }
-  }, [isPreview]);
+  }, [isPreviewMode]);
+
+  // Clear forecast/hourly/AQ caches when the data source location changes
+  const dataSourceKey = isPreviewMode
+    ? `preview:${previewLat ?? ''},${previewLon ?? ''}`
+    : `station:${stationId ?? ''}`;
+  const isFirstDataRender = useRef(true);
+  useEffect(() => {
+    if (isFirstDataRender.current) { isFirstDataRender.current = false; return; }
+    setForecast(null);
+    setHourlyForecast(null);
+    setAirQuality(null);
+  }, [dataSourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchCurrent();

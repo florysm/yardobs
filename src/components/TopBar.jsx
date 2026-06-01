@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import LocationSearchInput from './LocationSearchInput';
 
 function timeAgo(date) {
   if (!date) return null;
@@ -18,8 +19,35 @@ function GearIcon() {
   );
 }
 
-export default function TopBar({ profile, lastUpdated, onSettingsOpen, neighborhood }) {
+function SearchIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+const pillBase = {
+  fontSize: 9,
+  fontFamily: 'var(--font-mono)',
+  letterSpacing: '0.3px',
+  background: 'var(--soft)',
+  border: '1px solid var(--border)',
+  borderRadius: 50,
+  padding: '2px 7px',
+  cursor: 'pointer',
+  lineHeight: 1.6,
+  fontWeight: 600,
+};
+
+export default function TopBar({
+  profile, lastUpdated, onSettingsOpen, neighborhood,
+  onSetExplore, onClearExplore, onUpdatePreviewLocation,
+}) {
   const [ago, setAgo] = useState(() => timeAgo(lastUpdated));
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     setAgo(timeAgo(lastUpdated));
@@ -27,13 +55,47 @@ export default function TopBar({ profile, lastUpdated, onSettingsOpen, neighborh
     return () => clearInterval(tick);
   }, [lastUpdated]);
 
-  const isPreview = profile?.mode === 'preview';
-  const stationId = profile?.stationId ?? null;
+  // Close search when the profile location changes (search resolved)
+  useEffect(() => {
+    setSearchOpen(false);
+  }, [profile?.exploring, profile?.lat, profile?.lon]);
+
+  const isPreview   = profile?.mode === 'preview';
+  const isExploring = profile?.mode === 'station' && !!profile?.exploring;
+  const stationId   = profile?.stationId ?? null;
+
+  const handleLocationSelect = (lat, lon, label) => {
+    if (isPreview) onUpdatePreviewLocation(lat, lon, label);
+    else onSetExplore(lat, lon, label);
+    // setSearchOpen(false) fires via the profile useEffect above
+  };
+
+  const handleCancelSearch = () => setSearchOpen(false);
+
+  const searchForm = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <LocationSearchInput
+          autoFocus
+          placeholder="City, state or ZIP…"
+          variant="topbar"
+          onSelect={handleLocationSelect}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={handleCancelSearch}
+        style={{ ...pillBase, color: 'var(--ts)' }}
+      >
+        ×
+      </button>
+    </div>
+  );
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 20px 12px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '20px 20px 12px' }}>
       {/* App name + location/station subtitle */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
         <div style={{
           fontFamily: 'var(--font-display)',
           fontSize: 22,
@@ -45,49 +107,71 @@ export default function TopBar({ profile, lastUpdated, onSettingsOpen, neighborh
           Yard<span style={{ color: 'var(--accent)', fontStyle: 'italic' }}>Obs</span>
         </div>
 
-        {isPreview ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {searchOpen ? searchForm : isPreview ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{
-              fontSize: 11,
-              color: 'var(--tm)',
-              letterSpacing: '0.3px',
-              fontFamily: 'var(--font-mono)',
+              fontSize: 11, color: 'var(--tm)',
+              letterSpacing: '0.3px', fontFamily: 'var(--font-mono)',
             }}>
               Preview: {profile.label ?? 'Your Location'}
             </span>
             <button
+              onClick={() => setSearchOpen(true)}
+              aria-label="Change preview location"
+              style={{ ...pillBase, color: 'var(--ts)', padding: '2px 5px', display: 'flex', alignItems: 'center' }}
+            >
+              <SearchIcon />
+            </button>
+            <button
               onClick={onSettingsOpen}
-              style={{
-                fontSize: 9,
-                color: 'var(--accent)',
-                fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.3px',
-                background: 'var(--soft)',
-                border: '1px solid var(--border)',
-                borderRadius: 50,
-                padding: '2px 7px',
-                cursor: 'pointer',
-                lineHeight: 1.6,
-                fontWeight: 600,
-              }}
+              style={{ ...pillBase, color: 'var(--accent)' }}
             >
               Connect →
             </button>
           </div>
+        ) : isExploring ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: 11, color: 'var(--tm)',
+              letterSpacing: '0.3px', fontFamily: 'var(--font-mono)',
+            }}>
+              Exploring: {profile.exploring.label}
+            </span>
+            <button
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search another location"
+              style={{ ...pillBase, color: 'var(--ts)', padding: '2px 5px', display: 'flex', alignItems: 'center' }}
+            >
+              <SearchIcon />
+            </button>
+            <button
+              onClick={onClearExplore}
+              style={{ ...pillBase, color: 'var(--accent)' }}
+            >
+              ← Station
+            </button>
+          </div>
         ) : (
-          <div style={{
-            fontSize: 11,
-            color: 'var(--tm)',
-            letterSpacing: '0.5px',
-            fontFamily: 'var(--font-mono)',
-          }}>
-            {neighborhood ?? stationId ?? 'No station set'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              fontSize: 11, color: 'var(--tm)',
+              letterSpacing: '0.5px', fontFamily: 'var(--font-mono)',
+            }}>
+              {neighborhood ?? stationId ?? 'No station set'}
+            </span>
+            <button
+              onClick={() => setSearchOpen(true)}
+              aria-label="Explore another location"
+              style={{ ...pillBase, color: 'var(--ts)', padding: '2px 5px', display: 'flex', alignItems: 'center' }}
+            >
+              <SearchIcon />
+            </button>
           </div>
         )}
       </div>
 
       {/* Right: live pill + settings */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         {ago && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 5,

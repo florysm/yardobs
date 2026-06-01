@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { CONDITION_PREVIEWS } from '../themes.js';
 import { STORAGE_KEYS } from '../utils/storageKeys';
-import { forwardGeocode } from '../utils/geocode';
+import LocationSearchInput from './LocationSearchInput';
+import { ACTIVITIES } from '../utils/activities';
+import ChangelogModal from './ChangelogModal';
 
 const WEATHER_THEMES = new Set(['sunny', 'cloudy', 'rainy', 'stormy']);
 
@@ -92,58 +94,21 @@ function StationForm({ initialStationId, onSave }) {
 
 // Location edit form for preview mode
 function LocationForm({ currentLabel, onSave }) {
-  const [input, setInput] = useState(currentLabel ?? '');
-  const [status, setStatus] = useState('idle'); // idle | saving | error
-  const [errorMsg, setErrorMsg] = useState('');
-
-  const hasChanges = input.trim() !== (currentLabel ?? '');
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || !hasChanges) return;
-    setStatus('saving');
-    setErrorMsg('');
-    try {
-      const { lat, lon, label } = await forwardGeocode(input.trim());
-      onSave(lat, lon, label);
-      setStatus('idle');
-    } catch (err) {
-      setErrorMsg(err.message);
-      setStatus('error');
-    }
-  };
-
-  const inputStyle = {
-    width: '100%', padding: '10px 12px',
-    background: 'var(--bg)', border: '1px solid var(--border)',
-    borderRadius: 10, fontSize: 13, color: 'var(--tp)',
-    fontFamily: 'var(--font-mono)', outline: 'none',
-    boxSizing: 'border-box', marginBottom: 10,
-  };
-
   return (
-    <form onSubmit={handleSubmit}>
-      <input style={inputStyle} placeholder="e.g. Columbus, OH or 43215"
-        value={input} onChange={e => setInput(e.target.value)} />
-      {errorMsg && (
-        <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8 }}>{errorMsg}</div>
-      )}
-      <button type="submit" disabled={!hasChanges || status === 'saving'} style={{
-        width: '100%', padding: '10px 0', borderRadius: 12,
-        background: 'var(--accent)', border: 'none', color: '#fff',
-        fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)',
-        cursor: (!hasChanges || status === 'saving') ? 'not-allowed' : 'pointer',
-        opacity: (!hasChanges || status === 'saving') ? 0.6 : 1,
-      }}>
-        {status === 'saving' ? 'Looking up…' : 'Update Location'}
-      </button>
-    </form>
+    <LocationSearchInput
+      initialValue={currentLabel ?? ''}
+      placeholder="e.g. Columbus, OH or 43215"
+      onSelect={(lat, lon, label) => onSave(lat, lon, label)}
+      variant="default"
+    />
   );
 }
 
 export default function SettingsDrawer({
   onClose, mode, onSetMode, autoTheme, previewCondition, onSetPreview,
   profile, onSaveProfile, currentLat, currentLon,
+  defaultActivity, onSetDefaultActivity,
+  isExploring, onClearExplore,
 }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -162,6 +127,8 @@ export default function SettingsDrawer({
       ? `Auto-synced · ${autoTheme.charAt(0).toUpperCase() + autoTheme.slice(1)} conditions`
       : `Auto-synced · ${autoTheme.charAt(0).toUpperCase() + autoTheme.slice(1)} mode`
     : 'Auto-synced to current conditions';
+
+  const [showChangelog, setShowChangelog] = useState(false);
 
   const handleReturnToPreview = () => {
     const lat = currentLat ?? profile?.lat ?? null;
@@ -208,6 +175,36 @@ export default function SettingsDrawer({
         <div style={{ fontSize: 12, color: 'var(--ts)', marginBottom: 20, lineHeight: 1.5 }}>
           Theme adapts to your conditions by default. Override anytime.
         </div>
+
+        {/* Exploring banner — station user browsing another location */}
+        {isExploring && (
+          <div style={{
+            marginBottom: 22,
+            background: 'var(--soft)', border: '1px solid var(--border)',
+            borderRadius: 14, padding: '12px 14px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+          }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>
+                Exploring
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--tp)', fontFamily: 'var(--font-mono)', fontWeight: 500 }}>
+                {profile?.exploring?.label ?? 'Unknown location'}
+              </div>
+            </div>
+            <button
+              onClick={() => { onClearExplore(); onClose(); }}
+              style={{
+                fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)',
+                color: 'var(--accent)', background: 'none',
+                border: '1px solid var(--accent)', borderRadius: 20,
+                padding: '5px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              ← My Station
+            </button>
+          </div>
+        )}
 
         {/* Preview mode: Location section */}
         {isPreview && (
@@ -309,6 +306,38 @@ export default function SettingsDrawer({
           </div>
         )}
 
+        {/* Default Activity section */}
+        <div style={{ marginBottom: 22 }}>
+          <div className="y-label">Default Activity</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {ACTIVITIES.map(a => {
+              const isActive = defaultActivity === a.id;
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => onSetDefaultActivity(a.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '8px 14px',
+                    background: isActive ? 'var(--accent)' : 'var(--soft)',
+                    border: `1.5px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 20,
+                    cursor: 'pointer',
+                    fontSize: 13, fontWeight: isActive ? 600 : 400,
+                    color: isActive ? '#fff' : 'var(--tp)',
+                    fontFamily: 'var(--font-body)',
+                    boxShadow: isActive ? '0 0 0 3px var(--glow)' : 'none',
+                    transition: 'all var(--tr-fast)',
+                  }}
+                >
+                  <span style={{ fontSize: 15 }}>{a.icon}</span>
+                  {a.short}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Station section */}
         <div style={{ marginBottom: 22 }}>
           <div className="y-label">{isPreview ? 'Connect Your Station' : 'Station'}</div>
@@ -354,6 +383,21 @@ export default function SettingsDrawer({
           </div>
         </div>
 
+        {/* Version */}
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          <button
+            onClick={() => setShowChangelog(true)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: 12, color: 'var(--ts)',
+              fontFamily: 'var(--font-body)', padding: '4px 8px',
+              opacity: 0.7,
+            }}
+          >
+            v{__APP_VERSION__} · What's new
+          </button>
+        </div>
+
         {/* Done button */}
         <button
           onClick={onClose}
@@ -368,6 +412,8 @@ export default function SettingsDrawer({
           Done
         </button>
       </div>
+
+      {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
     </>
   );
 }

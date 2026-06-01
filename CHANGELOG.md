@@ -2,6 +2,17 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-06-01
+
+### Added
+- "Support YardObs" in Settings is now a live link to Ko-fi — tap the coffee cup to buy me a coffee ♥
+
+### Fixed
+- Forecast section now correctly shows "7-Day Forecast" instead of "5-Day Forecast"
+
+### Changed
+- Settings simplified — removed the option to change your preview location or switch back to preview mode from within the drawer
+
 ## [0.2.0] - 2026-06-01
 
 ### Added

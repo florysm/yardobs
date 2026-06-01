@@ -308,7 +308,10 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
     if (yoyFetched.current || !stationId) return;
     yoyFetched.current = true;
     const todayKey = toDateStr(new Date());
-    const lyDate = new Date(); lyDate.setFullYear(lyDate.getFullYear() - 1);
+    const now = new Date();
+    const lyDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    // Feb 29 in a non-leap year rolls to Mar 1 — clamp back to Feb 28 instead
+    if (lyDate.getMonth() !== now.getMonth()) lyDate.setDate(0);
     const lyKey = toDateStr(lyDate);
     Promise.all([fetchHistory(todayKey), fetchHistory(lyKey)])
       .then(([t, l]) => setYoy({ today: summarize(t), lastYear: summarize(l), lyRaw: l ?? [] }));

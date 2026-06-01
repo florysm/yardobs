@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { fmt, degreesToCompass } from '../utils/format';
-import { STORAGE_KEYS } from '../utils/storageKeys';
+import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
 import { ICONS, LABELS } from '../utils/weatherIcons';
 
 // ── Tabler-style SVG icon primitives for signal tags ─────────────────────────
@@ -281,7 +281,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
       const raw = localStorage.getItem(lsKey);
       if (raw) {
         const { data, ts } = JSON.parse(raw);
-        if (Date.now() - ts < 60 * 60 * 1000) {
+        if (Date.now() - ts < INSIGHT_TTL_MS) {
           setInsight(data);
           return;
         }
@@ -373,6 +373,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
         <button
           key={v}
           onClick={() => switchView(v)}
+          aria-pressed={view === v}
           style={{
             padding: '4px 10px',
             borderRadius: 50,

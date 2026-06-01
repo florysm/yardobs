@@ -342,8 +342,14 @@ export function useWeather(profile) {
 
   useEffect(() => {
     fetchCurrent();
-    const interval = setInterval(fetchCurrent, POLL_MS);
-    return () => clearInterval(interval);
+    let timer;
+    const schedule = () => {
+      // ±30s jitter prevents all open tabs from hitting the server simultaneously
+      const jitter = (Math.random() - 0.5) * 60_000;
+      timer = setTimeout(() => { fetchCurrent(); schedule(); }, POLL_MS + jitter);
+    };
+    schedule();
+    return () => clearTimeout(timer);
   }, [fetchCurrent]);
 
   return {

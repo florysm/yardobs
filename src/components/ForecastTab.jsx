@@ -88,6 +88,7 @@ function fmtDaylight(riseStr, setStr) {
 
 
 function resolveMoonWindow(lat, lon) {
+  if (lat == null || lon == null) return { rise: null, set: null, moonUp: false, alwaysUp: false, alwaysDown: false };
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);

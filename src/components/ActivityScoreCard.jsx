@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { fmtHourShort } from '../utils/format';
 import { ACTIVITIES } from '../utils/activities';
-import { STORAGE_KEYS } from '../utils/storageKeys';
-
-const INSIGHT_TTL = 60 * 60 * 1000; // 1 hour
+import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
 
 function isNotableWeatherChange(stored, current) {
   const c = stored.conditions;
@@ -497,7 +495,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
     const storageKey = STORAGE_KEYS.activityInsightKey(current?.stationId ?? 'preview', activeId);
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey));
-      if (stored && Date.now() - stored.ts < INSIGHT_TTL) {
+      if (stored && Date.now() - stored.ts < INSIGHT_TTL_MS) {
         const currentSnapshot = {
           temp: currentWithThreat.temp,
           windSpeed: currentWithThreat.windSpeed,
@@ -704,9 +702,11 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
             const s = allScores[a.id]?.score ?? 0;
             const isActive = a.id === activeId;
             return (
-              <div
+              <button
                 key={a.id}
                 onClick={e => { e.stopPropagation(); setActiveId(a.id); }}
+                aria-pressed={isActive}
+                aria-label={`${a.label} — score ${s}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '5px 10px', borderRadius: 8, cursor: 'pointer',
@@ -714,12 +714,13 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
                   border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
                   background: isActive ? 'var(--soft)' : 'var(--glass)',
                   color: isActive ? 'var(--accent)' : 'var(--ts)',
+                  fontFamily: 'var(--font-body)',
                 }}
               >
                 <span style={{ fontSize: 13 }}>{a.icon}</span>
                 {a.short}
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, opacity: 0.8 }}>{s}</span>
-              </div>
+              </button>
             );
           })}
         </div>

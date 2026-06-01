@@ -1,5 +1,10 @@
 # YardObs Multi-User Production Planning
 
+> **Archived June 2026.** This architecture was not implemented. The production model is
+> no-auth, self-configure: users enter their own station ID and TWC API key directly in the
+> Settings drawer; credentials live in localStorage on each device; the Vercel proxy keeps
+> API keys server-side per request. No database or sign-in is required.
+
 First draft: May 8, 2026
 
 This document captures the initial analysis for taking YardObs from a personal, single-station deployment to a real multi-user production application. It is intentionally a working draft. The goal is to give us something concrete to review, revise, and use for implementation planning over the next few days.

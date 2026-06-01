@@ -69,7 +69,7 @@ export default function LocationSetup({ onResolved }) {
         Yard<span style={{ color: 'var(--accent)', fontStyle: 'italic' }}>Obs</span>
       </div>
       <div style={taglineStyle}>
-        Hyperlocal weather for your backyard
+        Your personal weather station dashboard
       </div>
 
       <div style={cardStyle}>
@@ -80,7 +80,7 @@ export default function LocationSetup({ onResolved }) {
               Finding your location…
             </div>
             <div style={{ fontSize: 12, color: 'var(--ts)', lineHeight: 1.5 }}>
-              Allow location access to load a preview of your local weather.
+              Allow location access to load a forecast for your area. You can connect your own Weather Underground station in Settings.
             </div>
           </>
         )}
@@ -89,10 +89,10 @@ export default function LocationSetup({ onResolved }) {
           <div>
             <div style={{ fontSize: 32, marginBottom: 14 }}>🔍</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tp)', marginBottom: 6 }}>
-              Enter your location to get started
+              Where are you?
             </div>
             <div style={{ fontSize: 12, color: 'var(--ts)', marginBottom: 20, lineHeight: 1.5 }}>
-              Enter a city name or ZIP code to preview your local weather.
+              Enter a city or ZIP to start with a forecast preview. Connect your own weather station in Settings for real-time backyard readings.
             </div>
             <LocationSearchInput
               autoFocus
@@ -105,8 +105,9 @@ export default function LocationSetup({ onResolved }) {
       </div>
 
       <div style={{ fontSize: 11, color: 'var(--ts)', marginTop: 28, textAlign: 'center', lineHeight: 1.6, opacity: 0.7 }}>
-        Preview uses Open-Meteo forecast data.{' '}
-        Connect a personal weather station for hyperlocal accuracy.
+        Preview uses Open-Meteo forecast data.
+        Connect a Weather Underground PWS in Settings for live hyperlocal data,
+        historical trends, and AI-powered insights.
       </div>
     </div>
   );

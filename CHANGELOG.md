@@ -2,6 +2,20 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-06-01
+
+### Fixed
+- Fixed a crash on the Forecast tab that could occur before your location was fully determined
+- Fixed the year-over-year comparison in Trends so leap-year dates (Feb 29) correctly map to Feb 28 in non-leap years instead of rolling to March 1
+
+### Changed
+- Connecting your weather station now tests the connection before saving — if your station ID or API key is wrong, you'll see a specific error message right away instead of silently failing
+- Settings now includes a direct link to Weather Underground where you can get your free API key
+- Refreshed the onboarding screen copy to more clearly explain what the app does and how to connect your own weather station
+- Weather data now refreshes at slightly randomized intervals when multiple browser tabs are open, reducing simultaneous server hits
+- Improved keyboard and screen-reader accessibility across the navigation tabs and activity selector
+- The weather API now returns clearer, human-readable error messages when a station ID or API key is invalid, and enforces per-user rate limits to protect the service
+
 ## [0.3.0] - 2026-06-01
 
 ### Added

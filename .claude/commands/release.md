@@ -70,14 +70,28 @@ npm run release:minor    # for a minor bump
 npm run release:major    # for a major bump
 ```
 
-This bumps `package.json`, creates a git commit and tag, and pushes to GitHub. Vercel picks up the push and deploys automatically — no additional deploy step is needed.
+This bumps `package.json`, creates a git commit and tag, and pushes the current branch to GitHub.
 
-### 7. Report
+### 7. Create a pull request
+
+```bash
+gh pr create --title "Release vX.Y.Z" --body "$(cat <<'EOF'
+## Changes
+
+- <paste changelog bullets here>
+
+EOF
+)"
+```
+
+Use the changelog bullets from step 2 as the PR body. The title should be `Release vX.Y.Z` with the new version number.
+
+### 8. Report
 
 Confirm:
 - New version number and tag created
-- What's in the release (the changelog bullets)
-- That Vercel deployment has been triggered (it will be live in ~1–2 minutes)
+- The PR URL — the user will merge it when ready
+- Vercel deployment will trigger automatically after the PR is merged
 
 ---
 

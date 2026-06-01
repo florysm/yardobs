@@ -257,7 +257,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
       )}
 
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--tp)', marginBottom: 12, marginTop: 4 }}>
-        5-Day Forecast
+        7-Day Forecast
       </div>
 
       {/* Horizontal scroll cards */}

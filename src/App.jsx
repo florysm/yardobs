@@ -233,8 +233,6 @@ export default function App() {
           onSetPreview={setPreviewCondition}
           profile={profile}
           onSaveProfile={saveProfile}
-          currentLat={current?.lat}
-          currentLon={current?.lon}
           defaultActivity={defaultActivity}
           onSetDefaultActivity={saveDefaultActivity}
           isExploring={isExploring}

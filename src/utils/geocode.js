@@ -4,7 +4,7 @@ const NOM_REV = 'https://nominatim.openstreetmap.org/reverse';
 export async function reverseGeocode(lat, lon) {
   try {
     const res  = await fetch(`${NOM_REV}?lat=${lat}&lon=${lon}&format=json`, {
-      headers: { 'User-Agent': 'YardObs/1.0 (steve.flory@gmail.com)' },
+      headers: { 'User-Agent': 'YardObs/1.0 (https://github.com/sflory/yardobs)' },
     });
     const data = await res.json();
     const city  = data.address?.city || data.address?.town || data.address?.village || data.address?.county || '';

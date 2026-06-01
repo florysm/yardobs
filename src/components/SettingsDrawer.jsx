@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CONDITION_PREVIEWS } from '../themes.js';
 import { STORAGE_KEYS } from '../utils/storageKeys';
-import LocationSearchInput from './LocationSearchInput';
 import { ACTIVITIES } from '../utils/activities';
 import ChangelogModal from './ChangelogModal';
 
@@ -27,7 +26,6 @@ function RadioDot({ selected }) {
   );
 }
 
-// Station connect form — used in both preview mode (Connect Your Station) and station mode (edit)
 function StationForm({ initialStationId, onSave }) {
   const [stationId, setStationId] = useState(initialStationId ?? '');
   const [twcApiKey, setTwcApiKey] = useState('');
@@ -92,21 +90,10 @@ function StationForm({ initialStationId, onSave }) {
   );
 }
 
-// Location edit form for preview mode
-function LocationForm({ currentLabel, onSave }) {
-  return (
-    <LocationSearchInput
-      initialValue={currentLabel ?? ''}
-      placeholder="e.g. Columbus, OH or 43215"
-      onSelect={(lat, lon, label) => onSave(lat, lon, label)}
-      variant="default"
-    />
-  );
-}
 
 export default function SettingsDrawer({
   onClose, mode, onSetMode, autoTheme, previewCondition, onSetPreview,
-  profile, onSaveProfile, currentLat, currentLon,
+  profile, onSaveProfile,
   defaultActivity, onSetDefaultActivity,
   isExploring, onClearExplore,
 }) {
@@ -115,8 +102,6 @@ export default function SettingsDrawer({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-
-  const isPreview = profile?.mode === 'preview';
 
   const activePreview = previewCondition
     ? CONDITION_PREVIEWS.find(x => x.id === previewCondition) ?? null
@@ -129,18 +114,6 @@ export default function SettingsDrawer({
     : 'Auto-synced to current conditions';
 
   const [showChangelog, setShowChangelog] = useState(false);
-
-  const handleReturnToPreview = () => {
-    const lat = currentLat ?? profile?.lat ?? null;
-    const lon = currentLon ?? profile?.lon ?? null;
-    if (lat && lon) {
-      onSaveProfile({ mode: 'preview', lat, lon, label: profile?.label ?? 'Your Location' });
-    } else {
-      // No coords available — clear profile so LocationSetup re-runs
-      onSaveProfile(null);
-    }
-    onClose();
-  };
 
   return (
     <>
@@ -203,17 +176,6 @@ export default function SettingsDrawer({
             >
               ← My Station
             </button>
-          </div>
-        )}
-
-        {/* Preview mode: Location section */}
-        {isPreview && (
-          <div style={{ marginBottom: 22 }}>
-            <div className="y-label">Preview Location</div>
-            <LocationForm
-              currentLabel={profile?.label}
-              onSave={(lat, lon, label) => onSaveProfile({ ...profile, lat, lon, label })}
-            />
           </div>
         )}
 
@@ -340,47 +302,32 @@ export default function SettingsDrawer({
 
         {/* Station section */}
         <div style={{ marginBottom: 22 }}>
-          <div className="y-label">{isPreview ? 'Connect Your Station' : 'Station'}</div>
-          {isPreview && (
-            <div style={{ fontSize: 12, color: 'var(--ts)', marginBottom: 12, lineHeight: 1.5 }}>
-              Enter your Weather Underground station ID and TWC API key to unlock hyperlocal data, historical trends, and year-over-year insights.
-            </div>
-          )}
+          <div className="y-label">Station</div>
           <StationForm
             initialStationId={profile?.stationId ?? ''}
             onSave={(sid) => onSaveProfile({ mode: 'station', stationId: sid })}
           />
         </div>
 
-        {/* Station mode: return to preview option */}
-        {!isPreview && (
-          <div style={{ marginBottom: 22, textAlign: 'center' }}>
-            <button
-              onClick={handleReturnToPreview}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 12, color: 'var(--ts)',
-                fontFamily: 'var(--font-body)', padding: '4px 0',
-                textDecoration: 'underline', textUnderlineOffset: 3,
-              }}
-            >
-              Switch to preview mode
-            </button>
-          </div>
-        )}
-
         {/* Support section */}
         <div style={{ marginBottom: 22 }}>
           <div className="y-label">Support</div>
-          <div className="y-pref-row" style={{ opacity: 0.45, cursor: 'default' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontSize: 18, width: 22, textAlign: 'center' }}>☕</div>
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--tp)', fontWeight: 500 }}>Support YardObs</div>
-                <div style={{ fontSize: 11, color: 'var(--ts)', marginTop: 1 }}>Coming soon</div>
+          <a
+            href="https://ko-fi.com/yardobs"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ textDecoration: 'none' }}
+          >
+            <div className="y-pref-row">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontSize: 18, width: 22, textAlign: 'center' }}>☕</div>
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--tp)', fontWeight: 500 }}>Support YardObs</div>
+                  <div style={{ fontSize: 11, color: 'var(--ts)', marginTop: 1 }}>Buy me a coffee ♥</div>
+                </div>
               </div>
             </div>
-          </div>
+          </a>
         </div>
 
         {/* Version */}

@@ -9,6 +9,9 @@ export const THEMES = {
     deltaUp: '#22a55a', deltaDn: '#d9382d',
     overlayBg: 'rgba(26,18,8,0.45)', overlayText: 'rgba(253,246,236,0.92)',
     decoRing: 'rgba(26,18,8,0.06)', colorScheme: 'light',
+    heroTp: '#1a1208', heroTs: '#7a5c34', heroDim: '#b89060', heroSkel: 'rgba(26,18,8,0.07)',
+    heroOverlay: 'transparent', heroTextShadow: 'none',
+    heroTagNeutralBg: 'rgba(26,18,8,0.08)', heroTagNeutralBorder: 'rgba(26,18,8,0.15)',
   },
   cloudy: {
     bg: '#eef0f4', card: 'rgba(255,255,255,0.68)', cardH: 'rgba(255,255,255,0.88)',
@@ -20,6 +23,9 @@ export const THEMES = {
     deltaUp: '#1e7a46', deltaDn: '#c0392b',
     overlayBg: 'rgba(26,31,46,0.45)', overlayText: 'rgba(238,240,244,0.92)',
     decoRing: 'rgba(26,31,46,0.06)', colorScheme: 'light',
+    heroTp: '#1a1f2e', heroTs: '#4a5568', heroDim: '#8898aa', heroSkel: 'rgba(26,31,46,0.08)',
+    heroOverlay: 'transparent', heroTextShadow: 'none',
+    heroTagNeutralBg: 'rgba(26,31,46,0.10)', heroTagNeutralBorder: 'rgba(26,31,46,0.18)',
   },
   rainy: {
     bg: '#1a2030', card: 'rgba(30,40,60,0.8)', cardH: 'rgba(40,55,80,0.92)',
@@ -31,6 +37,9 @@ export const THEMES = {
     deltaUp: '#4cde8a', deltaDn: '#ff6b6b',
     overlayBg: 'rgba(0,0,0,0.45)', overlayText: 'rgba(232,240,254,0.90)',
     decoRing: 'rgba(79,195,247,0.08)', colorScheme: 'dark',
+    heroTp: 'rgba(232,240,254,0.88)', heroTs: 'rgba(232,240,254,0.70)', heroDim: 'rgba(232,240,254,0.45)', heroSkel: 'rgba(255,255,255,0.08)',
+    heroOverlay: 'linear-gradient(135deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.16) 100%)', heroTextShadow: '0 1px 4px rgba(0,0,0,0.5)',
+    heroTagNeutralBg: 'rgba(255,255,255,0.10)', heroTagNeutralBorder: 'rgba(255,255,255,0.22)',
   },
   stormy: {
     bg: '#0f1018', card: 'rgba(20,22,35,0.85)', cardH: 'rgba(30,33,50,0.92)',
@@ -42,6 +51,9 @@ export const THEMES = {
     deltaUp: '#56e09a', deltaDn: '#ff6b6b',
     overlayBg: 'rgba(0,0,0,0.50)', overlayText: 'rgba(237,231,255,0.90)',
     decoRing: 'rgba(179,136,255,0.08)', colorScheme: 'dark',
+    heroTp: 'rgba(237,231,255,0.88)', heroTs: 'rgba(237,231,255,0.70)', heroDim: 'rgba(237,231,255,0.45)', heroSkel: 'rgba(255,255,255,0.08)',
+    heroOverlay: 'linear-gradient(135deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.16) 100%)', heroTextShadow: '0 1px 4px rgba(0,0,0,0.5)',
+    heroTagNeutralBg: 'rgba(255,255,255,0.10)', heroTagNeutralBorder: 'rgba(255,255,255,0.22)',
   },
   light: {
     bg: '#f7f8fa', card: 'rgba(255,255,255,0.9)', cardH: '#fff',
@@ -53,6 +65,9 @@ export const THEMES = {
     deltaUp: '#1e7a46', deltaDn: '#c0392b',
     overlayBg: 'rgba(26,26,46,0.40)', overlayText: 'rgba(247,248,250,0.92)',
     decoRing: 'rgba(26,26,46,0.05)', colorScheme: 'light',
+    heroTp: '#1a1a2e', heroTs: '#4a5568', heroDim: '#9aa5b4', heroSkel: 'rgba(26,26,46,0.07)',
+    heroOverlay: 'transparent', heroTextShadow: 'none',
+    heroTagNeutralBg: 'rgba(26,26,46,0.08)', heroTagNeutralBorder: 'rgba(26,26,46,0.15)',
   },
   dark: {
     bg: '#0e1117', card: '#1a1f2e', cardH: '#222840',
@@ -64,6 +79,9 @@ export const THEMES = {
     deltaUp: '#4cde8a', deltaDn: '#ff6b6b',
     overlayBg: 'rgba(0,0,0,0.45)', overlayText: 'rgba(220,232,245,0.90)',
     decoRing: 'rgba(100,181,246,0.07)', colorScheme: 'dark',
+    heroTp: 'rgba(220,232,245,0.88)', heroTs: 'rgba(220,232,245,0.70)', heroDim: 'rgba(220,232,245,0.45)', heroSkel: 'rgba(255,255,255,0.08)',
+    heroOverlay: 'linear-gradient(135deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.16) 100%)', heroTextShadow: '0 1px 4px rgba(0,0,0,0.5)',
+    heroTagNeutralBg: 'rgba(255,255,255,0.10)', heroTagNeutralBorder: 'rgba(255,255,255,0.22)',
   },
 };
 
@@ -74,6 +92,8 @@ export const CHART_COLORS = Object.fromEntries(
 export const META_COLORS = Object.fromEntries(
   Object.entries(THEMES).map(([id, t]) => [id, t.bg])
 );
+
+export const WEATHER_THEME_IDS = new Set(Object.keys(THEMES).filter(k => k !== 'light' && k !== 'dark'));
 
 export const CONDITION_PREVIEWS = [
   { id: 'sunny',  label: 'Sunny',  icon: '☀️', bg: THEMES.sunny.bg,  accent: THEMES.sunny.accent,  text: THEMES.sunny.ts,  hero: THEMES.sunny.hero  },

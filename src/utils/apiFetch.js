@@ -5,7 +5,9 @@ export async function apiFetch(url, options = {}) {
   try {
     const key = localStorage.getItem(STORAGE_KEYS.TWC_API_KEY);
     if (key) headers['X-TWC-Key'] = key;
-  } catch {}
+  } catch (err) {
+    throw err;
+  }
   const res = await fetch(url, { ...options, headers });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();

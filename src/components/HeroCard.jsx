@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { fmt, degreesToCompass } from '../utils/format';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
 import { ICONS, LABELS } from '../utils/weatherIcons';
+import { toDateStr, toISODate, getTimePeriod } from '../utils/dateUtils';
 
 // ── Tabler-style SVG icon primitives for signal tags ─────────────────────────
 
@@ -125,7 +126,7 @@ const TAG_ICONS = {
 const TAG_STYLES = {
   positive: { bg: 'rgba(22,163,74,0.18)',    text: '#16a34a', border: 'rgba(22,163,74,0.35)'    },
   caution:  { bg: 'rgba(217,119,6,0.18)',    text: '#d97706', border: 'rgba(217,119,6,0.35)'    },
-  neutral:  { bg: 'rgba(255,255,255,0.1)',   text: 'rgba(255,255,255,0.75)', border: 'rgba(255,255,255,0.22)' },
+  neutral:  { bg: 'var(--hero-tag-neutral-bg)', text: 'var(--hero-ts)', border: 'var(--hero-tag-neutral-border)' },
 };
 
 function SignalTag({ label, type, icon }) {
@@ -153,13 +154,13 @@ function InsightView({ insight, isLoading, toggle }) {
       <div>
         <div style={{
           fontSize: 10, letterSpacing: 2, textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.7)', fontWeight: 500,
-          textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+          color: 'var(--hero-ts)', fontWeight: 500,
+          textShadow: 'var(--hero-text-shadow)',
         }}>
           {insight?._sourceType === 'forecast_model' ? 'Forecast for your area' : 'Your backyard today'}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>
-          <div className="live-dot" style={{ background: 'rgba(255,255,255,0.45)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, color: 'var(--hero-dim)' }}>
+          <div className="live-dot" style={{ background: 'var(--hero-dim)' }} />
           AI
         </div>
       </div>
@@ -171,19 +172,19 @@ function InsightView({ insight, isLoading, toggle }) {
     return (
       <>
         {eyebrow}
-        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.28)', fontStyle: 'italic', lineHeight: 1.65, marginBottom: 16, textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+        <div style={{ fontSize: 14, color: 'var(--hero-dim)', fontStyle: 'italic', lineHeight: 1.65, marginBottom: 16, textShadow: 'var(--hero-text-shadow)' }}>
           Analyzing your station data…
         </div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
           {[88, 106, 96].map((w, i) => (
             <div key={i} style={{
               height: 24, width: w, borderRadius: 50,
-              background: 'rgba(255,255,255,0.07)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--hero-skel)',
+              border: '1px solid var(--hero-skel)',
             }} />
           ))}
         </div>
-        <div style={{ height: 11, background: 'rgba(255,255,255,0.06)', borderRadius: 4, width: 190 }} />
+        <div style={{ height: 11, background: 'var(--hero-skel)', borderRadius: 4, width: 190 }} />
       </>
     );
   }
@@ -196,9 +197,9 @@ function InsightView({ insight, isLoading, toggle }) {
       {hasContent ? (
         <>
           <p style={{
-            fontSize: 14, color: 'rgba(255,255,255,0.88)', lineHeight: 1.65,
+            fontSize: 14, color: 'var(--hero-tp)', lineHeight: 1.65,
             margin: '0 0 14px', fontWeight: 300, fontFamily: 'var(--font-body)',
-            textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+            textShadow: 'var(--hero-text-shadow)',
           }}>
             {insight.narrative}
           </p>
@@ -209,11 +210,11 @@ function InsightView({ insight, isLoading, toggle }) {
           )}
         </>
       ) : (
-        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', fontStyle: 'italic', margin: '0 0 14px', textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
+        <p style={{ fontSize: 13, color: 'var(--hero-dim)', fontStyle: 'italic', margin: '0 0 14px', textShadow: 'var(--hero-text-shadow)' }}>
           Insight unavailable right now.
         </p>
       )}
-      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.3px', textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
+      <div style={{ fontSize: 10, color: 'var(--hero-dim)', letterSpacing: '0.3px', textShadow: 'var(--hero-text-shadow)' }}>
         {insight?.updatedAt ? `Updated ${insight.updatedAt} · refreshes hourly` : 'Refreshes hourly'}
       </div>
     </>
@@ -224,7 +225,7 @@ function InsightView({ insight, isLoading, toggle }) {
 
 function buildForecastSummary(hf) {
   if (!hf?.hourly?.time) return null;
-  const today = new Date().toISOString().split('T')[0];
+  const today = toISODate();
   let maxPrecipProb = 0;
   let rainyHoursCount = 0;
   let totalForecastHours = 0;
@@ -274,8 +275,9 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
 
     // Use location label as cache/API key in preview mode
     const insightId = stationId || current?.neighborhood || 'preview';
-    const today = new Date().toISOString().split('T')[0];
-    const lsKey = STORAGE_KEYS.insightKey(insightId, today);
+    const today = toISODate();
+    const period = getTimePeriod();
+    const lsKey = STORAGE_KEYS.insightKey(insightId, today, period);
 
     try {
       const raw = localStorage.getItem(lsKey);
@@ -295,7 +297,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     const run = async () => {
       const lastYear = new Date();
       lastYear.setFullYear(lastYear.getFullYear() - 1);
-      const yoyDate = lastYear.toISOString().split('T')[0].replace(/-/g, '');
+      const yoyDate = toDateStr(lastYear);
 
       let yoyReadings = [];
       try { yoyReadings = (await fetchHistoryDaily?.(yoyDate)) ?? []; } catch { onError?.('Could not load historical data'); }
@@ -307,7 +309,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            type: 'daily', stationId: insightId, date: today, current, yoyReadings,
+            type: 'daily', stationId: insightId, date: today, period, current, yoyReadings,
             forecastSummary: buildForecastSummary(hourlyForecast),
             sourceType: current?.sourceType,
           }),
@@ -411,10 +413,10 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
         transition: 'background var(--tr)',
       }}
     >
-      {/* Darkening overlay for insights view — gradient strongest at top-left where light themes are palest */}
+      {/* Overlay for insights view — dark on dark themes, transparent on light themes */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: 'linear-gradient(135deg, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.12) 100%)',
+        background: 'var(--hero-overlay)',
         opacity: view === 'insights' ? 1 : 0,
         transition: 'opacity 0.3s',
         pointerEvents: 'none',

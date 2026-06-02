@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import TopBar from './components/TopBar';
 import HeroCard from './components/HeroCard';
 import NavTabs from './components/NavTabs';
@@ -10,10 +11,15 @@ import LocationSetup from './components/LocationSetup';
 import { useWeather } from './hooks/useWeather';
 import { CHART_COLORS, META_COLORS } from './themes.js';
 import { STORAGE_KEYS } from './utils/storageKeys';
+import { toDateStr } from './utils/dateUtils';
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 const TrendsLockedPlaceholder = lazy(() => import('./components/TrendsLockedPlaceholder'));
 const RadarTab  = lazy(() => import('./components/RadarTab'));
+
+function LazyTabFallback() {
+  return <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>Loading…</div>;
+}
 
 // Resolves current conditions → one of the 6 theme names.
 // Uses iconCode when the API returns it; falls back to PWS sensor data.
@@ -133,6 +139,17 @@ export default function App() {
     if (!airQuality && current) fetchAirQuality();
   }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast, airQuality, fetchAirQuality]);
 
+  // Ensure today's recorded high is available for the forecast card even when TrendsTab hasn't been visited
+  useEffect(() => {
+    if (stationId) fetchHistoryDaily(toDateStr(new Date()));
+  }, [stationId, fetchHistoryDaily]);
+
+  const todayObservedHigh = useMemo(() => {
+    const obs = historyDaily[toDateStr(new Date())] ?? [];
+    const highs = obs.map(o => o.imperial?.tempHigh).filter(v => v != null);
+    return highs.length ? Math.max(...highs) : null;
+  }, [historyDaily]);
+
   // First-run: no profile yet — show location setup
   if (!profile) {
     return (
@@ -145,6 +162,7 @@ export default function App() {
   const isPreview = profile.mode === 'preview';
 
   return (
+    <>
     <div style={{ maxWidth: 420, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopBar
         profile={profile}
@@ -168,22 +186,20 @@ export default function App() {
 
       <div style={{ flex: 1, padding: '0 16px 24px' }}>
         {activeTab === 'now' && (
-          <NowTab
-            current={currentWithAQI}
-            isLoading={isLoading}
-            stationId={stationId}
-            hourlyForecast={hourlyForecast}
-            onError={setComponentError}
-            defaultActivity={defaultActivity}
-          />
+          <ErrorBoundary>
+            <NowTab
+              current={currentWithAQI}
+              isLoading={isLoading}
+              stationId={stationId}
+              hourlyForecast={hourlyForecast}
+              onError={setComponentError}
+              defaultActivity={defaultActivity}
+            />
+          </ErrorBoundary>
         )}
         {activeTab === 'trends' && (
           <ErrorBoundary>
-            <Suspense fallback={
-              <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>
-                Loading…
-              </div>
-            }>
+            <Suspense fallback={<LazyTabFallback />}>
               {(isPreview || isExploring) ? (
                 <TrendsLockedPlaceholder onOpenSettings={() => setSettingsOpen(true)} />
               ) : (
@@ -204,15 +220,13 @@ export default function App() {
           </ErrorBoundary>
         )}
         {activeTab === 'forecast' && (
-          <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} lat={current?.lat} lon={current?.lon} />
+          <ErrorBoundary>
+            <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} />
+          </ErrorBoundary>
         )}
         {activeTab === 'radar' && (
           <ErrorBoundary>
-            <Suspense fallback={
-              <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>
-                Loading…
-              </div>
-            }>
+            <Suspense fallback={<LazyTabFallback />}>
               <RadarTab
                 lat={current?.lat ?? null}
                 lon={current?.lon ?? null}
@@ -250,5 +264,7 @@ export default function App() {
         </div>
       )}
     </div>
+    <Analytics />
+    </>
   );
 }

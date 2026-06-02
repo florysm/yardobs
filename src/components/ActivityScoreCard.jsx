@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { fmtHourShort } from '../utils/format';
 import { ACTIVITIES } from '../utils/activities';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
+import { toISODate, getTimePeriod } from '../utils/dateUtils';
 
 function isNotableWeatherChange(stored, current) {
   const c = stored.conditions;
@@ -227,7 +228,7 @@ function precipProbToRate(prob) {
 
 function getForecastRainThreat(hf) {
   if (!hf?.hourly?.time) return { rate: 0, maxProb: 0 };
-  const today = new Date().toISOString().split('T')[0];
+  const today = toISODate();
   let maxProb = 0;
   hf.hourly.time.forEach((t, i) => {
     if (!t.startsWith(today)) return;
@@ -239,7 +240,7 @@ function getForecastRainThreat(hf) {
 
 function getRainyHourWindow(hf) {
   if (!hf?.hourly?.time) return { firstRainyHour: null, lastRainyHour: null };
-  const today = new Date().toISOString().split('T')[0];
+  const today = toISODate();
   let first = null, last = null;
   hf.hourly.time.forEach((t, i) => {
     if (!t.startsWith(today)) return;
@@ -254,7 +255,7 @@ function getRainyHourWindow(hf) {
 
 function getArcData(hf, actId, current) {
   if (!hf?.hourly?.time) return [];
-  const today = new Date().toISOString().split('T')[0];
+  const today = toISODate();
   const result = [];
   hf.hourly.time.forEach((t, i) => {
     const [date, timeStr] = t.split('T');
@@ -483,16 +484,19 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
   useEffect(() => {
     if (!currentWithThreat) return;
 
+    const period = getTimePeriod();
+
     // Fast in-session path: useRef avoids re-renders when switching activities
-    const iKey = `${activeId}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
-    if (iCache.current[iKey] !== undefined) {
-      setInsight(iCache.current[iKey]);
+    const iKey = `${activeId}|${period}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
+    const cached = iCache.current[iKey];
+    if (cached !== undefined && Date.now() - cached.ts < INSIGHT_TTL_MS) {
+      setInsight(cached.text);
       setInsightLoading(false);
       return;
     }
 
     // Persistent path: localStorage survives page refreshes; only bypass on notable weather change
-    const storageKey = STORAGE_KEYS.activityInsightKey(current?.stationId ?? 'preview', activeId);
+    const storageKey = STORAGE_KEYS.activityInsightKey(current?.stationId ?? 'preview', activeId, period);
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey));
       if (stored && Date.now() - stored.ts < INSIGHT_TTL_MS) {
@@ -503,7 +507,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
           score: active.score,
         };
         if (!isNotableWeatherChange(stored, currentSnapshot)) {
-          iCache.current[iKey] = stored.insight;
+          iCache.current[iKey] = { text: stored.insight, ts: Date.now() };
           setInsight(stored.insight);
           setInsightLoading(false);
           return;
@@ -526,6 +530,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
           factors: active.factors,
           stationId: current?.stationId,
           sourceType: current?.sourceType,
+          period,
           current: {
             ...currentWithThreat,
             ...(activeId === 'dogwalk' && active.pavementTemp != null
@@ -538,8 +543,9 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
       })
         .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
         .then(d => {
+          if (controller.signal.aborted) return;
           const text = d.insight ?? '';
-          iCache.current[iKey] = text;
+          iCache.current[iKey] = { text, ts: Date.now() };
           try {
             localStorage.setItem(storageKey, JSON.stringify({
               insight: text,
@@ -557,7 +563,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
         .catch(err => {
           if (err.name === 'AbortError') return;
           console.error('[insight:activity]', err);
-          iCache.current[iKey] = '';
+          iCache.current[iKey] = { text: '', ts: Date.now() };
           setInsight('');
           onError?.('Could not load activity insight');
         })

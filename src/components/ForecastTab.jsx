@@ -163,7 +163,7 @@ function Skeleton() {
   );
 }
 
-export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon }) {
+export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon, todayObservedHigh }) {
   const scrollRef = useRef(null);
   const groupRefs = useRef([]);
   const [activeLabel, setActiveLabel] = useState(null);
@@ -208,7 +208,11 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--tp)', marginBottom: 8, marginTop: 4 }}>
         Hourly Forecast
       </div>
-      {!hourlyForecast ? <HourSkeleton /> : (
+      {!hourlyForecast ? (
+        <div className="y-card" style={{ textAlign: 'center', padding: '24px 16px' }}>
+          <div style={{ fontSize: 13, color: 'var(--tm)' }}>Hourly forecast unavailable</div>
+        </div>
+      ) : (
         <>
           <div style={{
             textAlign: 'center', fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
@@ -226,7 +230,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
               <div
                 key={group.date}
                 ref={el => { groupRefs.current[gi] = el; }}
-                style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: gi > 0 ? 16 : 0 }}
+                style={{ display: 'flex', gap: 8, flexShrink: 0, minWidth: 'max-content', marginLeft: gi > 0 ? 16 : 0 }}
               >
                 {group.hours.map((hr) => (
                   <div
@@ -258,7 +262,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
       )}
 
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--tp)', marginBottom: 12, marginTop: 4 }}>
-        7-Day Forecast
+        Daily Forecast
       </div>
 
       {/* Horizontal scroll cards */}
@@ -280,7 +284,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             </div>
             <div style={{ fontSize: 22, margin: '8px 0 4px' }} aria-hidden="true">{day.icon}</div>
             <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-              {fmt(day.tempMax)}°
+              {fmt(day.tempMax ?? (day.isToday ? todayObservedHigh : null))}°
             </div>
             <div style={{ fontSize: 11, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>
               {fmt(day.tempMin)}°

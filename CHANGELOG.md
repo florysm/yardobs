@@ -2,6 +2,22 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-06-02
+
+### Added
+- New "Found a bug? Report it" button in the Changelog modal — describe the issue and click to open a pre-filled GitHub report with your app version, station, and browser info already attached
+
+### Fixed
+- AI insights on the home card were hard to read in light themes (Sunny, Cloudy, Light) — text is now correctly colored for each theme
+- Today's forecast card now shows your station's actual recorded high temperature instead of a blank value
+- Date lookups could show the wrong day in the evening when your local date differs from UTC — all date handling now uses your local time zone
+- Hourly forecast tiles could get squished when scrolling — each tile now holds its minimum width correctly
+- Isolated crashes in individual tabs so they no longer take down the whole app
+
+### Changed
+- AI insights now update up to 4 times a day (morning, afternoon, evening, night) with time-of-day context, so the insight you get at 9am reflects morning conditions and the one at 6pm reflects evening conditions
+- "7-Day Forecast" section renamed to "Daily Forecast"
+
 ## [0.4.1] - 2026-06-01
 
 ### Changed

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { toDateStr } from '../hooks/useWeather';
+import { toDateStr, toISODate } from '../utils/dateUtils';
 import { fmtTimeTick } from '../utils/format';
 
 const RANGES = [
@@ -401,7 +401,7 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
   const currentPrecipTotal = (() => {
     if (metric !== 'precip') return null;
     if (range === '24h') {
-      const todayISO = today.toISOString().split('T')[0];
+      const todayISO = toISODate(today);
       const todayObs = historyRecent.filter(o => o.obsTimeLocal?.startsWith(todayISO));
       return todayObs.length ? Math.max(...todayObs.map(o => o.imperial?.precipTotal ?? 0)) : null;
     }

@@ -4,17 +4,26 @@ const cache = new Map();
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const CACHE_MAX_SIZE = 500;
 
-// Per-IP rate limiter — max 10 calls per TTL window per IP
+// Per-IP rate limiter — max 20 calls per TTL window per IP
 const ipLog = new Map();
 function isRateLimited(ip) {
   const now = Date.now();
   const window = ipLog.get(ip) ?? [];
   const recent = window.filter(ts => now - ts < CACHE_TTL_MS);
-  if (recent.length >= 10) return true;
+  if (recent.length >= 20) {
+    ipLog.set(ip, recent);
+    return true;
+  }
   recent.push(now);
   ipLog.set(ip, recent);
   return false;
 }
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of ipLog) {
+    if (!timestamps.some(ts => now - ts < CACHE_TTL_MS)) ipLog.delete(ip);
+  }
+}, CACHE_TTL_MS);
 
 function evictOne() {
   const now = Date.now();
@@ -27,7 +36,8 @@ function evictOne() {
   if (evictKey !== null) cache.delete(evictKey);
 }
 
-import { COMPASS_DIRS } from '../utils/compass.js';
+import { applyCors } from './lib/cors.js';
+import { degreesToCompass } from '../src/utils/format.js';
 
 function aqiCategory(v) {
   if (v == null) return 'unknown';
@@ -38,28 +48,24 @@ function aqiCategory(v) {
   return 'Very Unhealthy / Hazardous';
 }
 
-function windDirStr(deg) {
-  return deg != null ? COMPASS_DIRS[Math.round(deg / 22.5) % 16] : 'variable';
-}
-
 function isOverloaded(err) {
   return err.status === 529 || err.message?.startsWith('529');
 }
 
 // ── Activity insight ──────────────────────────────────────────────────────────
 
-function activityCacheKey(stationId, actId, score, c) {
+function activityCacheKey(stationId, actId, score, c, period) {
   const t = Math.round((c?.temp ?? 70) / 2) * 2;
   const w = Math.round((c?.windSpeed ?? 0) / 2) * 2;
   const s = Math.round(score / 5) * 5;
-  return `act|${stationId}|${actId}|${s}|${t}|${w}`;
+  return `act|${stationId}|${actId}|${s}|${t}|${w}|${period ?? 'daytime'}`;
 }
 
 async function handleActivityInsight(req, res) {
   const { activity, activityLabel, score, factors, current: c,
-          firstRainyHour, lastRainyHour, stationId, sourceType } = req.body ?? {};
+          firstRainyHour, lastRainyHour, stationId, sourceType, period } = req.body ?? {};
   const isPreview = sourceType === 'forecast_model';
-  const key = (isPreview ? 'preview|' : '') + activityCacheKey(stationId ?? 'unknown', activity, score, c);
+  const key = (isPreview ? 'preview|' : '') + activityCacheKey(stationId ?? 'unknown', activity, score, c, period);
 
   const hit = cache.get(key);
   const age = hit ? Date.now() - hit.ts : Infinity;
@@ -79,7 +85,7 @@ async function handleActivityInsight(req, res) {
   const feelsLikeLabel = (c?.feelsLike ?? c?.temp ?? 70) < (c?.temp ?? 70)
     ? 'wind chill' : 'heat index';
 
-  const dir = windDirStr(c?.windDir);
+  const dir = degreesToCompass(c?.windDir) || 'variable';
 
   const forecastProb = c?.forecastMaxProb ?? 0;
   const forecastLine = forecastProb >= 20
@@ -96,7 +102,8 @@ async function handleActivityInsight(req, res) {
     ? `Forecast rain risk: ${forecastLine}`
     : `Rain: ${c?.precipRate ?? 0}"/hr now, ${c?.precipTotal ?? 0}" today; ${forecastLine}`;
 
-  const prompt = `Activity: ${activityLabel} — Overall score: ${score}/100
+  const prompt = `Time of day: ${period ?? 'daytime'}
+Activity: ${activityLabel} — Overall score: ${score}/100
 Limiting factors: ${topFactors}
 ${rainWindow}
 
@@ -121,8 +128,8 @@ In 2 sentences: assess conditions using the limiting factors and specific values
       messages: [{ role: 'user', content: prompt }],
     });
     const text = msg.content[0]?.text?.trim() ?? '';
-    if (cache.size >= CACHE_MAX_SIZE) evictOne();
     cache.set(key, { text, ts: Date.now() });
+    if (cache.size > CACHE_MAX_SIZE) evictOne();
     return res.status(200).json({ insight: text });
   } catch (err) {
     const overloaded = isOverloaded(err);
@@ -140,11 +147,11 @@ const ALLOWED_ICONS = [
 ];
 
 async function handleDailyInsight(req, res) {
-  const { stationId, date, current: c, yoyReadings, forecastSummary, sourceType } = req.body ?? {};
+  const { stationId, date, current: c, yoyReadings, forecastSummary, sourceType, period } = req.body ?? {};
   const isPreview = sourceType === 'forecast_model';
   const tempBucket    = Math.round((c?.temp ?? 70) / 2) * 2;
   const precipBucket  = Math.round((forecastSummary?.maxPrecipProb ?? 0) / 20) * 20;
-  const key = `${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${precipBucket}`;
+  const key = `${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${precipBucket}|${period ?? 'morning'}`;
 
   const hit = cache.get(key);
   const age = hit ? Date.now() - hit.ts : Infinity;
@@ -155,7 +162,7 @@ async function handleDailyInsight(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'Insight service not configured' });
 
-  const dir = windDirStr(c?.windDir);
+  const dir = degreesToCompass(c?.windDir) || 'variable';
 
   // No year-over-year data in preview mode (no historical data available)
   const yoyDelta = (() => {
@@ -188,6 +195,7 @@ async function handleDailyInsight(req, res) {
     : (yoyDelta ? 'Reference the year-over-year difference in the final sentence.' : 'No year-over-year data — omit any comparisons.');
 
   const prompt = `${locationLabel}: ${stationId} — ${date}
+Time of day: ${period ?? 'daytime'}
 
 Right now:
 - Temp: ${c?.temp ?? '?'}°F (feels ${c?.feelsLike ?? '?'}°F), humidity ${c?.humidity ?? '?'}%, dew point ${c?.dewPoint ?? '?'}°F
@@ -232,8 +240,8 @@ Return only the JSON object, no markdown, no other text.`;
       console.error('[insight:daily] JSON parse error:', parseErr.message);
     }
 
-    if (cache.size >= CACHE_MAX_SIZE) evictOne();
     cache.set(key, { data, ts: Date.now() });
+    if (cache.size > CACHE_MAX_SIZE) evictOne();
     return res.status(200).json(data);
   } catch (err) {
     const overloaded = isOverloaded(err);
@@ -246,8 +254,7 @@ Return only the JSON object, no markdown, no other text.`;
 // ── Router ────────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? 'unknown';

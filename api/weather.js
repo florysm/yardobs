@@ -1,3 +1,5 @@
+import { applyCors } from './lib/cors.js';
+
 const TWC_BASE = 'https://api.weather.com';
 
 // ── Per-IP rate limiter: 30 requests per 5 minutes ────────────────────────────
@@ -35,8 +37,7 @@ function twcErrorMessage(status) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (applyCors(req, res)) return;
 
   const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() ?? req.socket?.remoteAddress ?? 'unknown';
   if (checkRateLimit(ip)) {

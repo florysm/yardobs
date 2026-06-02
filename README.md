@@ -99,8 +99,19 @@ To run Preview Mode locally, you only need `ANTHROPIC_API_KEY` (for AI insights)
 
 To connect your own [Weather Underground PWS](https://www.wunderground.com/pws/overview) station you'll also need:
 
-- A [TWC API key](https://docs.google.com/document/d/1eKCnKXI9xnoMGRRzOL1xPCBihNV2rOet08qpE_gArAY) (the former Weather Underground API)
+- A TWC API key (see below)
 - Your PWS station ID (e.g. `KWASEATT123`)
+
+### Getting a TWC API Key
+
+YardObs uses The Weather Company (TWC) PWS API to access your station's live readings and historical data. Access is tied to a free Weather Underground account.
+
+1. Create or log in to your account at [wunderground.com](https://www.wunderground.com)
+2. Navigate to [wunderground.com/member/api-keys](https://www.wunderground.com/member/api-keys)
+3. Generate a new API key
+4. Add it to your `.env` file as `TWC_API_KEY`, or set it as an Environment Variable in your Vercel project dashboard
+
+> `TWC_API_KEY` must never be prefixed with `VITE_` — it stays server-side and is never exposed to the browser.
 
 ### Fork and Run Locally
 

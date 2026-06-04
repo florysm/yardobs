@@ -340,8 +340,8 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     if (precip > 0.1)  return { icon: '🌧️', label: 'Heavy Rain' };
     if (precip > 0)    return { icon: '🌦️', label: 'Light Rain' };
     if (!obs.isDay)    return { icon: '🌙',  label: 'Clear' };
-    if ((obs.uv ?? 0) >= 6)                        return { icon: '☀️', label: 'Sunny' };
     if (obs.solar != null && obs.solar < 150)       return { icon: '☁️', label: 'Cloudy' };
+    if ((obs.solar != null && obs.solar >= 400) || (obs.uv ?? 0) >= 5) return { icon: '☀️', label: 'Sunny' };
     return { icon: '🌤️', label: 'Partly Cloudy' };
   }
 

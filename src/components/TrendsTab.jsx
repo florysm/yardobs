@@ -13,9 +13,9 @@ const RANGES = [
 
 const METRICS = [
   { id: 'temp',     label: 'Temperature', unit: '°F',    digits: 0, domain: ['auto','auto'] },
+  { id: 'precip',   label: 'Rainfall',    unit: '"',     digits: 2, domain: [0,'auto'] },
   { id: 'humidity', label: 'Humidity',    unit: '%',     digits: 0, domain: [0, 100] },
   { id: 'pressure', label: 'Pressure',    unit: ' inHg', digits: 2, domain: ['auto','auto'] },
-  { id: 'precip',   label: 'Rainfall',    unit: '"',     digits: 2, domain: [0,'auto'] },
 ];
 
 
@@ -42,6 +42,8 @@ function mergeDay(o) {
   return {
     time:     o.obsTimeLocal?.slice(5, 10) ?? '',
     temp:     o.imperial?.tempAvg     ?? null,
+    tempHigh: o.imperial?.tempHigh    ?? null,
+    tempLow:  o.imperial?.tempLow     ?? null,
     humidity: o.humidityAvg           ?? null,
     pressure: o.imperial?.pressureMax ?? null,
     precip:   o.imperial?.precipTotal ?? null,
@@ -87,10 +89,10 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-function BarChart({ values, labels }) {
+function BarChart({ values, labels, height = 70 }) {
   const max = Math.max(...values, 0.01);
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 70, margin: '10px 0 6px' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height, margin: '10px 0 6px' }}>
       {values.map((v, i) => (
         <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
           <div style={{ fontSize: 8, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
@@ -99,7 +101,7 @@ function BarChart({ values, labels }) {
           <div style={{
             width: '100%', borderRadius: '4px 4px 0 0',
             background: 'var(--bar)', opacity: 0.85,
-            height: Math.max((v / max) * 50, v > 0 ? 4 : 1),
+            height: Math.max((v / max) * (height - 20), v > 0 ? 4 : 1),
             minHeight: 1, transition: 'height 0.4s',
           }} />
           <div style={{ fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>{labels[i]}</div>
@@ -109,7 +111,7 @@ function BarChart({ values, labels }) {
   );
 }
 
-function RainfallSummaryCard({ range, currentTotal, lyTotal, bars, labels }) {
+function RainfallSummaryCard({ range, currentTotal, lyTotal }) {
   const delta = currentTotal != null && lyTotal != null ? currentTotal - lyTotal : null;
   const sign  = delta != null && delta >= 0 ? '+' : '';
   const deltaColor = delta == null ? 'var(--tm)'
@@ -121,7 +123,7 @@ function RainfallSummaryCard({ range, currentTotal, lyTotal, bars, labels }) {
               :                   '30-Day Rainfall';
   return (
     <div className="y-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: bars ? 4 : 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <div className="y-label">{title}</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--tp)', fontWeight: 500 }}>
@@ -139,7 +141,6 @@ function RainfallSummaryCard({ range, currentTotal, lyTotal, bars, labels }) {
           )}
         </div>
       </div>
-      {bars && <BarChart values={bars} labels={labels} />}
     </div>
   );
 }
@@ -395,7 +396,14 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
   const { digits, unit, domain } = metaCurrent;
 
   const metricVals = chartData.map(r => r[metric]).filter(v => v != null);
-  const { high, low, avg } = stats(metricVals);
+  const showTempBand = metric === 'temp' && range !== '24h';
+  const { high, low, avg } = showTempBand
+    ? {
+        high: stats(chartData.map(r => r.tempHigh).filter(v => v != null)).high,
+        low:  stats(chartData.map(r => r.tempLow).filter(v => v != null)).low,
+        avg:  stats(metricVals).avg,
+      }
+    : stats(metricVals);
 
   // Rainfall comparison card — current period total and LY equivalent
   const currentPrecipTotal = (() => {
@@ -545,6 +553,18 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
             </span>
           </div>
         )}
+        {showTempBand && (
+          <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--tm)', marginBottom: 8 }}>
+            <span>
+              <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.tempHigh }} />
+              High
+            </span>
+            <span>
+              <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.tempLow }} />
+              Low
+            </span>
+          </div>
+        )}
 
         {loading ? (
           <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm)', fontSize: 12 }}>
@@ -554,6 +574,12 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
           <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm)', fontSize: 12 }}>
             No data available
           </div>
+        ) : metric === 'precip' && range !== '24h' ? (
+          <BarChart
+            values={range === '7d' ? rainBars : weeklyRainBars}
+            labels={range === '7d' ? rainLabels : weeklyRainLabels}
+            height={160}
+          />
         ) : (
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={chartData} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
@@ -568,29 +594,43 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
                   stroke={chartColors.yoy} strokeWidth={1.5} strokeDasharray="6 3"
                   dot={false} connectNulls />
               )}
-              <Line type="monotone" dataKey={metric} name="This year"
-                stroke={chartColors.accent} strokeWidth={2}
-                dot={false} connectNulls />
+              {metric === 'temp' && range !== '24h' ? (
+                <>
+                  <Line type="monotone" dataKey="tempHigh" name="High"
+                    stroke={chartColors.tempHigh} strokeWidth={2}
+                    dot={false} connectNulls />
+                  <Line type="monotone" dataKey="tempLow" name="Low"
+                    stroke={chartColors.tempLow} strokeWidth={2}
+                    dot={false} connectNulls />
+                </>
+              ) : (
+                <Line type="monotone" dataKey={metric} name={range === '24h' ? 'This year' : metaCurrent.label}
+                  stroke={chartColors.accent} strokeWidth={2}
+                  dot={false} connectNulls />
+              )}
             </LineChart>
           </ResponsiveContainer>
         )}
       </div>
 
       {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-        {[
-          { label: 'High', val: high },
-          { label: 'Low',  val: low  },
-          { label: 'Avg',  val: avg  },
-        ].map(({ label, val }) => (
-          <div key={label} className="y-stat">
-            <div style={{ fontSize: 9, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-              {val != null ? `${val.toFixed(digits)}${unit}` : '—'}
-            </div>
+      {(() => {
+        const statItems = metric === 'precip'
+          ? [{ label: 'High', val: high }, { label: 'Low', val: low }]
+          : [{ label: 'High', val: high }, { label: 'Low', val: low }, { label: 'Avg', val: avg }];
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statItems.length}, 1fr)`, gap: 8, marginBottom: 12 }}>
+            {statItems.map(({ label, val }) => (
+              <div key={label} className="y-stat">
+                <div style={{ fontSize: 9, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                  {val != null ? `${val.toFixed(digits)}${unit}` : '—'}
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* Rainfall summary card — range-aware, with LY comparison */}
       {metric === 'precip' && (
@@ -598,8 +638,6 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
           range={range}
           currentTotal={currentPrecipTotal}
           lyTotal={lyPrecipTotal}
-          bars={range === '7d' ? rainBars : range === '30d' ? weeklyRainBars : null}
-          labels={range === '7d' ? rainLabels : range === '30d' ? weeklyRainLabels : null}
         />
       )}
 

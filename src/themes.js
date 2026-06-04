@@ -7,6 +7,7 @@ export const THEMES = {
     hero: 'linear-gradient(135deg, #ffe8b0 0%, #ffd580 40%, #ffb347 100%)',
     bar: 'linear-gradient(90deg, #f7a844, #e8760a)', yoy: '#c8520a',
     deltaUp: '#22a55a', deltaDn: '#d9382d',
+    tempHigh: '#c0392b', tempLow: '#2980b9',
     overlayBg: 'rgba(26,18,8,0.45)', overlayText: 'rgba(253,246,236,0.92)',
     decoRing: 'rgba(26,18,8,0.06)', colorScheme: 'light',
     heroTp: '#1a1208', heroTs: '#7a5c34', heroDim: '#b89060', heroSkel: 'rgba(26,18,8,0.07)',
@@ -21,6 +22,7 @@ export const THEMES = {
     hero: 'linear-gradient(135deg, #cfd8e8 0%, #b8c8dc 50%, #9bafc8 100%)',
     bar: 'linear-gradient(90deg, #7fa0c0, #5b7fa6)', yoy: '#3a5f86',
     deltaUp: '#1e7a46', deltaDn: '#c0392b',
+    tempHigh: '#c0392b', tempLow: '#2471a3',
     overlayBg: 'rgba(26,31,46,0.45)', overlayText: 'rgba(238,240,244,0.92)',
     decoRing: 'rgba(26,31,46,0.06)', colorScheme: 'light',
     heroTp: '#1a1f2e', heroTs: '#4a5568', heroDim: '#8898aa', heroSkel: 'rgba(26,31,46,0.08)',
@@ -35,6 +37,7 @@ export const THEMES = {
     hero: 'linear-gradient(135deg, #1a2a42 0%, #1e3050 50%, #162238 100%)',
     bar: 'linear-gradient(90deg, #29b6f6, #4fc3f7)', yoy: '#0288d1',
     deltaUp: '#4cde8a', deltaDn: '#ff6b6b',
+    tempHigh: '#ff7043', tempLow: '#80cbc4',
     overlayBg: 'rgba(0,0,0,0.45)', overlayText: 'rgba(232,240,254,0.90)',
     decoRing: 'rgba(79,195,247,0.08)', colorScheme: 'dark',
     heroTp: 'rgba(232,240,254,0.88)', heroTs: 'rgba(232,240,254,0.70)', heroDim: 'rgba(232,240,254,0.45)', heroSkel: 'rgba(255,255,255,0.08)',
@@ -49,6 +52,7 @@ export const THEMES = {
     hero: 'linear-gradient(135deg, #1a1428 0%, #0f1018 60%, #1c1030 100%)',
     bar: 'linear-gradient(90deg, #9c27b0, #b388ff)', yoy: '#7b1fa2',
     deltaUp: '#56e09a', deltaDn: '#ff6b6b',
+    tempHigh: '#ff7043', tempLow: '#80deea',
     overlayBg: 'rgba(0,0,0,0.50)', overlayText: 'rgba(237,231,255,0.90)',
     decoRing: 'rgba(179,136,255,0.08)', colorScheme: 'dark',
     heroTp: 'rgba(237,231,255,0.88)', heroTs: 'rgba(237,231,255,0.70)', heroDim: 'rgba(237,231,255,0.45)', heroSkel: 'rgba(255,255,255,0.08)',
@@ -63,6 +67,7 @@ export const THEMES = {
     hero: 'linear-gradient(135deg, #e8f0fe 0%, #dce8fb 50%, #c8dbf8 100%)',
     bar: 'linear-gradient(90deg, #4a90e2, #1a73e8)', yoy: '#0d47a1',
     deltaUp: '#1e7a46', deltaDn: '#c0392b',
+    tempHigh: '#c0392b', tempLow: '#1565c0',
     overlayBg: 'rgba(26,26,46,0.40)', overlayText: 'rgba(247,248,250,0.92)',
     decoRing: 'rgba(26,26,46,0.05)', colorScheme: 'light',
     heroTp: '#1a1a2e', heroTs: '#4a5568', heroDim: '#9aa5b4', heroSkel: 'rgba(26,26,46,0.07)',
@@ -77,6 +82,7 @@ export const THEMES = {
     hero: 'linear-gradient(135deg, #1c2240 0%, #0e1117 60%, #161c30 100%)',
     bar: 'linear-gradient(90deg, #42a5f5, #64b5f6)', yoy: '#1565c0',
     deltaUp: '#4cde8a', deltaDn: '#ff6b6b',
+    tempHigh: '#ef9a9a', tempLow: '#80cbc4',
     overlayBg: 'rgba(0,0,0,0.45)', overlayText: 'rgba(220,232,245,0.90)',
     decoRing: 'rgba(100,181,246,0.07)', colorScheme: 'dark',
     heroTp: 'rgba(220,232,245,0.88)', heroTs: 'rgba(220,232,245,0.70)', heroDim: 'rgba(220,232,245,0.45)', heroSkel: 'rgba(255,255,255,0.08)',
@@ -86,7 +92,7 @@ export const THEMES = {
 };
 
 export const CHART_COLORS = Object.fromEntries(
-  Object.entries(THEMES).map(([id, t]) => [id, { accent: t.accent, yoy: t.yoy }])
+  Object.entries(THEMES).map(([id, t]) => [id, { accent: t.accent, yoy: t.yoy, tempHigh: t.tempHigh, tempLow: t.tempLow }])
 );
 
 export const META_COLORS = Object.fromEntries(

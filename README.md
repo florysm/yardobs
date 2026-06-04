@@ -16,6 +16,29 @@ All the sensitive API keys stay on the server. The browser only ever sees your s
 
 **[yardobs.vercel.app](https://yardobs.vercel.app)** — open in Preview Mode to try it without a personal weather station.
 
+## Installing YardObs
+
+YardObs is a **Progressive Web App (PWA)** — you can install it directly to your phone's home screen and use it like a native app, with no app store required.
+
+**iOS (Safari)**
+1. Open [yardobs.app](https://yardobs.app) in Safari
+2. Tap the Share button (the box with an arrow pointing up) at the bottom of the screen
+3. Scroll down and tap **Add to Home Screen**
+4. Tap **Add**
+
+**Android (Chrome)**
+1. Open [yardobs.app](https://yardobs.app) in Chrome
+2. Tap the three-dot menu in the top-right corner
+3. Tap **Add to Home Screen** or **Install App**
+4. Tap **Add**
+
+**Desktop (Chrome or Edge)**
+1. Open [yardobs.app](https://yardobs.app)
+2. Click the install icon (⊕) in the address bar on the right
+3. Click **Install**
+
+> YardObs is designed mobile-first and feels native on a phone home screen. Desktop works well too, but the experience is optimized for a narrow viewport.
+
 ## Features
 
 - **Live Conditions** — temperature, feels-like, humidity, wind, pressure, dew point, UV index, solar radiation, and precipitation; auto-refreshes every 5 minutes

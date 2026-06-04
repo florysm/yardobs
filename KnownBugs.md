@@ -1,6 +1,6 @@
 # Known Bugs
 
-Last updated: 2026-06-02
+Last updated: 2026-06-04
 
 
 <!-- Run /bugtracker to populate this file. Run /bugfixer to fix one item. -->

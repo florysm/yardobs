@@ -60,7 +60,11 @@ export default function ChangelogModal({ onClose, stationId = null, isPreview = 
       />
 
       {/* Sheet */}
-      <div style={{
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Changelog"
+        style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         maxWidth: 420, margin: '0 auto',
         background: 'var(--bg)', borderRadius: '24px 24px 0 0',

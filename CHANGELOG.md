@@ -2,6 +2,34 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] - 2026-06-04
+
+### Added
+- Year-over-year comparison in Trends now works on the 7-day view, not just 24 hours; the 30-day view shows the toggle as disabled with an explanation tooltip
+- Location search shows a brief checkmark confirmation after you pick a location
+- Weather stations without solar or UV sensors now get a supplemental sky-condition reading from a forecast model so the app theme reflects actual conditions
+
+### Fixed
+- The Now tab now shows a clear error card if weather data fails to load, instead of displaying the loading skeleton indefinitely
+- AI daily insight now waits for forecast data before generating — previously it could produce a summary with missing rain/precipitation context on first load
+- Quickly switching to the Insights view no longer fires overlapping AI requests
+- The weather API now times out after 10 seconds instead of hanging when the upstream service is slow or unreachable
+- Station-mode users without a station ID configured now see an explanatory message instead of a blank screen
+- Preview-mode users with no location set now see an explanatory message instead of a blank screen
+- The Activity card no longer shows an empty space when weather data hasn't loaded yet — it now shows a "Waiting for weather data…" label
+- Error responses from the weather API now surface the actual message rather than a generic HTTP status code
+- Partly-cloudy conditions now correctly switch to the Sunny theme when UV or solar radiation is high
+- Caught component errors are now logged to the browser console for easier debugging
+
+### Changed
+- Settings and Changelog drawers now declare themselves as dialogs for screen readers (role="dialog", aria-modal, aria-label)
+- Chart and score-ring elements now carry accessible labels for screen readers
+- Keyboard focus rings are now consistently styled using the app's accent colour across all browsers
+- Trends chart loading state is now a smooth pulsing skeleton instead of plain text
+- Preview mode now fetches current conditions, hourly forecast, and daily forecast in a single request — reducing load time and round trips
+- Air quality data now loads directly from Open-Meteo for all modes
+- API error messages are now forwarded to the client instead of being replaced with a generic HTTP status string
+
 ## [0.6.0] - 2026-06-03
 
 ### Added

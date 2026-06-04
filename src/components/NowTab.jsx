@@ -23,13 +23,23 @@ function beaufort(mph) {
 }
 
 
-export default function NowTab({ current, isLoading, stationId, hourlyForecast, onError, defaultActivity }) {
+export default function NowTab({ current, isLoading, error, stationId, hourlyForecast, onError, defaultActivity }) {
   if (isLoading) {
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
         {[0,1,2,3].map(i => (
           <div key={i} className="y-metric" style={{ height: 96, opacity: 0.4, animation: 'pulse 1.5s infinite' }} />
         ))}
+      </div>
+    );
+  }
+
+  if (!current && error) {
+    return (
+      <div className="y-card" style={{ textAlign: 'center', padding: '28px 16px', color: 'var(--ts)' }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>⚠️</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tp)', marginBottom: 4 }}>Unable to load weather data</div>
+        <div style={{ fontSize: 12 }}>{error}</div>
       </div>
     );
   }

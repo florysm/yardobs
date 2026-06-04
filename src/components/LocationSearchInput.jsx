@@ -13,6 +13,7 @@ export default function LocationSearchInput({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [isOpen, setIsOpen]         = useState(false);
   const [error, setError]           = useState('');
+  const [selected, setSelected]     = useState(null);
 
   const inputRef    = useRef(null);
   const listRef     = useRef(null);
@@ -63,11 +64,13 @@ export default function LocationSearchInput({
   };
 
   const select = (lat, lon, label) => {
-    setQuery(label);
+    setQuery('');
     setSuggestions([]);
     setIsOpen(false);
     setActiveIndex(-1);
     setError('');
+    setSelected(label);
+    setTimeout(() => setSelected(null), 1500);
     onSelect(lat, lon, label);
   };
 
@@ -119,14 +122,28 @@ export default function LocationSearchInput({
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
-      <input
-        ref={inputRef}
-        value={query}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        style={inputStyle}
-      />
+      {selected ? (
+        <div style={{
+          ...inputStyle,
+          display: 'flex', alignItems: 'center', gap: 6,
+          color: 'var(--accent)', borderColor: 'var(--accent)',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected}</span>
+        </div>
+      ) : (
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          style={inputStyle}
+        />
+      )}
       {error && (
         <div style={{ fontSize: 11, color: '#dc2626', marginTop: 3 }}>{error}</div>
       )}

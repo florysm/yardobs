@@ -2,6 +2,19 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] - 2026-06-03
+
+### Added
+- Precipitation chart now shows as a bar chart in 7-day and 30-day views — easier to spot daily rainfall amounts at a glance
+- Temperature chart in 7-day and 30-day views now shows a daily High/Low band instead of a single line, so you can see how much the temperature swung each day
+
+### Fixed
+- Outdoor Activity pills on the home card now lay out correctly (3+2) on iPhone instead of wrapping to an extra row (2+2+1)
+- Your personal weather station now correctly shows "Sunny" on clear days — stations without a UV sensor could never reach "Sunny" before; it now uses solar radiation as the primary signal
+
+### Changed
+- README updated with step-by-step instructions for installing YardObs to your home screen as a PWA on iOS, Android, and desktop
+
 ## [0.5.0] - 2026-06-02
 
 ### Added

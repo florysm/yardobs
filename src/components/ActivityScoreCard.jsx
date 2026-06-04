@@ -715,7 +715,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
                 aria-label={`${a.label} — score ${s}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '5px 10px', borderRadius: 8, cursor: 'pointer',
+                  padding: '5px 8px', borderRadius: 8, cursor: 'pointer',
                   fontSize: 12, transition: 'all var(--tr-fast)',
                   border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
                   background: isActive ? 'var(--soft)' : 'var(--glass)',

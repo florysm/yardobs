@@ -5,10 +5,14 @@ export async function apiFetch(url, options = {}) {
   try {
     const key = localStorage.getItem(STORAGE_KEYS.TWC_API_KEY);
     if (key) headers['X-TWC-Key'] = key;
-  } catch (err) {
-    throw err;
+  } catch {
+    // localStorage unavailable (e.g. private browsing); proceed without the key
   }
   const res = await fetch(url, { ...options, headers });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const d = await res.json(); if (d?.error) msg = d.error; } catch {}
+    throw new Error(msg);
+  }
   return res.json();
 }

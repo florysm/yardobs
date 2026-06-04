@@ -65,7 +65,11 @@ export default function SettingsDrawer({
       />
 
       {/* Bottom sheet */}
-      <div style={{
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         maxWidth: 420, margin: '0 auto',
         background: 'var(--bg)', borderRadius: '24px 24px 0 0',

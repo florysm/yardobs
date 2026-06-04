@@ -84,8 +84,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid type. Use: current, history, history-daily, forecast, hourly-forecast, air-quality' });
   }
 
+  const timeoutCtrl = new AbortController();
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 10_000);
+
   try {
-    const upstream = await fetch(url);
+    const upstream = await fetch(url, { signal: timeoutCtrl.signal });
+    clearTimeout(timeoutId);
     const text = await upstream.text();
 
     if (!upstream.ok) {
@@ -98,6 +102,10 @@ export default async function handler(req, res) {
     }
     return res.status(200).json(data);
   } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      return res.status(502).json({ error: 'Weather service timed out — try again in a moment' });
+    }
     return res.status(502).json({ error: 'Upstream fetch failed', detail: err.message });
   }
 }

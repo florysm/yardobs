@@ -61,7 +61,8 @@ export function useWeather(profile) {
 
   // ── Station mode: fetch current PWS observation ───────────────────────────
   const fetchCurrentStation = useCallback(async () => {
-    if (!stationId) { setIsLoading(false); return; }
+    if (!stationId) { setIsLoading(false); setError('No station configured — open Settings to add your station ID.'); return; }
+    setError(null);
     try {
       const data = await apiFetch(`/api/weather?type=current&stationId=${encodeURIComponent(stationId)}`, { signal: abortRef.current?.signal });
       const obs = data.observations?.[0];
@@ -69,6 +70,24 @@ export function useWeather(profile) {
 
       locationRef.current = { lat: obs.lat, lon: obs.lon };
       setLastUpdated(new Date());
+
+      // When the station lacks solar/UV sensors (the only local sky-clarity signals),
+      // supplement TWC's iconCode with Open-Meteo's model-based weather_code so the
+      // theme reflects actual conditions rather than TWC's regional inference.
+      let resolvedIconCode = obs.iconCode ?? null;
+      if (obs.solarRadiation == null && obs.uv == null && obs.lat && obs.lon) {
+        try {
+          const omRes = await fetch(
+            `${OM_BASE}?latitude=${obs.lat}&longitude=${obs.lon}&current=weather_code&timezone=auto`,
+            { signal: abortRef.current?.signal }
+          );
+          const omData = await omRes.json();
+          if (omData.current?.weather_code != null) {
+            resolvedIconCode = wmoToTwc(omData.current.weather_code);
+          }
+        } catch { /* non-fatal — falls back to TWC iconCode */ }
+      }
+
       setCurrent({
         temp:        obs.imperial?.temp        ?? null,
         feelsLike:   calcFeelsLike(obs.imperial?.temp, obs.humidity, obs.imperial?.windSpeed),
@@ -82,7 +101,7 @@ export function useWeather(profile) {
         precipTotal: obs.imperial?.precipTotal ?? null,
         uv:          obs.uv                    ?? null,
         solar:       obs.solarRadiation        ?? null,
-        iconCode:    obs.iconCode              ?? null,
+        iconCode:    resolvedIconCode,
         isDay:       obs.isDay                 ?? 1,
         stationId:    obs.stationID,
         neighborhood: obs.neighborhood ?? null,
@@ -102,14 +121,19 @@ export function useWeather(profile) {
 
   // ── Preview/explore mode: fetch current conditions from Open-Meteo ──────────
   const fetchCurrentPreview = useCallback(async () => {
-    if (!previewLat || !previewLon) { setIsLoading(false); return; }
+    if (!previewLat || !previewLon) { setIsLoading(false); setError('No location set — open Settings to choose a preview location.'); return; }
+    setError(null);
     try {
       const url = `${OM_BASE}?latitude=${previewLat}&longitude=${previewLon}` +
         `&current=temperature_2m,apparent_temperature,relative_humidity_2m,` +
         `dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,` +
         `surface_pressure,weather_code,is_day,uv_index` +
-        `&${OM_UNITS}`;
-      const data = await fetch(url, { signal: abortRef.current?.signal }).then(r => r.json());
+        `&hourly=temperature_2m,precipitation_probability,weathercode,apparent_temperature,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,uv_index` +
+        `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,sunrise,sunset` +
+        `&forecast_days=7&${OM_UNITS}`;
+      const omRes = await fetch(url, { signal: abortRef.current?.signal });
+      const data = await omRes.json();
+      if (data.error) throw new Error(data.reason ?? 'Open-Meteo error');
       const c = data.current;
       if (!c) throw new Error('No current data from Open-Meteo');
 
@@ -140,6 +164,20 @@ export function useWeather(profile) {
         sourceType:  'forecast_model',
         sourceLabel: 'Weather Forecast',
       });
+
+      const d = data.daily;
+      if (d) {
+        setForecast({
+          dayOfWeek: d.time.map(t => new Date(t + 'T12:00').toLocaleDateString('en-US', { weekday: 'long' })),
+          temperatureMax: d.temperature_2m_max,
+          temperatureMin: d.temperature_2m_min,
+          daypart: [{
+            iconCode:    d.weather_code.flatMap(wc => [wmoToTwc(wc), null]),
+            precipChance: d.precipitation_probability_max.flatMap(p => [p, null]),
+          }],
+        });
+      }
+      if (data.hourly) setHourlyForecast(data);
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     } finally {
@@ -211,30 +249,7 @@ export function useWeather(profile) {
     const loc = locationRef.current;
     if (!loc) return;
 
-    if (isPreviewMode) {
-      try {
-        const { lat, lon } = loc;
-        const url = `${OM_BASE}?latitude=${lat}&longitude=${lon}` +
-          `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,sunrise,sunset` +
-          `&forecast_days=7&${OM_UNITS}`;
-        const data = await fetch(url, { signal: abortRef.current?.signal }).then(r => r.json());
-        const d = data.daily;
-        if (!d) throw new Error('No daily data from Open-Meteo');
-        // Normalize to TWC forecast shape expected by ForecastTab's buildDays()
-        setForecast({
-          dayOfWeek: d.time.map(t => new Date(t + 'T12:00').toLocaleDateString('en-US', { weekday: 'long' })),
-          temperatureMax: d.temperature_2m_max,
-          temperatureMin: d.temperature_2m_min,
-          daypart: [{
-            iconCode:    d.weather_code.flatMap(c => [wmoToTwc(c), null]),
-            precipChance: d.precipitation_probability_max.flatMap(p => [p, null]),
-          }],
-        });
-      } catch (err) {
-        if (err.name !== 'AbortError') setError(err.message);
-      }
-      return;
-    }
+    if (isPreviewMode) return; // handled by fetchCurrentPreview combined call
 
     try {
       const data = await apiFetch(`/api/weather?type=forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
@@ -244,24 +259,12 @@ export function useWeather(profile) {
     }
   }, [isPreviewMode]);
 
-  // ── Hourly forecast — station uses proxy; preview/explore calls Open-Meteo ─
+  // ── Hourly forecast — station uses proxy; preview/explore handled by fetchCurrentPreview ─
   const fetchHourlyForecast = useCallback(async () => {
     const loc = locationRef.current;
     if (!loc) return;
 
-    if (isPreviewMode) {
-      try {
-        const { lat, lon } = loc;
-        const url = `${OM_BASE}?latitude=${lat}&longitude=${lon}` +
-          `&hourly=temperature_2m,precipitation_probability,weathercode,apparent_temperature,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,uv_index` +
-          `&daily=sunrise,sunset&forecast_days=2&${OM_UNITS}`;
-        const data = await fetch(url, { signal: abortRef.current?.signal }).then(r => r.json());
-        setHourlyForecast(data);
-      } catch (err) {
-        if (err.name !== 'AbortError') setError(err.message);
-      }
-      return;
-    }
+    if (isPreviewMode) return; // handled by fetchCurrentPreview combined call
 
     try {
       const data = await apiFetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
@@ -271,30 +274,20 @@ export function useWeather(profile) {
     }
   }, [isPreviewMode]);
 
-  // ── Air quality — station uses proxy; preview/explore calls Open-Meteo ────
+  // ── Air quality — all modes call Open-Meteo directly from the browser ────
   const fetchAirQuality = useCallback(async () => {
     const loc = locationRef.current;
     if (!loc) return;
 
-    if (isPreviewMode) {
-      try {
-        const { lat, lon } = loc;
-        const url = `${OM_AQ}?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&timezone=auto`;
-        const data = await fetch(url, { signal: abortRef.current?.signal }).then(r => r.json());
-        setAirQuality(data);
-      } catch (err) {
-        if (err.name !== 'AbortError') setError(err.message);
-      }
-      return;
-    }
-
     try {
-      const data = await apiFetch(`/api/weather?type=air-quality&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
+      const { lat, lon } = loc;
+      const url = `${OM_AQ}?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&timezone=auto`;
+      const data = await fetch(url, { signal: abortRef.current?.signal }).then(r => r.json());
       setAirQuality(data);
     } catch (err) {
-      if (err.name !== 'AbortError') setError(err.message);
+      if (err.name !== 'AbortError') setError('Air quality unavailable');
     }
-  }, [isPreviewMode]);
+  }, []);
 
   // Clear forecast/hourly/AQ caches when the data source location changes
   const dataSourceKey = isPreviewMode

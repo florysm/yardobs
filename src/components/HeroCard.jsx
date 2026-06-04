@@ -261,6 +261,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
 
   const switchView = (newView) => {
     if (newView === view) return;
+    if (insightLoading) return;
     setContentFade(false);
     setTimeout(() => {
       setView(newView);
@@ -271,7 +272,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
 
   // Fetch AI daily insight when insights view is active
   useEffect(() => {
-    if (view !== 'insights' || !current) return;
+    if (view !== 'insights' || !current || !hourlyForecast) return;
 
     // Use location label as cache/API key in preview mode
     const insightId = stationId || current?.neighborhood || 'preview';
@@ -333,7 +334,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
 
     run();
     return () => { cancelled = true; };
-  }, [view, current, stationId, fetchHistoryDaily]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, current, stationId, fetchHistoryDaily, hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function deriveFromSensors(obs) {
     const precip = obs.precipRate ?? 0;
@@ -342,12 +343,20 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     if (!obs.isDay)    return { icon: '🌙',  label: 'Clear' };
     if ((obs.uv ?? 0) >= 6)                        return { icon: '☀️', label: 'Sunny' };
     if (obs.solar != null && obs.solar < 150)       return { icon: '☁️', label: 'Cloudy' };
+    if (obs.solar != null && obs.solar >= 450)      return { icon: '☀️', label: 'Sunny' };
     return { icon: '🌤️', label: 'Partly Cloudy' };
   }
 
+  const PARTLY_CODES = new Set([23, 24, 29, 30]);
   const derived = current
     ? (current.iconCode != null
-        ? { icon: ICONS[current.iconCode] ?? '🌡️', label: LABELS[current.iconCode] ?? 'Clear' }
+        ? (() => {
+            if (PARTLY_CODES.has(current.iconCode) && (current.isDay ?? 1)) {
+              if ((current.uv ?? 0) >= 5 || (current.solar ?? 0) >= 450)
+                return { icon: '☀️', label: 'Sunny' };
+            }
+            return { icon: ICONS[current.iconCode] ?? '🌡️', label: LABELS[current.iconCode] ?? 'Clear' };
+          })()
         : deriveFromSensors(current))
     : null;
 

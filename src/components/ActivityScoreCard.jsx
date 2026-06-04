@@ -337,7 +337,7 @@ function ScoreRing({ score }) {
   const circ = 2 * Math.PI * r;
   const offset = circ * (1 - score / 100);
   return (
-    <div style={{ position: 'relative', width: 52, height: 52, flexShrink: 0 }}>
+    <div role="img" aria-label="Activity score ring" style={{ position: 'relative', width: 52, height: 52, flexShrink: 0 }}>
       <svg width="52" height="52" viewBox="0 0 52 52" style={{ transform: 'rotate(-90deg)' }}>
         <circle cx="26" cy="26" r={r} fill="none" stroke="var(--border)" strokeWidth="4" />
         <circle
@@ -404,7 +404,7 @@ function TimeArc({ arcData, bestWindow }) {
   );
 
   return (
-    <div>
+    <div role="img" aria-label="Hourly activity score timeline">
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 44 }}>
         {arcData.map(({ hour, score }) => {
           const isPeak = peakHours.has(hour);
@@ -561,8 +561,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
           setInsight(text);
         })
         .catch(err => {
-          if (err.name === 'AbortError') return;
-          console.error('[insight:activity]', err);
+          if (err.name === 'AbortError' || controller.signal.aborted) return;
           iCache.current[iKey] = { text: '', ts: Date.now() };
           setInsight('');
           onError?.('Could not load activity insight');
@@ -573,7 +572,11 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
   }, [activeId, currentWithThreat]);
 
   if (!current) {
-    return <div className="y-card" style={{ height: 120, opacity: 0.5 }} />;
+    return (
+      <div className="y-card" style={{ height: 120, opacity: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, color: 'var(--tm)', fontStyle: 'italic' }}>Waiting for weather data…</span>
+      </div>
+    );
   }
 
   return (

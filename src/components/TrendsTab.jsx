@@ -320,6 +320,7 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
   const today          = new Date();
   const lyKey          = toDateStr(addDays(today, -365));
   const lyYesterdayKey = toDateStr(addDays(today, -366));
+  const lyDailyKeys    = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(today, -(6 - i) - 365)));
 
   const lyRainKeys = range === '24h'
     ? [lyKey]
@@ -357,6 +358,9 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
         toDateStr(addDays(new Date(), -(count - 1 - i)))
       );
       tasks = keys.map(k => fetchHistoryDaily(k));
+      if (showYoY && range === '7d') {
+        tasks.push(...lyDailyKeys.map(k => fetchHistoryDaily(k)));
+      }
     }
     Promise.all(tasks).finally(() => setLoading(false));
   }, [stationId, range, lyKey, lyYesterdayKey, showYoY, ensureFetched, fetchHistoryRecent, fetchHistoryDaily]);
@@ -381,11 +385,18 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
       ...row,
       [`ly_${metric}`]: lyObs[i]?.[metric] ?? null,
     }));
+  } else if (range === '7d') {
+    const keys = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(today, -(6 - i))));
+    chartData = keys.map((key, i) => {
+      const row = mergeDay((historyDaily[key] ?? [])[0]);
+      if (!row) return null;
+      if (showYoY) {
+        row[`ly_${metric}`] = mergeDay((historyDaily[lyDailyKeys[i]] ?? [])[0])?.[metric] ?? null;
+      }
+      return row;
+    }).filter(Boolean);
   } else {
-    const count = range === '30d' ? 30 : 7;
-    const keys  = Array.from({ length: count }, (_, i) =>
-      toDateStr(addDays(today, -(count - 1 - i)))
-    );
+    const keys = Array.from({ length: 30 }, (_, i) => toDateStr(addDays(today, -(29 - i))));
     chartData = keys
       .map(key => mergeDay((historyDaily[key] ?? [])[0]))
       .filter(Boolean);
@@ -509,8 +520,7 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
           <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--tm)', fontWeight: 500 }}>
             {metaCurrent.label} · {RANGES.find(r => r.id === range)?.label}
           </div>
-          {/* YoY toggle only makes sense for 24h (single-day comparison) */}
-          {range === '24h' && (
+          {range !== '30d' ? (
             <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--ts)', cursor: 'pointer' }}>
               <span>vs last year</span>
               <span style={{ position: 'relative', width: 34, height: 19, display: 'inline-block' }}>
@@ -530,10 +540,21 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
                 }} />
               </span>
             </label>
+          ) : (
+            <label
+              title="Year-over-year available for 24h and 7-day views"
+              style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--ts)', opacity: 0.4, cursor: 'not-allowed' }}
+            >
+              <span>vs last year</span>
+              <span style={{ position: 'relative', width: 34, height: 19, display: 'inline-block' }}>
+                <span style={{ position: 'absolute', inset: 0, background: 'var(--border)', borderRadius: 50 }} />
+                <span style={{ position: 'absolute', top: 3, left: 3, width: 13, height: 13, background: 'var(--bg)', borderRadius: '50%', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+              </span>
+            </label>
           )}
         </div>
 
-        {showYoY && range === '24h' && (
+        {showYoY && range !== '30d' && (
           <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--tm)', marginBottom: 8 }}>
             <span>
               <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.accent }} />
@@ -547,15 +568,17 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
         )}
 
         {loading ? (
-          <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm)', fontSize: 12 }}>
-            Loading…
-          </div>
+          <div style={{
+            height: 160, borderRadius: 12,
+            background: 'var(--border)',
+            animation: 'shimmer 1.5s ease-in-out infinite',
+          }} />
         ) : chartData.length === 0 ? (
           <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm)', fontSize: 12 }}>
             No data available
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={160}>
+          <ResponsiveContainer width="100%" height={160} role="img" aria-label={`${metaCurrent.label} chart for the past ${RANGES.find(r => r.id === range)?.label}`}>
             <LineChart data={chartData} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={`${chartColors.accent}22`} />
               <XAxis dataKey="time" tick={{ fontSize: 9, fill: chartColors.accent, fontFamily: 'monospace' }}
@@ -563,7 +586,7 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
               <YAxis domain={domain} tick={{ fontSize: 9, fill: chartColors.accent, fontFamily: 'monospace' }}
                 tickLine={false} axisLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              {showYoY && range === '24h' && (
+              {showYoY && range !== '30d' && (
                 <Line type="monotone" dataKey={`ly_${metric}`} name="Last year"
                   stroke={chartColors.yoy} strokeWidth={1.5} strokeDasharray="6 3"
                   dot={false} connectNulls />

@@ -31,12 +31,15 @@ function resolveAutoTheme(current) {
     const stormy = [0, 1, 2, 3, 4, 17, 37, 38, 47];
     const rainy   = [5, 6, 8, 9, 10, 11, 12, 35, 39, 40, 45];
     const cloudy  = [7, 13, 14, 15, 16, 18, 19, 20, 21, 22, 25, 26, 27, 28, 41, 42, 43, 46];
-    const partly  = [23, 24, 29, 30, 33, 34];
+    const partly  = [23, 24, 29, 30];
     if (stormy.includes(iconCode)) return 'stormy';
     if (rainy.includes(iconCode))  return 'rainy';
     if (cloudy.includes(iconCode)) return 'cloudy';
     if (!isDay) return 'dark';
-    if (partly.includes(iconCode)) return 'light';
+    if (partly.includes(iconCode)) {
+      if ((current?.uv ?? 0) >= 5 || (current?.solar ?? 0) >= 450) return 'sunny';
+      return 'light';
+    }
     return 'sunny';
   }
 
@@ -190,6 +193,7 @@ export default function App() {
             <NowTab
               current={currentWithAQI}
               isLoading={isLoading}
+              error={error}
               stationId={stationId}
               hourlyForecast={hourlyForecast}
               onError={setComponentError}

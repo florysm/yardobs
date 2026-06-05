@@ -23,3 +23,15 @@ export const LABELS = {
 // ICONS and ICON_EMOJI are identical — ICON_EMOJI is an alias kept for
 // ForecastTab readability where emoji-only lookup is the intent.
 export const ICON_EMOJI = ICONS;
+
+export const WMO_EMOJI = {
+  0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
+  45:'🌫️', 48:'🌫️',
+  51:'🌦️', 53:'🌧️', 55:'🌧️', 56:'🌧️', 57:'🌧️',
+  61:'🌦️', 63:'🌧️', 65:'🌧️', 66:'🌧️', 67:'🌧️',
+  71:'🌨️', 73:'🌨️', 75:'❄️', 77:'❄️',
+  80:'🌦️', 81:'🌧️', 82:'🌧️', 85:'🌨️', 86:'❄️',
+  95:'⛈️', 96:'⛈️', 99:'⛈️',
+};
+
+export const NIGHT_ICON = { 0: '🌙', 1: '🌙', 2: '☁️' };

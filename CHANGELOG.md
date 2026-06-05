@@ -2,6 +2,16 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-06-05
+
+### Added
+- Tap any day in the 7-day forecast to see an AI-generated outlook for that day — what conditions will feel like and what to plan for
+
+### Fixed
+- Preview mode now shows the correct nighttime theme when skies are clear at night (previously used the daytime sunny theme)
+- The hourly forecast strip now scrolls and lays out correctly on narrow screens instead of breaking layout
+- Radar tab now shows an error message if radar data fails to load, instead of staying blank
+
 ## [1.0.0] - 2026-06-04
 
 ### Added

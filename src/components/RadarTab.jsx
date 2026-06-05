@@ -91,7 +91,7 @@ function formatTime(unixSec) {
   return new Date(unixSec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function RadarTab({ lat, lon, isLoading }) {
+export default function RadarTab({ lat, lon, isLoading, onError }) {
   const [frames, setFrames]         = useState([]);
   const [pastCount, setPastCount]   = useState(0);
   const [host, setHost]             = useState('');
@@ -116,7 +116,7 @@ export default function RadarTab({ lat, lon, isLoading }) {
           setFrameIndex(past.length - 1); // start on most recent observed frame
         }
       })
-      .catch(e => { if (!cancelled) setFetchError(e.message); });
+      .catch(e => { if (!cancelled) { setFetchError(e.message); onError?.('Radar data unavailable'); } });
     return () => { cancelled = true; };
   }, []);
 

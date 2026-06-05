@@ -1,21 +1,9 @@
 import { useRef, useState, useEffect } from 'react';
 import SunCalc from 'suncalc';
 import { fmt, fmtHourIso, fmtSunTime, fmtMoonTime } from '../utils/format';
-import { ICON_EMOJI } from '../utils/weatherIcons';
-
-
-const WMO_EMOJI = {
-  0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
-  45:'🌫️', 48:'🌫️',
-  51:'🌦️', 53:'🌧️', 55:'🌧️', 56:'🌧️', 57:'🌧️',
-  61:'🌦️', 63:'🌧️', 65:'🌧️', 66:'🌧️', 67:'🌧️',
-  71:'🌨️', 73:'🌨️', 75:'❄️', 77:'❄️',
-  80:'🌦️', 81:'🌧️', 82:'🌧️', 85:'🌨️', 86:'❄️',
-  95:'⛈️', 96:'⛈️', 99:'⛈️',
-};
-
-// WMO codes with sun icons — night overrides (no standard moon-with-cloud emoji)
-const NIGHT_ICON = { 0: '🌙', 1: '🌙', 2: '☁️' };
+import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
+import { toISODate } from '../utils/dateUtils';
+import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
 
 function buildHours(hf) {
   const h = hf?.hourly;
@@ -70,14 +58,20 @@ function buildDays(forecast) {
   const { dayOfWeek = [], temperatureMax = [], temperatureMin = [], daypart = [] } = forecast;
   const icons = daypart?.[0]?.iconCode ?? [];
   const pops  = daypart?.[0]?.precipChance ?? [];
-  return dayOfWeek.map((dow, i) => ({
-    dayOfWeek: dow,
-    tempMax:   temperatureMax[i],
-    tempMin:   temperatureMin[i],
-    icon:      ICON_EMOJI[icons[i * 2] ?? icons[i]] ?? '🌡️',
-    pop:       pops[i * 2] ?? pops[i],
-    isToday:   i === 0,
-  }));
+  const today = new Date();
+  return dayOfWeek.map((dow, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    return {
+      dayOfWeek: dow,
+      tempMax:   temperatureMax[i],
+      tempMin:   temperatureMin[i],
+      icon:      ICON_EMOJI[icons[i * 2] ?? icons[i]] ?? '🌡️',
+      pop:       pops[i * 2] ?? pops[i],
+      isToday:   i === 0,
+      date:      toISODate(d),
+    };
+  });
 }
 
 function fmtDaylight(riseStr, setStr) {
@@ -163,10 +157,43 @@ function Skeleton() {
   );
 }
 
-export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon, todayObservedHigh }) {
+function ForecastDayInsight({ insight, isLoading }) {
+  return (
+    <div className="y-card" style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
+        <div className="live-dot" style={{ background: 'var(--tm)' }} />
+        <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, color: 'var(--tm)' }}>AI</div>
+      </div>
+      {isLoading ? (
+        <div style={{ fontSize: 14, color: 'var(--tm)', fontStyle: 'italic', lineHeight: 1.65 }}>
+          Analyzing forecast…
+        </div>
+      ) : insight?.narrative ? (
+        <>
+          <p style={{ fontSize: 14, color: 'var(--tp)', lineHeight: 1.65, margin: '0 0 10px', fontWeight: 300, fontFamily: 'var(--font-body)' }}>
+            {insight.narrative}
+          </p>
+          <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: '0.3px' }}>
+            {insight.updatedAt ? `Updated ${insight.updatedAt} · refreshes hourly` : 'Refreshes hourly'}
+          </div>
+        </>
+      ) : (
+        <p style={{ fontSize: 13, color: 'var(--tm)', fontStyle: 'italic', margin: 0 }}>
+          Forecast insight unavailable right now.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon, todayObservedHigh, stationId, sourceType }) {
   const scrollRef = useRef(null);
   const groupRefs = useRef([]);
   const [activeLabel, setActiveLabel] = useState(null);
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [dayInsight, setDayInsight] = useState(null);
+  const [dayInsightLoading, setDayInsightLoading] = useState(false);
+  const dayInsightCancelRef = useRef(null);
 
   const groups = groupByDay(hourlyForecast ? buildHours(hourlyForecast) : []);
 
@@ -175,6 +202,68 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
   // groups is derived from hourlyForecast every render; using it as a dep would
   // trigger this effect on every render. hourlyForecast is the true signal.
   }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const days = buildDays(forecast);
+    if (!days.length) return;
+    const day = days[selectedDayIndex];
+    if (!day) return;
+
+    const insightId = stationId || 'preview';
+    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date);
+
+    try {
+      const raw = localStorage.getItem(lsKey);
+      if (raw) {
+        const { data, ts } = JSON.parse(raw);
+        if (Date.now() - ts < INSIGHT_TTL_MS) {
+          setDayInsight(data);
+          setDayInsightLoading(false);
+          return;
+        }
+      }
+    } catch {}
+
+    if (dayInsightCancelRef.current) dayInsightCancelRef.current.cancelled = true;
+    const cancelToken = { cancelled: false };
+    dayInsightCancelRef.current = cancelToken;
+
+    setDayInsightLoading(true);
+    setDayInsight(null);
+
+    (async () => {
+      try {
+        const res = await fetch('/api/insight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'forecast-day',
+            stationId: insightId,
+            date: day.date,
+            dayLabel: day.isToday ? 'Today' : day.dayOfWeek,
+            tempMax: day.tempMax,
+            tempMin: day.tempMin,
+            pop: day.pop,
+            icon: day.icon,
+            sourceType: sourceType ?? 'pws',
+          }),
+        });
+        if (!res.ok) throw new Error(res.status);
+        const json = await res.json();
+        if (cancelToken.cancelled) return;
+        const updatedAt = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const stored = { narrative: json.narrative ?? '', updatedAt };
+        try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
+        setDayInsight(stored);
+      } catch {
+        if (!cancelToken.cancelled) setDayInsight({ narrative: '', updatedAt: '' });
+      } finally {
+        if (!cancelToken.cancelled) setDayInsightLoading(false);
+      }
+    })();
+
+    return () => { cancelToken.cancelled = true; };
+  }, [selectedDayIndex, forecast, stationId, sourceType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <Skeleton />;
 
@@ -224,8 +313,9 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
           <div
             ref={scrollRef}
             onScroll={handleHourlyScroll}
-            style={{ display: 'flex', overflowX: 'auto', paddingBottom: 4, marginBottom: 20, alignItems: 'flex-start' }}
+            style={{ overflowX: 'auto', paddingBottom: 4, marginBottom: 20 }}
           >
+            <div style={{ display: 'inline-flex', alignItems: 'flex-start' }}>
             {groups.map((group, gi) => (
               <div
                 key={group.date}
@@ -243,7 +333,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
                       ...(hr.isNow ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
                     }}
                   >
-                    <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>
+                    <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                       {hr.isNow ? 'Now' : fmtHourIso(hr.time)}
                     </div>
                     <div style={{ fontSize: 20, margin: '6px 0 3px' }} aria-hidden="true">{hr.icon}</div>
@@ -257,6 +347,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
                 ))}
               </div>
             ))}
+            </div>
           </div>
         </>
       )}
@@ -271,12 +362,13 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
           <div
             key={i}
             className="fc-card"
+            onClick={() => setSelectedDayIndex(i)}
             style={{
               flex: '0 0 70px',
               padding: '12px 8px',
               textAlign: 'center',
-              cursor: 'default',
-              ...(day.isToday ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
+              cursor: 'pointer',
+              ...(i === selectedDayIndex ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
             }}
           >
             <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>
@@ -295,6 +387,8 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
           </div>
         ))}
       </div>
+
+      <ForecastDayInsight insight={dayInsight} isLoading={dayInsightLoading} />
 
       {/* Sunrise / Sunset — arc progress; flips to Moon card after dusk */}
       {hourlyForecast?.daily && (() => {

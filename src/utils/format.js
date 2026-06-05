@@ -1,3 +1,13 @@
+export function aqiCategory(aqi) {
+  if (aqi == null) return null;
+  if (aqi <= 50)  return 'Good';
+  if (aqi <= 100) return 'Moderate';
+  if (aqi <= 150) return 'Sensitive Groups';
+  if (aqi <= 200) return 'Unhealthy';
+  if (aqi <= 300) return 'Very Unhealthy';
+  return 'Hazardous';
+}
+
 export function fmt(val, digits = 0) {
   if (val == null || isNaN(val)) return '—';
   return Number(val).toFixed(digits);

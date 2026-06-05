@@ -1,6 +1,6 @@
 # Tech Debt
 
-Last updated: 2026-06-02
+Last updated: 2026-06-05
 
 <!-- Run /codecleaner to populate this file. Run /debtpayer to address one item. -->
 
@@ -9,4 +9,3 @@ Last updated: 2026-06-02
 ## Medium Priority
 
 ## Lower Priority
-

@@ -91,6 +91,8 @@ export const THEMES = {
   },
 };
 
+export const THEME_IDS = Object.fromEntries(Object.keys(THEMES).map(k => [k, k]));
+
 export const CHART_COLORS = Object.fromEntries(
   Object.entries(THEMES).map(([id, t]) => [id, { accent: t.accent, yoy: t.yoy, tempHigh: t.tempHigh, tempLow: t.tempLow }])
 );

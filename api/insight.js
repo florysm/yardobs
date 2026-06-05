@@ -37,19 +37,29 @@ function evictOne() {
 }
 
 import { applyCors } from './lib/cors.js';
-import { degreesToCompass } from '../src/utils/format.js';
-
-function aqiCategory(v) {
-  if (v == null) return 'unknown';
-  if (v <= 50)  return 'Good';
-  if (v <= 100) return 'Moderate';
-  if (v <= 150) return 'Unhealthy for Sensitive Groups';
-  if (v <= 200) return 'Unhealthy';
-  return 'Very Unhealthy / Hazardous';
-}
+import { degreesToCompass, aqiCategory } from '../src/utils/format.js';
 
 function isOverloaded(err) {
   return err.status === 529 || err.message?.startsWith('529');
+}
+
+function getCacheHit(key) {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  return (Date.now() - hit.ts) < CACHE_TTL_MS ? hit : null;
+}
+
+function requireApiKey(res) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) { res.status(503).json({ error: 'Insight service not configured' }); return null; }
+  return apiKey;
+}
+
+function handleInsightError(res, err, tag, overloadedPayload) {
+  const overloaded = isOverloaded(err);
+  console.error(`[insight:${tag}] API error${overloaded ? ' (overloaded)' : ''}:`, err.message);
+  if (overloaded) return res.status(200).json(overloadedPayload);
+  return res.status(502).json({ error: 'Insight service error' });
 }
 
 // ── Activity insight ──────────────────────────────────────────────────────────
@@ -67,14 +77,11 @@ async function handleActivityInsight(req, res) {
   const isPreview = sourceType === 'forecast_model';
   const key = (isPreview ? 'preview|' : '') + activityCacheKey(stationId ?? 'unknown', activity, score, c, period);
 
-  const hit = cache.get(key);
-  const age = hit ? Date.now() - hit.ts : Infinity;
-  if (age >= 0 && age < CACHE_TTL_MS) {
-    return res.status(200).json({ insight: hit.text });
-  }
+  const hit = getCacheHit(key);
+  if (hit) return res.status(200).json({ insight: hit.text });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'Insight service not configured' });
+  const apiKey = requireApiKey(res);
+  if (!apiKey) return;
 
   const topFactors = [...(factors ?? [])]
     .sort((a, b) => a.score - b.score)
@@ -110,7 +117,7 @@ ${rainWindow}
 Conditions right now:
 - ${c?.temp ?? '?'}°F, feels like ${c?.feelsLike ?? '?'}°F (${feelsLikeLabel}), dew point ${c?.dewPoint ?? '?'}°F
 - Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusts to ${c?.windGust ?? '?'} mph
-- Humidity: ${c?.humidity ?? '?'}%, UV ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi)})
+- Humidity: ${c?.humidity ?? '?'}%, UV ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi) ?? 'unknown'})
 - ${rainLine}${pavementLine}
 
 In 2 sentences: assess conditions using the limiting factors and specific values. End with one actionable tip (timing, gear, or modification).`;
@@ -128,14 +135,11 @@ In 2 sentences: assess conditions using the limiting factors and specific values
       messages: [{ role: 'user', content: prompt }],
     });
     const text = msg.content[0]?.text?.trim() ?? '';
+    if (cache.size >= CACHE_MAX_SIZE) evictOne();
     cache.set(key, { text, ts: Date.now() });
-    if (cache.size > CACHE_MAX_SIZE) evictOne();
     return res.status(200).json({ insight: text });
   } catch (err) {
-    const overloaded = isOverloaded(err);
-    console.error(`[insight:activity] API error${overloaded ? ' (overloaded)' : ''}:`, err.message);
-    if (overloaded) return res.status(200).json({ insight: 'Insight temporarily unavailable — API is busy. Try again in a moment.' });
-    return res.status(502).json({ error: 'Insight service error' });
+    return handleInsightError(res, err, 'activity', { insight: 'Insight temporarily unavailable — API is busy. Try again in a moment.' });
   }
 }
 
@@ -153,14 +157,11 @@ async function handleDailyInsight(req, res) {
   const precipBucket  = Math.round((forecastSummary?.maxPrecipProb ?? 0) / 20) * 20;
   const key = `${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${precipBucket}|${period ?? 'morning'}`;
 
-  const hit = cache.get(key);
-  const age = hit ? Date.now() - hit.ts : Infinity;
-  if (age >= 0 && age < CACHE_TTL_MS) {
-    return res.status(200).json(hit.data);
-  }
+  const hit = getCacheHit(key);
+  if (hit) return res.status(200).json(hit.data);
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'Insight service not configured' });
+  const apiKey = requireApiKey(res);
+  if (!apiKey) return;
 
   const dir = degreesToCompass(c?.windDir) || 'variable';
 
@@ -201,7 +202,7 @@ Right now:
 - Temp: ${c?.temp ?? '?'}°F (feels ${c?.feelsLike ?? '?'}°F), humidity ${c?.humidity ?? '?'}%, dew point ${c?.dewPoint ?? '?'}°F
 - Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusting ${c?.windGust ?? '?'} mph
 - Pressure: ${c?.pressure ?? '?'} inHg
-- UV index: ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi)})${rainLine}${forecastContext}${yoyDelta}
+- UV index: ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi) ?? 'unknown'})${rainLine}${forecastContext}${yoyDelta}
 
 Return:
 {
@@ -240,14 +241,49 @@ Return only the JSON object, no markdown, no other text.`;
       console.error('[insight:daily] JSON parse error:', parseErr.message);
     }
 
+    if (cache.size >= CACHE_MAX_SIZE) evictOne();
     cache.set(key, { data, ts: Date.now() });
-    if (cache.size > CACHE_MAX_SIZE) evictOne();
     return res.status(200).json(data);
   } catch (err) {
-    const overloaded = isOverloaded(err);
-    console.error(`[insight:daily] API error${overloaded ? ' (overloaded)' : ''}:`, err.message);
-    if (overloaded) return res.status(200).json({ narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.', tags: [] });
-    return res.status(502).json({ error: 'Insight service error' });
+    return handleInsightError(res, err, 'daily', { narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.', tags: [] });
+  }
+}
+
+// ── Forecast-day insight ──────────────────────────────────────────────────────
+
+async function handleForecastDayInsight(req, res) {
+  const { stationId, date, dayLabel, tempMax, tempMin, pop, icon } = req.body ?? {};
+  const key = `fcday|${stationId ?? 'preview'}|${date}`;
+
+  const hit = getCacheHit(key);
+  if (hit) return res.status(200).json({ narrative: hit.text });
+
+  const apiKey = requireApiKey(res);
+  if (!apiKey) return;
+
+  const SYSTEM = 'You are a concise weather outlook writer for YardObs. Write in second person. Given a daily forecast summary, write 2–3 sentences describing what the day will feel like and what to expect. Lead with the most notable condition. Be practical and specific. No bullets, headers, or sign-off phrases. Return only the narrative text.';
+
+  const prompt = `Day: ${dayLabel ?? date}
+Forecast: high ${tempMax ?? '?'}°F / low ${tempMin ?? '?'}°F
+Conditions: ${icon ?? ''}
+Precipitation chance: ${pop ?? 0}%
+
+Write 2–3 sentences describing this forecast day.`;
+
+  try {
+    const client = new Anthropic({ apiKey, maxRetries: 3 });
+    const msg = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 180,
+      system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = msg.content[0]?.text?.trim() ?? '';
+    if (cache.size >= CACHE_MAX_SIZE) evictOne();
+    cache.set(key, { text, ts: Date.now() });
+    return res.status(200).json({ narrative: text });
+  } catch (err) {
+    return handleInsightError(res, err, 'forecast-day', { narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.' });
   }
 }
 
@@ -260,6 +296,7 @@ export default async function handler(req, res) {
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? 'unknown';
   if (isRateLimited(ip)) return res.status(429).json({ error: 'Rate limit exceeded. Try again shortly.' });
 
-  if (req.body?.type === 'daily') return handleDailyInsight(req, res);
+  if (req.body?.type === 'daily')        return handleDailyInsight(req, res);
+  if (req.body?.type === 'forecast-day') return handleForecastDayInsight(req, res);
   return handleActivityInsight(req, res);
 }

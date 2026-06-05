@@ -1,16 +1,6 @@
 import ActivityScoreCard from './ActivityScoreCard';
 import MetricCard from './MetricCard';
-import { fmt } from '../utils/format';
-
-function aqiLabel(aqi) {
-  if (aqi == null) return null;
-  if (aqi <= 50)  return 'Good';
-  if (aqi <= 100) return 'Moderate';
-  if (aqi <= 150) return 'Sensitive Groups';
-  if (aqi <= 200) return 'Unhealthy';
-  if (aqi <= 300) return 'Very Unhealthy';
-  return 'Hazardous';
-}
+import { fmt, aqiCategory } from '../utils/format';
 
 function beaufort(mph) {
   if (mph == null) return '—';
@@ -55,7 +45,7 @@ export default function NowTab({ current, isLoading, error, stationId, hourlyFor
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
         <MetricCard icon="🌡️" label="Dew Point" value={fmt(current?.dewPoint)} unit="°F" />
         <MetricCard icon="💨" label="Wind Gust" value={fmt(current?.windGust)} unit=" mph" trend={current?.windGust != null ? beaufort(current.windGust) : undefined} />
-        <MetricCard icon="🌬️" label="Air Quality" value={fmt(current?.aqi)} unit=" AQI" trend={aqiLabel(current?.aqi)} />
+        <MetricCard icon="🌬️" label="Air Quality" value={fmt(current?.aqi)} unit=" AQI" trend={aqiCategory(current?.aqi)} />
         <MetricCard
           icon="🌧️"
           label="Rain Rate"

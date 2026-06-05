@@ -8,10 +8,10 @@ const POLL_MS = 5 * 60 * 1000;
 // Converts Open-Meteo WMO weather codes to approximate TWC icon codes so that
 // resolveAutoTheme and ForecastTab's buildDays (which both expect TWC codes) work
 // without modification in preview mode.
-function wmoToTwc(code) {
+function wmoToTwc(code, isDay = 1) {
   if (code == null) return null;
-  if (code === 0) return 32;     // Clear sky → sunny
-  if (code <= 2) return 34;      // Mainly/partly clear → partly sunny
+  if (code === 0) return isDay ? 32 : 31;   // Clear sky → Sunny (day) / Clear (night)
+  if (code <= 2) return isDay ? 34 : 33;    // Mainly/partly clear → Fair (day/night)
   if (code === 3) return 26;     // Overcast → cloudy
   if (code <= 48) return 20;     // Fog/rime fog → haze
   if (code <= 55) return 9;      // Drizzle → light rain
@@ -83,7 +83,7 @@ export function useWeather(profile) {
           );
           const omData = await omRes.json();
           if (omData.current?.weather_code != null) {
-            resolvedIconCode = wmoToTwc(omData.current.weather_code);
+            resolvedIconCode = wmoToTwc(omData.current.weather_code, obs.isDay ?? 1);
           }
         } catch { /* non-fatal — falls back to TWC iconCode */ }
       }
@@ -153,7 +153,7 @@ export function useWeather(profile) {
         precipTotal: null,
         uv:          c.uv_index                 ?? null,
         solar:       null,
-        iconCode:    wmoToTwc(c.weather_code),
+        iconCode:    wmoToTwc(c.weather_code, c.is_day ?? 1),
         isDay:       c.is_day                   ?? 1,
         stationId:   null,
         neighborhood: previewLabel              ?? null,

@@ -9,4 +9,5 @@ export const STORAGE_KEYS = {
   DEFAULT_ACTIVITY: 'yardobs-default-activity',
   insightKey: (stationId, today, period) => `yardobs-insight-${stationId}-${today}-${period}`,
   activityInsightKey: (stationId, activityId, period) => `yardobs-activity-insight-${stationId}-${activityId}-${period}`,
+  forecastDayInsightKey: (stationId, date) => `yardobs-fcday-insight-${stationId}-${date}`,
 };

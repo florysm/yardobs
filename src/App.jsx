@@ -9,7 +9,7 @@ import SettingsDrawer from './components/SettingsDrawer';
 import ErrorBoundary from './components/ErrorBoundary';
 import LocationSetup from './components/LocationSetup';
 import { useWeather } from './hooks/useWeather';
-import { CHART_COLORS, META_COLORS } from './themes.js';
+import { CHART_COLORS, META_COLORS, THEME_IDS } from './themes.js';
 import { STORAGE_KEYS } from './utils/storageKeys';
 import { toDateStr } from './utils/dateUtils';
 
@@ -32,29 +32,29 @@ function resolveAutoTheme(current) {
     const rainy   = [5, 6, 8, 9, 10, 11, 12, 35, 39, 40, 45];
     const cloudy  = [7, 13, 14, 15, 16, 18, 19, 20, 21, 22, 25, 26, 27, 28, 41, 42, 43, 46];
     const partly  = [23, 24, 29, 30];
-    if (stormy.includes(iconCode)) return 'stormy';
-    if (rainy.includes(iconCode))  return 'rainy';
-    if (cloudy.includes(iconCode)) return 'cloudy';
-    if (!isDay) return 'dark';
+    if (stormy.includes(iconCode)) return THEME_IDS.stormy;
+    if (rainy.includes(iconCode))  return THEME_IDS.rainy;
+    if (cloudy.includes(iconCode)) return THEME_IDS.cloudy;
+    if (!isDay) return THEME_IDS.dark;
     if (partly.includes(iconCode)) {
-      if ((current?.uv ?? 0) >= 5 || (current?.solar ?? 0) >= 450) return 'sunny';
-      return 'light';
+      if ((current?.uv ?? 0) >= 5 || (current?.solar ?? 0) >= 450) return THEME_IDS.sunny;
+      return THEME_IDS.light;
     }
-    return 'sunny';
+    return THEME_IDS.sunny;
   }
 
   // PWS sensor fallback — iconCode absent from this API endpoint
   if (current) {
     const precip = current.precipRate ?? 0;
-    if (precip > 0.05) return isDay ? 'rainy' : 'stormy';
-    if (precip > 0)    return 'rainy';
-    if (!isDay)        return 'dark';
-    if ((current.uv ?? 0) >= 6) return 'sunny';
-    if (current.solar != null && current.solar < 150) return 'cloudy';
-    return 'light';
+    if (precip > 0.05) return isDay ? THEME_IDS.rainy : THEME_IDS.stormy;
+    if (precip > 0)    return THEME_IDS.rainy;
+    if (!isDay)        return THEME_IDS.dark;
+    if ((current.uv ?? 0) >= 6) return THEME_IDS.sunny;
+    if (current.solar != null && current.solar < 150) return THEME_IDS.cloudy;
+    return THEME_IDS.light;
   }
 
-  return isDay ? 'light' : 'dark';
+  return isDay ? THEME_IDS.light : THEME_IDS.dark;
 }
 
 function initProfile() {
@@ -225,7 +225,7 @@ export default function App() {
         )}
         {activeTab === 'forecast' && (
           <ErrorBoundary>
-            <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} />
+            <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} stationId={stationId} sourceType={current?.sourceType ?? null} />
           </ErrorBoundary>
         )}
         {activeTab === 'radar' && (
@@ -235,6 +235,7 @@ export default function App() {
                 lat={current?.lat ?? null}
                 lon={current?.lon ?? null}
                 isLoading={isLoading}
+                onError={setComponentError}
               />
             </Suspense>
           </ErrorBoundary>

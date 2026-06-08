@@ -204,7 +204,7 @@ export default function App() {
         {activeTab === 'trends' && (
           <ErrorBoundary>
             <Suspense fallback={<LazyTabFallback />}>
-              {(isPreview || isExploring) ? (
+              {(isPreview || isExploring || !stationId) ? (
                 <TrendsLockedPlaceholder onOpenSettings={() => setSettingsOpen(true)} />
               ) : (
                 <TrendsTab

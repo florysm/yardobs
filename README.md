@@ -114,7 +114,7 @@ yardobs/
 
 ### Option A — Preview Mode (no weather station required)
 
-Visit [yardobs.vercel.app](https://yardobs.vercel.app) and choose **Preview Mode** at the prompt — type any city name and explore the full UI with forecast, radar, and activity scoring. No API keys or hardware needed.
+Visit [yardobs.app](https://yardobs.app) and choose **Preview Mode** at the prompt — type any city name and explore the full UI with forecast, radar, and activity scoring. No API keys or hardware needed.
 
 To run Preview Mode locally, you only need `ANTHROPIC_API_KEY` (for AI insights) — `TWC_API_KEY` and `VITE_PWS_STATION_ID` are optional.
 

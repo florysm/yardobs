@@ -2,6 +2,11 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.2] - 2026-06-08
+
+### Fixed
+- The Trends tab now shows the "connect your weather station" screen again when no station is configured, instead of a generic error
+
 ## [1.1.1] - 2026-06-08
 
 ### Fixed

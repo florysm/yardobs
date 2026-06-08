@@ -53,7 +53,7 @@ function groupByDay(hours) {
   return groups;
 }
 
-function buildDays(forecast) {
+function buildDays(forecast, currentIconCode = null) {
   if (!forecast) return [];
   const { dayOfWeek = [], temperatureMax = [], temperatureMin = [], daypart = [] } = forecast;
   const icons = daypart?.[0]?.iconCode ?? [];
@@ -66,7 +66,7 @@ function buildDays(forecast) {
       dayOfWeek: dow,
       tempMax:   temperatureMax[i],
       tempMin:   temperatureMin[i],
-      icon:      ICON_EMOJI[icons[i * 2] ?? icons[i]] ?? '🌡️',
+      icon:      ICON_EMOJI[icons[i * 2] ?? (i === 0 ? currentIconCode : null)] ?? '🌡️',
       pop:       pops[i * 2] ?? pops[i],
       isToday:   i === 0,
       date:      toISODate(d),
@@ -186,7 +186,7 @@ function ForecastDayInsight({ insight, isLoading }) {
   );
 }
 
-export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon, todayObservedHigh, stationId, sourceType }) {
+export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon, todayObservedHigh, stationId, sourceType, currentIconCode, currentTemp }) {
   const scrollRef = useRef(null);
   const groupRefs = useRef([]);
   const [activeLabel, setActiveLabel] = useState(null);
@@ -204,7 +204,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
   }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const days = buildDays(forecast);
+    const days = buildDays(forecast, currentIconCode);
     if (!days.length) return;
     const day = days[selectedDayIndex];
     if (!day) return;
@@ -278,7 +278,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
     );
   }
 
-  const days = buildDays(forecast);
+  const days = buildDays(forecast, currentIconCode);
 
   function handleHourlyScroll() {
     if (!scrollRef.current) return;
@@ -313,9 +313,9 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
           <div
             ref={scrollRef}
             onScroll={handleHourlyScroll}
-            style={{ overflowX: 'auto', paddingBottom: 4, marginBottom: 20 }}
+            style={{ overflowX: 'auto', paddingBottom: 4, marginBottom: 20, width: '100%' }}
           >
-            <div style={{ display: 'inline-flex', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', width: 'max-content', alignItems: 'flex-start' }}>
             {groups.map((group, gi) => (
               <div
                 key={group.date}
@@ -376,7 +376,11 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             </div>
             <div style={{ fontSize: 22, margin: '8px 0 4px' }} aria-hidden="true">{day.icon}</div>
             <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-              {fmt(day.tempMax ?? (day.isToday ? todayObservedHigh : null))}°
+              {fmt(day.isToday
+                ? (currentTemp != null && currentTemp >= (day.tempMax ?? -Infinity)
+                    ? Math.max(currentTemp, todayObservedHigh ?? currentTemp)
+                    : (day.tempMax ?? todayObservedHigh))
+                : day.tempMax)}°
             </div>
             <div style={{ fontSize: 11, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>
               {fmt(day.tempMin)}°

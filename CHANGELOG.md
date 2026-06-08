@@ -2,6 +2,13 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.1] - 2026-06-08
+
+### Fixed
+- Hourly forecast cards no longer overlap on iPhone — a Safari layout quirk caused cards to collide when scrolling through overnight hours
+- Today's daily forecast card now shows the correct weather icon instead of a thermometer when the daytime forecast period has already passed
+- Today's high temperature now stays accurate throughout the day: shows the projected high until the current temperature exceeds it, then tracks the live reading, and locks to the day's recorded peak once temperatures start dropping
+
 ## [1.1.0] - 2026-06-05
 
 ### Added

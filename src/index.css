@@ -293,7 +293,7 @@ input:focus-visible {
   border: 1px solid var(--border); background: var(--card);
   color: var(--tm); cursor: pointer; font-size: 16px;
   display: flex; align-items: center; justify-content: center;
-  transition: background var(--tr-fast), color var(--tr-fast); backdrop-filter: blur(8px);
+  transition: background var(--tr-fast), color var(--tr-fast); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
 /* Amber warning card (pavement caution, etc.) */
 .warn-card {

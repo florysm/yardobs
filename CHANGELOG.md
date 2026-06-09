@@ -2,6 +2,20 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] - 2026-06-09
+
+### Added
+- Hourly forecast now uses NOAA / National Weather Service as the primary source for US locations — NWS data is better at capturing convective events. Open-Meteo remains the fallback for non-US locations or when NWS is unavailable.
+- Year-over-year rainfall comparison is now available in the 30-day Trends view (previously limited to 24h and 7d)
+
+### Fixed
+- Sun and Moon rise/set times in the Forecast tab now use on-device SunCalc calculations instead of API-provided values, eliminating a class of incorrect times
+- Selecting a location in Preview Mode now dismisses the keyboard on mobile
+- Backdrop blur on the settings button now renders correctly in Safari (added `-webkit-backdrop-filter`)
+
+### Changed
+- The Conditions / Insights toggle on the home card no longer remembers your last choice — it always opens on Conditions
+
 ## [1.1.2] - 2026-06-08
 
 ### Fixed

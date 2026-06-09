@@ -5,16 +5,16 @@ import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
 import { toISODate } from '../utils/dateUtils';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
 
-function buildHours(hf) {
+function buildHours(hf, lat, lon) {
   const h = hf?.hourly;
   if (!h?.time?.length) return [];
   const now = Date.now();
 
-  // Build per-date sunrise/sunset lookup from daily data
   const sunMap = {};
-  (hf?.daily?.sunrise ?? []).forEach((r, i) => {
-    const set = hf?.daily?.sunset?.[i];
-    if (r && set) sunMap[r.slice(0, 10)] = { riseMs: new Date(r).getTime(), setMs: new Date(set).getTime() };
+  [...new Set(h.time.map(t => t.slice(0, 10)))].forEach(dateStr => {
+    if (lat == null || lon == null) return;
+    const { sunrise, sunset } = SunCalc.getTimes(new Date(dateStr + 'T12:00'), lat, lon);
+    sunMap[dateStr] = { riseMs: sunrise.getTime(), setMs: sunset.getTime() };
   });
 
   return h.time
@@ -23,7 +23,7 @@ function buildHours(hf) {
       const sun = sunMap[t.slice(0, 10)];
       const isNight = sun ? (ms < sun.riseMs || ms > sun.setMs) : false;
       const code = h.weathercode?.[i];
-      const icon = (isNight && code in NIGHT_ICON) ? NIGHT_ICON[code] : (WMO_EMOJI[code] ?? '🌡️');
+      const icon = (isNight && code in NIGHT_ICON) ? NIGHT_ICON[code] : (ICON_EMOJI[code] ?? WMO_EMOJI[code] ?? '🌡️');
       return { time: t, ms, icon, temp: h.temperature_2m?.[i], pop: h.precipitation_probability?.[i] ?? 0 };
     })
     .filter(hr => hr.ms >= now - 30 * 60 * 1000)
@@ -195,7 +195,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
   const [dayInsightLoading, setDayInsightLoading] = useState(false);
   const dayInsightCancelRef = useRef(null);
 
-  const groups = groupByDay(hourlyForecast ? buildHours(hourlyForecast) : []);
+  const groups = groupByDay(hourlyForecast ? buildHours(hourlyForecast, lat, lon) : []);
 
   useEffect(() => {
     if (groups.length > 0) setActiveLabel(groups[0].label);
@@ -315,12 +315,12 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             onScroll={handleHourlyScroll}
             style={{ overflowX: 'auto', paddingBottom: 4, marginBottom: 20, width: '100%' }}
           >
-            <div style={{ display: 'flex', width: 'max-content', alignItems: 'flex-start' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'flex-start' }}>
             {groups.map((group, gi) => (
               <div
                 key={group.date}
                 ref={el => { groupRefs.current[gi] = el; }}
-                style={{ display: 'flex', gap: 8, flexShrink: 0, minWidth: 'max-content', marginLeft: gi > 0 ? 16 : 0 }}
+                style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: gi > 0 ? 16 : 0 }}
               >
                 {group.hours.map((hr) => (
                   <div
@@ -395,15 +395,13 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
       <ForecastDayInsight insight={dayInsight} isLoading={dayInsightLoading} />
 
       {/* Sunrise / Sunset — arc progress; flips to Moon card after dusk */}
-      {hourlyForecast?.daily && (() => {
-        const rise = hourlyForecast.daily.sunrise?.[0];
-        const set  = hourlyForecast.daily.sunset?.[0];
+      {lat != null && lon != null && (() => {
+        const sunTimes = SunCalc.getTimes(new Date(), lat, lon);
+        const rise = sunTimes.sunrise.toISOString();
+        const set  = sunTimes.sunset.toISOString();
         const daylight = fmtDaylight(rise, set);
-        const sunTimes = (lat != null && lon != null)
-          ? SunCalc.getTimes(new Date(), lat, lon)
-          : null;
 
-        const dusk = sunTimes?.dusk;
+        const dusk = sunTimes.dusk;
         const showMoon = dusk instanceof Date && isFinite(dusk) && Date.now() > dusk.getTime();
 
         // ── SUN CARD ──────────────────────────────────────────────────────────

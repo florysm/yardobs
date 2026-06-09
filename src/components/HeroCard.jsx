@@ -241,7 +241,7 @@ function buildForecastSummary(hf) {
 
 export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, onError }) {
   const [showHint,      setShowHint]      = useState(false);
-  const [view,          setView]          = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.HERO_VIEW) || 'conditions'; } catch { return 'conditions'; } });
+  const [view,          setView]          = useState('conditions');
   const [contentFade,   setContentFade]   = useState(true);
   const [insight,       setInsight]       = useState(null);
   const [insightLoading, setInsightLoading] = useState(false);
@@ -266,7 +266,6 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     setTimeout(() => {
       setView(newView);
       setContentFade(true);
-      localStorage.setItem(STORAGE_KEYS.HERO_VIEW, newView);
     }, 200);
   };
 

@@ -1,6 +1,6 @@
 # YardObs
 
-![version](https://img.shields.io/badge/version-0.4.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![node](https://img.shields.io/badge/node-18%2B-brightgreen) [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fflorysm%2Fyardobs)
+![version](https://img.shields.io/badge/version-1.2.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![node](https://img.shields.io/badge/node-18%2B-brightgreen) [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fflorysm%2Fyardobs)
 
 A mobile-first personal weather station dashboard with AI-powered activity scoring and hyperlocal insights.
 
@@ -64,17 +64,18 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 | AI insights | Anthropic Claude API (`claude-sonnet-4-6`) | Activity + daily briefing, server-side only |
 | Backend | Vercel Serverless Functions (Node.js) | `api/weather.js`, `api/insight.js` |
 | Weather data | The Weather Company (TWC) PWS API | Current obs, history, 5-day forecast |
-| Forecast / AQI | Open-Meteo (free, no key required) | Hourly forecast, air quality index |
+| Hourly forecast | NOAA / National Weather Service (`api.weather.gov`, no key required) | Primary US hourly forecast (48h); falls back to Open-Meteo outside the US |
+| Forecast / AQI | Open-Meteo (free, no key required) | Fallback hourly forecast, air quality index |
 | Deployment | Vercel | |
 
-The frontend is a React SPA. Two Vercel serverless functions act as API proxies: `api/weather.js` keeps the TWC key server-side, and `api/insight.js` calls Claude without exposing the Anthropic key to the browser. Open-Meteo requests go through the same proxy for consistency but don't require a key.
+The frontend is a React SPA. Two Vercel serverless functions act as API proxies: `api/weather.js` keeps the TWC key server-side, and `api/insight.js` calls Claude without exposing the Anthropic key to the browser. Open-Meteo and NOAA/NWS requests also go through the same proxy for consistency; neither requires a key.
 
 ## Project Structure
 
 ```
 yardobs/
 ├── api/
-│   ├── weather.js        # TWC + Open-Meteo proxy (keeps TWC_API_KEY server-side)
+│   ├── weather.js        # TWC + Open-Meteo + NWS proxy (keeps TWC_API_KEY server-side)
 │   └── insight.js        # Claude AI insight engine (activity + daily briefings)
 ├── src/
 │   ├── App.jsx           # Root: theme resolution, tab routing, settings drawer
@@ -183,7 +184,9 @@ Proxies weather data requests, keeping `TWC_API_KEY` server-side. Accepts a `typ
 | `history-recent` | `stationId` | TWC | Rolling 7-day hourly data |
 | `history-daily` | `stationId`, `date` (YYYYMMDD) | TWC | Daily summary (high/low/precip) |
 | `forecast` | `lat`, `lon` | TWC | 5-day daily forecast |
-| `hourly-forecast` | `lat`, `lon` | Open-Meteo | Hourly forecast for the next ~48h |
+| `hourly-forecast` | `lat`, `lon` | Open-Meteo | Fallback hourly forecast (~48h); used outside the US or when NWS is unavailable |
+| `hourly-forecast-nws` | `lat`, `lon` | NOAA / NWS | US hourly forecast, first 48h, mapped to Open-Meteo shape |
+| `hourly-forecast-twc` | `lat`, `lon` | TWC | TWC hourly forecast (alternate source) |
 | `air-quality` | `lat`, `lon` | Open-Meteo | Current AQI, PM2.5, PM10, ozone |
 
 ### `POST /api/insight`
@@ -214,6 +217,7 @@ If YardObs is useful to you, you can support the project on [Ko-fi](https://ko-f
 
 - [The Weather Company PWS API](https://docs.google.com/document/d/1eKCnKXI9xnoMGRRzOL1xPCBihNV2rOet08qpE_gArAY) — real-time personal weather station data
 - [Open-Meteo](https://open-meteo.com) — free, open-source weather forecast and air quality API
+- [NOAA / National Weather Service](https://www.weather.gov/documentation/services-web-api) — US hourly forecast data via the public weather.gov API (no key required)
 - [RainViewer](https://www.rainviewer.com/api.html) — animated global radar tiles
 - [Anthropic Claude](https://www.anthropic.com) — AI-powered weather insights
 

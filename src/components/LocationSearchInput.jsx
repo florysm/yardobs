@@ -64,6 +64,7 @@ export default function LocationSearchInput({
   };
 
   const select = (lat, lon, label) => {
+    inputRef.current?.blur();
     setQuery('');
     setSuggestions([]);
     setIsOpen(false);

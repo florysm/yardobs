@@ -128,9 +128,7 @@ export function useWeather(profile) {
         `&current=temperature_2m,apparent_temperature,relative_humidity_2m,` +
         `dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,` +
         `surface_pressure,weather_code,is_day,uv_index` +
-        `&hourly=temperature_2m,precipitation_probability,weathercode,apparent_temperature,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,uv_index` +
-        `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,sunrise,sunset` +
-        `&forecast_days=7&${OM_UNITS}`;
+        `&${OM_UNITS}`;
       const omRes = await fetch(url, { signal: abortRef.current?.signal });
       const data = await omRes.json();
       if (data.error) throw new Error(data.reason ?? 'Open-Meteo error');
@@ -165,19 +163,6 @@ export function useWeather(profile) {
         sourceLabel: 'Weather Forecast',
       });
 
-      const d = data.daily;
-      if (d) {
-        setForecast({
-          dayOfWeek: d.time.map(t => new Date(t + 'T12:00').toLocaleDateString('en-US', { weekday: 'long' })),
-          temperatureMax: d.temperature_2m_max,
-          temperatureMin: d.temperature_2m_min,
-          daypart: [{
-            iconCode:    d.weather_code.flatMap(wc => [wmoToTwc(wc), null]),
-            precipChance: d.precipitation_probability_max.flatMap(p => [p, null]),
-          }],
-        });
-      }
-      if (data.hourly) setHourlyForecast(data);
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     } finally {
@@ -244,35 +229,35 @@ export function useWeather(profile) {
     }
   }, [isPreviewMode, stationId]);
 
-  // ── Forecast — station mode uses TWC; preview/explore uses Open-Meteo daily ─
+  // ── Forecast — both modes use TWC daily (lat/lon available in both) ──────────
   const fetchForecast = useCallback(async () => {
     const loc = locationRef.current;
     if (!loc) return;
-
-    if (isPreviewMode) return; // handled by fetchCurrentPreview combined call
-
     try {
       const data = await apiFetch(`/api/weather?type=forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
       setForecast(data);
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     }
-  }, [isPreviewMode]);
+  }, []);
 
-  // ── Hourly forecast — station uses proxy; preview/explore handled by fetchCurrentPreview ─
+  // ── Hourly forecast — NWS for US locations (accurate for convective events); Open-Meteo fallback ─
   const fetchHourlyForecast = useCallback(async () => {
     const loc = locationRef.current;
     if (!loc) return;
-
-    if (isPreviewMode) return; // handled by fetchCurrentPreview combined call
-
+    const sig = { signal: abortRef.current?.signal };
     try {
-      const data = await apiFetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
+      let data;
+      try {
+        data = await apiFetch(`/api/weather?type=hourly-forecast-nws&lat=${loc.lat}&lon=${loc.lon}`, sig);
+      } catch {
+        data = await apiFetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`, sig);
+      }
       setHourlyForecast(data);
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     }
-  }, [isPreviewMode]);
+  }, []);
 
   // ── Air quality — all modes call Open-Meteo directly from the browser ────
   const fetchAirQuality = useCallback(async () => {

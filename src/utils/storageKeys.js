@@ -3,8 +3,7 @@ export const INSIGHT_TTL_MS = 60 * 60 * 1000; // 1 hour
 export const STORAGE_KEYS = {
   PROFILE:          'yardobs-profile',
   MODE:             'yardobs-mode',
-  HERO_VIEW:        'yardobs-hero-view',
-  STATION_ID:       'yardobs-station-id',
+STATION_ID:       'yardobs-station-id',
   TWC_API_KEY:      'yardobs-twc-key',
   DEFAULT_ACTIVITY: 'yardobs-default-activity',
   insightKey: (stationId, today, period) => `yardobs-insight-${stationId}-${today}-${period}`,

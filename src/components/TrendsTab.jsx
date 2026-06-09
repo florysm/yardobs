@@ -89,24 +89,50 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-function BarChart({ values, labels, height = 70 }) {
-  const max = Math.max(...values, 0.01);
+function BarChart({ values, labels, lyValues = null, height = 70 }) {
+  const allVals = lyValues ? [...values, ...lyValues.filter(v => v != null)] : values;
+  const max = Math.max(...allVals, 0.01);
+  const barAreaH = height - 30;
+  const scaleH = v => Math.max((v / max) * barAreaH, v > 0 ? 4 : 1);
+
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height, margin: '10px 0 6px' }}>
-      {values.map((v, i) => (
-        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-          <div style={{ fontSize: 8, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
-            {v > 0 ? `${Number(v).toFixed(2)}"` : ''}
+      {values.map((v, i) => {
+        const ly = lyValues ? lyValues[i] : null;
+        const curH = scaleH(v);
+        const lyH  = ly != null && ly > 0 ? Math.max((ly / max) * barAreaH, 2) : 0;
+        return (
+          <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, width: '100%' }}>
+              {/* Current year */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <div style={{ fontSize: 7, fontFamily: 'var(--font-mono)', lineHeight: 1, color: 'var(--accent)', visibility: v > 0 ? 'visible' : 'hidden' }}>
+                  {v.toFixed(2)}"
+                </div>
+                <div style={{
+                  width: '100%', height: curH,
+                  background: 'var(--bar)', opacity: 0.85,
+                  borderRadius: '3px 3px 0 0', transition: 'height 0.4s',
+                }} />
+              </div>
+              {/* Last year */}
+              {ly != null && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  <div style={{ fontSize: 7, fontFamily: 'var(--font-mono)', lineHeight: 1, color: 'var(--yoy)', visibility: ly > 0 ? 'visible' : 'hidden' }}>
+                    {(ly ?? 0).toFixed(2)}"
+                  </div>
+                  <div style={{
+                    width: '100%', height: lyH || 1,
+                    background: 'var(--yoy)', opacity: 0.55,
+                    borderRadius: '3px 3px 0 0',
+                  }} />
+                </div>
+              )}
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>{labels[i]}</div>
           </div>
-          <div style={{
-            width: '100%', borderRadius: '4px 4px 0 0',
-            background: 'var(--bar)', opacity: 0.85,
-            height: Math.max((v / max) * (height - 20), v > 0 ? 4 : 1),
-            minHeight: 1, transition: 'height 0.4s',
-          }} />
-          <div style={{ fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>{labels[i]}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -302,6 +328,8 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
   const [showYoY, setShowYoY] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => { setShowYoY(false); }, [metric, range]);
+
   const yoyFetched = useRef(false);
   const [yoy, setYoy] = useState({ today: null, lastYear: null, lyRaw: [] });
 
@@ -362,6 +390,9 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
       if (showYoY && range === '7d') {
         tasks.push(...lyDailyKeys.map(k => fetchHistoryDaily(k)));
       }
+      if (showYoY && range === '30d') {
+        tasks.push(...lyRainKeys.map(k => fetchHistoryDaily(k)));
+      }
     }
     Promise.all(tasks).finally(() => setLoading(false));
   }, [stationId, range, lyKey, lyYesterdayKey, showYoY, ensureFetched, fetchHistoryRecent, fetchHistoryDaily]);
@@ -392,15 +423,32 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
       const row = mergeDay((historyDaily[key] ?? [])[0]);
       if (!row) return null;
       if (showYoY) {
-        row[`ly_${metric}`] = mergeDay((historyDaily[lyDailyKeys[i]] ?? [])[0])?.[metric] ?? null;
+        const lyRow = mergeDay((historyDaily[lyDailyKeys[i]] ?? [])[0]);
+        if (metric === 'temp') {
+          row.ly_tempHigh = lyRow?.tempHigh ?? null;
+          row.ly_tempLow  = lyRow?.tempLow  ?? null;
+        } else {
+          row[`ly_${metric}`] = lyRow?.[metric] ?? null;
+        }
       }
       return row;
     }).filter(Boolean);
   } else {
     const keys = Array.from({ length: 30 }, (_, i) => toDateStr(addDays(today, -(29 - i))));
-    chartData = keys
-      .map(key => mergeDay((historyDaily[key] ?? [])[0]))
-      .filter(Boolean);
+    chartData = keys.map((key, i) => {
+      const row = mergeDay((historyDaily[key] ?? [])[0]);
+      if (!row) return null;
+      if (showYoY) {
+        const lyRow = mergeDay((historyDaily[lyRainKeys[i]] ?? [])[0]);
+        if (metric === 'temp') {
+          row.ly_tempHigh = lyRow?.tempHigh ?? null;
+          row.ly_tempLow  = lyRow?.tempLow  ?? null;
+        } else {
+          row[`ly_${metric}`] = lyRow?.[metric] ?? null;
+        }
+      }
+      return row;
+    }).filter(Boolean);
   }
 
   const metaCurrent = METRICS.find(m => m.id === metric) ?? METRICS[0];
@@ -456,6 +504,17 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
     const d = new Date(`${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}T12:00:00`);
     return ['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()];
   });
+
+  const lyRainBars = showYoY && metric === 'precip' && range === '7d' && lyPrecipLoaded
+    ? lyRainKeys.map(k => (historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? null)
+    : null;
+  const weeklyLyRainBars = showYoY && metric === 'precip' && range === '30d' ? (() => {
+    const groups = [[0, 7], [7, 14], [14, 21], [21, 30]];
+    return groups.map(([s, e]) =>
+      lyRainKeys.slice(s, e).reduce((sum, k) =>
+        sum + ((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0), 0)
+    );
+  })() : null;
 
   const todaySum      = yoy.today;
   const lySum         = yoy.lastYear;
@@ -528,41 +587,51 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
           <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--tm)', fontWeight: 500 }}>
             {metaCurrent.label} · {RANGES.find(r => r.id === range)?.label}
           </div>
-          {range !== '30d' ? (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--ts)', cursor: 'pointer' }}>
-              <span>vs last year</span>
-              <span style={{ position: 'relative', width: 34, height: 19, display: 'inline-block' }}>
-                <input type="checkbox" checked={showYoY} onChange={e => setShowYoY(e.target.checked)}
-                  style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
-                <span style={{
-                  position: 'absolute', inset: 0,
-                  background: showYoY ? 'var(--accent)' : 'var(--border)',
-                  borderRadius: 50, transition: 'background 0.3s',
-                }} />
-                <span style={{
-                  position: 'absolute', top: 3, left: 3, width: 13, height: 13,
-                  background: 'var(--bg)', borderRadius: '50%',
-                  transform: showYoY ? 'translateX(15px)' : 'translateX(0)',
-                  transition: 'transform 0.3s',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                }} />
-              </span>
-            </label>
-          ) : (
-            <label
-              title="Year-over-year available for 24h and 7-day views"
-              style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--ts)', opacity: 0.4, cursor: 'not-allowed' }}
-            >
-              <span>vs last year</span>
-              <span style={{ position: 'relative', width: 34, height: 19, display: 'inline-block' }}>
-                <span style={{ position: 'absolute', inset: 0, background: 'var(--border)', borderRadius: 50 }} />
-                <span style={{ position: 'absolute', top: 3, left: 3, width: 13, height: 13, background: 'var(--bg)', borderRadius: '50%', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-              </span>
-            </label>
-          )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--ts)', cursor: 'pointer' }}>
+            <span>vs last year</span>
+            <span style={{ position: 'relative', width: 34, height: 19, display: 'inline-block' }}>
+              <input type="checkbox" checked={showYoY} onChange={e => setShowYoY(e.target.checked)}
+                style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+              <span style={{
+                position: 'absolute', inset: 0,
+                background: showYoY ? 'var(--accent)' : 'var(--border)',
+                borderRadius: 50, transition: 'background 0.3s',
+              }} />
+              <span style={{
+                position: 'absolute', top: 3, left: 3, width: 13, height: 13,
+                background: 'var(--bg)', borderRadius: '50%',
+                transform: showYoY ? 'translateX(15px)' : 'translateX(0)',
+                transition: 'transform 0.3s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </span>
+          </label>
         </div>
 
-        {showYoY && range !== '30d' && (
+        {showTempBand ? (
+          <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--tm)', marginBottom: 8, flexWrap: 'wrap' }}>
+            <span>
+              <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.tempHigh }} />
+              High
+            </span>
+            <span>
+              <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.tempLow }} />
+              Low
+            </span>
+            {showYoY && (
+              <>
+                <span>
+                  <span style={{ display: 'inline-block', width: 18, verticalAlign: 'middle', marginRight: 4, borderTop: `2px dashed ${chartColors.tempHigh}` }} />
+                  Last yr high
+                </span>
+                <span>
+                  <span style={{ display: 'inline-block', width: 18, verticalAlign: 'middle', marginRight: 4, borderTop: `2px dashed ${chartColors.tempLow}` }} />
+                  Last yr low
+                </span>
+              </>
+            )}
+          </div>
+        ) : showYoY && metric !== 'precip' ? (
           <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--tm)', marginBottom: 8 }}>
             <span>
               <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.accent }} />
@@ -573,19 +642,18 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
               Last year
             </span>
           </div>
-        )}
-        {showTempBand && (
+        ) : showYoY && metric === 'precip' ? (
           <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--tm)', marginBottom: 8 }}>
             <span>
-              <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.tempHigh }} />
-              High
+              <span style={{ display: 'inline-block', width: 10, height: 10, verticalAlign: 'middle', marginRight: 4, borderRadius: 2, background: chartColors.accent, opacity: 0.85 }} />
+              This year
             </span>
             <span>
-              <span style={{ display: 'inline-block', width: 18, height: 2, verticalAlign: 'middle', marginRight: 4, borderRadius: 1, background: chartColors.tempLow }} />
-              Low
+              <span style={{ display: 'inline-block', width: 14, height: 10, verticalAlign: 'middle', marginRight: 4, borderRadius: 2, background: chartColors.yoy, opacity: 0.3 }} />
+              Last year
             </span>
           </div>
-        )}
+        ) : null}
 
         {loading ? (
           <div style={{
@@ -601,6 +669,7 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
           <BarChart
             values={range === '7d' ? rainBars : weeklyRainBars}
             labels={range === '7d' ? rainLabels : weeklyRainLabels}
+            lyValues={range === '7d' ? lyRainBars : weeklyLyRainBars}
             height={160}
           />
         ) : (
@@ -612,11 +681,20 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
               <YAxis domain={domain} tick={{ fontSize: 9, fill: chartColors.accent, fontFamily: 'monospace' }}
                 tickLine={false} axisLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              {showYoY && range !== '30d' && (
+              {showYoY && showTempBand ? (
+                <>
+                  <Line type="monotone" dataKey="ly_tempHigh" name="Last yr high"
+                    stroke={chartColors.tempHigh} strokeWidth={1.5} strokeDasharray="6 3"
+                    dot={false} connectNulls />
+                  <Line type="monotone" dataKey="ly_tempLow" name="Last yr low"
+                    stroke={chartColors.tempLow} strokeWidth={1.5} strokeDasharray="6 3"
+                    dot={false} connectNulls />
+                </>
+              ) : showYoY ? (
                 <Line type="monotone" dataKey={`ly_${metric}`} name="Last year"
                   stroke={chartColors.yoy} strokeWidth={1.5} strokeDasharray="6 3"
                   dot={false} connectNulls />
-              )}
+              ) : null}
               {metric === 'temp' && range !== '24h' ? (
                 <>
                   <Line type="monotone" dataKey="tempHigh" name="High"
@@ -637,23 +715,18 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
       </div>
 
       {/* Stats row */}
-      {(() => {
-        const statItems = metric === 'precip'
-          ? [{ label: 'High', val: high }, { label: 'Low', val: low }]
-          : [{ label: 'High', val: high }, { label: 'Low', val: low }, { label: 'Avg', val: avg }];
-        return (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statItems.length}, 1fr)`, gap: 8, marginBottom: 12 }}>
-            {statItems.map(({ label, val }) => (
-              <div key={label} className="y-stat">
-                <div style={{ fontSize: 9, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                  {val != null ? `${val.toFixed(digits)}${unit}` : '—'}
-                </div>
+      {metric !== 'precip' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+          {[{ label: 'High', val: high }, { label: 'Low', val: low }, { label: 'Avg', val: avg }].map(({ label, val }) => (
+            <div key={label} className="y-stat">
+              <div style={{ fontSize: 9, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                {val != null ? `${val.toFixed(digits)}${unit}` : '—'}
               </div>
-            ))}
-          </div>
-        );
-      })()}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Rainfall summary card — range-aware, with LY comparison */}
       {metric === 'precip' && (

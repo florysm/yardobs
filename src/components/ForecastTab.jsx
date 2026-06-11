@@ -23,8 +23,10 @@ function buildHours(hf, lat, lon) {
       const sun = sunMap[t.slice(0, 10)];
       const isNight = sun ? (ms < sun.riseMs || ms > sun.setMs) : false;
       const code = h.weathercode?.[i];
-      const icon = (isNight && code in NIGHT_ICON) ? NIGHT_ICON[code] : (ICON_EMOJI[code] ?? WMO_EMOJI[code] ?? '🌡️');
-      return { time: t, ms, icon, temp: h.temperature_2m?.[i], pop: h.precipitation_probability?.[i] ?? 0 };
+      const pop  = h.precipitation_probability?.[i] ?? 0;
+      const displayCode = (code >= 51 && pop < 30) ? 3 : (code === 95 && pop < 40) ? 80 : code;
+      const icon = (isNight && displayCode in NIGHT_ICON) ? NIGHT_ICON[displayCode] : (WMO_EMOJI[displayCode] ?? '🌡️');
+      return { time: t, ms, icon, temp: h.temperature_2m?.[i], pop };
     })
     .filter(hr => hr.ms >= now - 30 * 60 * 1000)
     .slice(0, 24)
@@ -124,6 +126,65 @@ function MoonPhaseIcon({ phase, cx, cy, r = 9 }) {
       <circle cx={cx + offX} cy={cy} r={r} fill="#1e2840" clipPath={`url(#${id})`} />
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(176,196,222,0.35)" strokeWidth="0.5" />
     </g>
+  );
+}
+
+function HourlyCard({ hr }) {
+  return (
+    <div
+      className="fc-card"
+      style={{
+        flex: '0 0 56px',
+        padding: '10px 6px',
+        textAlign: 'center',
+        ...(hr.isNow ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
+      }}
+    >
+      <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+        {hr.isNow ? 'Now' : fmtHourIso(hr.time)}
+      </div>
+      <div style={{ fontSize: 20, margin: '6px 0 3px' }} aria-hidden="true">{hr.icon}</div>
+      <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
+        {fmt(hr.temp)}°
+      </div>
+      <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 3, visibility: hr.pop > 0 ? 'visible' : 'hidden' }}>
+        {hr.pop}%
+      </div>
+    </div>
+  );
+}
+
+function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh }) {
+  return (
+    <div
+      className="fc-card"
+      onClick={onClick}
+      style={{
+        flex: '0 0 70px',
+        padding: '12px 8px',
+        textAlign: 'center',
+        cursor: 'pointer',
+        ...(isSelected ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
+      }}
+    >
+      <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>
+        {day.isToday ? 'Today' : (day.dayOfWeek ?? '').slice(0, 3)}
+      </div>
+      <div style={{ fontSize: 22, margin: '8px 0 4px' }} aria-hidden="true">{day.icon}</div>
+      <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
+        {fmt(day.isToday
+          ? (currentTemp != null && currentTemp >= (day.tempMax ?? -Infinity)
+              ? Math.max(currentTemp, todayObservedHigh ?? currentTemp)
+              : (day.tempMax ?? todayObservedHigh))
+          : day.tempMax)}°
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>
+        {fmt(day.tempMin)}°
+      </div>
+      {day.pop != null && (
+        <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 4 }}>{day.pop}%</div>
+      )}
+    </div>
   );
 }
 
@@ -323,27 +384,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
                 style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: gi > 0 ? 16 : 0 }}
               >
                 {group.hours.map((hr) => (
-                  <div
-                    key={hr.time}
-                    className="fc-card"
-                    style={{
-                      flex: '0 0 56px',
-                      padding: '10px 6px',
-                      textAlign: 'center',
-                      ...(hr.isNow ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
-                    }}
-                  >
-                    <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                      {hr.isNow ? 'Now' : fmtHourIso(hr.time)}
-                    </div>
-                    <div style={{ fontSize: 20, margin: '6px 0 3px' }} aria-hidden="true">{hr.icon}</div>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                      {fmt(hr.temp)}°
-                    </div>
-                    <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 3, visibility: hr.pop > 0 ? 'visible' : 'hidden' }}>
-                      {hr.pop}%
-                    </div>
-                  </div>
+                  <HourlyCard key={hr.time} hr={hr} />
                 ))}
               </div>
             ))}
@@ -359,36 +400,14 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
       {/* Horizontal scroll cards */}
       <div className="fc-scroll" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 14 }}>
         {days.map((day, i) => (
-          <div
+          <DailyCard
             key={i}
-            className="fc-card"
+            day={day}
+            isSelected={i === selectedDayIndex}
             onClick={() => setSelectedDayIndex(i)}
-            style={{
-              flex: '0 0 70px',
-              padding: '12px 8px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              ...(i === selectedDayIndex ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
-            }}
-          >
-            <div style={{ fontSize: 10, color: 'var(--tm)', letterSpacing: 1, textTransform: 'uppercase' }}>
-              {day.isToday ? 'Today' : (day.dayOfWeek ?? '').slice(0, 3)}
-            </div>
-            <div style={{ fontSize: 22, margin: '8px 0 4px' }} aria-hidden="true">{day.icon}</div>
-            <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-              {fmt(day.isToday
-                ? (currentTemp != null && currentTemp >= (day.tempMax ?? -Infinity)
-                    ? Math.max(currentTemp, todayObservedHigh ?? currentTemp)
-                    : (day.tempMax ?? todayObservedHigh))
-                : day.tempMax)}°
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>
-              {fmt(day.tempMin)}°
-            </div>
-            {day.pop != null && (
-              <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 4 }}>{day.pop}%</div>
-            )}
-          </div>
+            currentTemp={currentTemp}
+            todayObservedHigh={todayObservedHigh}
+          />
         ))}
       </div>
 

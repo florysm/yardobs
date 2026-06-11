@@ -103,6 +103,8 @@ export const META_COLORS = Object.fromEntries(
 
 export const WEATHER_THEME_IDS = new Set(Object.keys(THEMES).filter(k => k !== 'light' && k !== 'dark'));
 
+export const DISPLAY_MODES = { LIGHT: 'light', DARK: 'dark', AUTO: 'auto' };
+
 export const CONDITION_PREVIEWS = [
   { id: 'sunny',  label: 'Sunny',  icon: '☀️', bg: THEMES.sunny.bg,  accent: THEMES.sunny.accent,  text: THEMES.sunny.ts,  hero: THEMES.sunny.hero  },
   { id: 'cloudy', label: 'Cloudy', icon: '☁️', bg: THEMES.cloudy.bg, accent: THEMES.cloudy.accent, text: THEMES.cloudy.ts, hero: THEMES.cloudy.hero },

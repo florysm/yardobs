@@ -108,15 +108,15 @@ export default function LocationSearchInput({
   const inputStyle = variant === 'topbar'
     ? {
         flex: 1, minWidth: 0, width: '100%',
-        fontSize: 11, fontFamily: 'var(--font-mono)',
+        fontSize: 16, fontFamily: 'var(--font-mono)',
         background: 'var(--soft)', border: '1px solid var(--accent)',
-        borderRadius: 8, padding: '3px 8px',
+        borderRadius: 8, padding: '1px 6px',
         color: 'var(--tp)', outline: 'none',
       }
     : {
         width: '100%', padding: '10px 12px',
         background: 'var(--bg)', border: '1px solid var(--border)',
-        borderRadius: 10, fontSize: 13, color: 'var(--tp)',
+        borderRadius: 10, fontSize: 16, color: 'var(--tp)',
         fontFamily: 'var(--font-mono)', outline: 'none',
         boxSizing: 'border-box',
       };

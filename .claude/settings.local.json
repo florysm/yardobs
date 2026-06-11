@@ -5,7 +5,8 @@
       "WebFetch(domain:github.com)",
       "Bash(vercel --version)",
       "Bash(grep -n \"nvm\\\\|npm-global\\\\|PATH\" ~/.zshrc)",
-      "Read(//Users/steve/**)"
+      "Read(//Users/steve/**)",
+      "Bash(curl -s \"http://localhost:3001/api/weather?type=current&stationId=KNYC\")"
     ]
   }
 }

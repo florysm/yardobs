@@ -9,7 +9,7 @@ import SettingsDrawer from './components/SettingsDrawer';
 import ErrorBoundary from './components/ErrorBoundary';
 import LocationSetup from './components/LocationSetup';
 import { useWeather } from './hooks/useWeather';
-import { CHART_COLORS, META_COLORS, THEME_IDS } from './themes.js';
+import { CHART_COLORS, META_COLORS, THEME_IDS, DISPLAY_MODES } from './themes.js';
 import { STORAGE_KEYS } from './utils/storageKeys';
 import { toDateStr } from './utils/dateUtils';
 
@@ -21,6 +21,11 @@ function LazyTabFallback() {
   return <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>Loading…</div>;
 }
 
+const ICON_STORMY = [0, 1, 2, 3, 4, 17, 37, 38, 47];
+const ICON_RAINY  = [5, 6, 8, 9, 10, 11, 12, 35, 39, 40, 45];
+const ICON_CLOUDY = [7, 13, 14, 15, 16, 18, 19, 20, 21, 22, 25, 26, 27, 28, 41, 42, 43, 46];
+const ICON_PARTLY = [23, 24, 29, 30];
+
 // Resolves current conditions → one of the 6 theme names.
 // Uses iconCode when the API returns it; falls back to PWS sensor data.
 function resolveAutoTheme(current) {
@@ -28,15 +33,11 @@ function resolveAutoTheme(current) {
   const isDay    = current?.isDay    ?? 1;
 
   if (iconCode != null) {
-    const stormy = [0, 1, 2, 3, 4, 17, 37, 38, 47];
-    const rainy   = [5, 6, 8, 9, 10, 11, 12, 35, 39, 40, 45];
-    const cloudy  = [7, 13, 14, 15, 16, 18, 19, 20, 21, 22, 25, 26, 27, 28, 41, 42, 43, 46];
-    const partly  = [23, 24, 29, 30];
-    if (stormy.includes(iconCode)) return THEME_IDS.stormy;
-    if (rainy.includes(iconCode))  return THEME_IDS.rainy;
-    if (cloudy.includes(iconCode)) return THEME_IDS.cloudy;
+    if (ICON_STORMY.includes(iconCode)) return THEME_IDS.stormy;
+    if (ICON_RAINY.includes(iconCode))  return THEME_IDS.rainy;
+    if (ICON_CLOUDY.includes(iconCode)) return THEME_IDS.cloudy;
     if (!isDay) return THEME_IDS.dark;
-    if (partly.includes(iconCode)) {
+    if (ICON_PARTLY.includes(iconCode)) {
       if ((current?.uv ?? 0) >= 5 || (current?.solar ?? 0) >= 450) return THEME_IDS.sunny;
       return THEME_IDS.light;
     }
@@ -79,7 +80,7 @@ export default function App() {
 
   const [activeTab, setActiveTab]               = useState('now');
   const [settingsOpen, setSettingsOpen]         = useState(false);
-  const [mode, setMode]                         = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || 'auto'; } catch { return 'auto'; } });
+  const [mode, setMode]                         = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || DISPLAY_MODES.AUTO; } catch { return DISPLAY_MODES.AUTO; } });
   const [previewCondition, setPreviewCondition] = useState(null);
   const [componentError, setComponentError]     = useState(null);
   const [defaultActivity, setDefaultActivity]   = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.DEFAULT_ACTIVITY) || 'bbq'; } catch { return 'bbq'; } });
@@ -108,8 +109,8 @@ export default function App() {
 
   const autoTheme  = resolveAutoTheme(current);
   const activeTheme =
-    mode === 'light' ? 'light' :
-    mode === 'dark'  ? 'dark'  :
+    mode === DISPLAY_MODES.LIGHT ? DISPLAY_MODES.LIGHT :
+    mode === DISPLAY_MODES.DARK  ? DISPLAY_MODES.DARK  :
     (previewCondition || autoTheme);
 
   const chartColors = CHART_COLORS[activeTheme] ?? CHART_COLORS.light;
@@ -123,7 +124,7 @@ export default function App() {
   const handleSetMode = (m) => {
     setMode(m);
     setPreviewCondition(null);
-    try { if (m === 'auto') localStorage.removeItem(STORAGE_KEYS.MODE); else localStorage.setItem(STORAGE_KEYS.MODE, m); } catch {}
+    try { if (m === DISPLAY_MODES.AUTO) localStorage.removeItem(STORAGE_KEYS.MODE); else localStorage.setItem(STORAGE_KEYS.MODE, m); } catch {}
   };
 
   const saveDefaultActivity = (id) => {

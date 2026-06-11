@@ -1,16 +1,7 @@
 import ActivityScoreCard from './ActivityScoreCard';
 import MetricCard from './MetricCard';
 import { fmt, aqiCategory } from '../utils/format';
-
-function beaufort(mph) {
-  if (mph == null) return '—';
-  const thresholds = [1,4,8,13,19,25,32,39,47,55,64,73];
-  const names = ['Calm','Light Air','Light Breeze','Gentle Breeze','Moderate Breeze',
-    'Fresh Breeze','Strong Breeze','Near Gale','Gale','Severe Gale','Storm','Violent Storm','Hurricane'];
-  const scale = thresholds.findIndex(v => mph < v);
-  const n = scale === -1 ? 12 : scale;
-  return `${n} · ${names[n]}`;
-}
+import { beaufort } from '../utils/weatherCalc';
 
 
 export default function NowTab({ current, isLoading, error, stationId, hourlyForecast, onError, defaultActivity }) {

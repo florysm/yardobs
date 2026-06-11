@@ -1,3 +1,14 @@
+const BEAUFORT_THRESHOLDS = [1, 4, 8, 13, 19, 25, 32, 39, 47, 55, 64, 73];
+const BEAUFORT_NAMES = ['Calm', 'Light Air', 'Light Breeze', 'Gentle Breeze', 'Moderate Breeze',
+  'Fresh Breeze', 'Strong Breeze', 'Near Gale', 'Gale', 'Severe Gale', 'Storm', 'Violent Storm', 'Hurricane'];
+
+export function beaufort(mph) {
+  if (mph == null) return '—';
+  const scale = BEAUFORT_THRESHOLDS.findIndex(v => mph < v);
+  const n = scale === -1 ? 12 : scale;
+  return `${n} · ${BEAUFORT_NAMES[n]}`;
+}
+
 // NWS Rothfusz heat index (°F) — valid when T >= 80°F and RH >= 40%
 // NWS wind chill (°F) — valid when T <= 50°F and wind >= 3 mph
 export function calcFeelsLike(tempF, humidity, windMph) {

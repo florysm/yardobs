@@ -2,6 +2,16 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.1] - 2026-06-11
+
+### Fixed
+- Weather icons in the hourly forecast now better reflect actual conditions — a rain icon won't appear when there's only a small chance of precipitation
+- Tapping the location search field on iPhone no longer triggers the screen zoom
+- Fixed a memory leak in the AI insights service where expired cache entries were never cleared, causing the service to slow down over time
+
+### Changed
+- Hourly forecast now uses Open-Meteo (global multi-model ensemble, includes UV index) instead of NOAA/NWS as the primary source — more reliable for non-US locations and restores UV index data in the hourly view
+
 ## [1.2.0] - 2026-06-09
 
 ### Added

@@ -1,7 +1,6 @@
 # Known Bugs
 
-Last updated: 2026-06-04
-
+Last updated: 2026-06-11
 
 <!-- Run /bugtracker to populate this file. Run /bugfixer to fix one item. -->
 
@@ -13,4 +12,3 @@ What goes wrong, why, and under what condition.
 - File: `path/to/file.jsx:lineNumber`
 - Impact: [user-visible / data loss / silent failure / crash]
 -->
-

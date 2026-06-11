@@ -241,18 +241,12 @@ export function useWeather(profile) {
     }
   }, []);
 
-  // ── Hourly forecast — NWS for US locations (accurate for convective events); Open-Meteo fallback ─
+  // ── Hourly forecast — Open-Meteo (multi-model ensemble, global, includes UV index) ─
   const fetchHourlyForecast = useCallback(async () => {
     const loc = locationRef.current;
     if (!loc) return;
-    const sig = { signal: abortRef.current?.signal };
     try {
-      let data;
-      try {
-        data = await apiFetch(`/api/weather?type=hourly-forecast-nws&lat=${loc.lat}&lon=${loc.lon}`, sig);
-      } catch {
-        data = await apiFetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`, sig);
-      }
+      const data = await apiFetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
       setHourlyForecast(data);
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);

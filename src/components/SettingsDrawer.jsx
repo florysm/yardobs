@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
-import { CONDITION_PREVIEWS, WEATHER_THEME_IDS } from '../themes.js';
+import { CONDITION_PREVIEWS, WEATHER_THEME_IDS, DISPLAY_MODES } from '../themes.js';
 import { ACTIVITIES } from '../utils/activities';
 import ChangelogModal from './ChangelogModal';
 import StationForm from './StationForm';
 
 const MODES = [
-  { id: 'light', icon: '☀', label: 'Always Light', desc: 'I prefer light regardless of conditions' },
-  { id: 'dark',  icon: '☾', label: 'Always Dark',  desc: 'I prefer dark regardless of conditions' },
-  { id: 'auto',  icon: '🔮', label: 'Match Conditions', desc: 'Theme follows current weather' },
+  { id: DISPLAY_MODES.LIGHT, icon: '☀', label: 'Always Light', desc: 'I prefer light regardless of conditions' },
+  { id: DISPLAY_MODES.DARK,  icon: '☾', label: 'Always Dark',  desc: 'I prefer dark regardless of conditions' },
+  { id: DISPLAY_MODES.AUTO,  icon: '🔮', label: 'Match Conditions', desc: 'Theme follows current weather' },
 ];
 
 function RadioDot({ selected }) {
@@ -146,7 +146,7 @@ export default function SettingsDrawer({
         </div>
 
         {/* Condition preview chips — only in auto mode */}
-        {mode === 'auto' && (
+        {mode === DISPLAY_MODES.AUTO && (
           <div style={{ marginBottom: 22 }}>
             <div className="y-label">Preview Conditions</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>

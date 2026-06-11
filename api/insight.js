@@ -23,6 +23,9 @@ setInterval(() => {
   for (const [ip, timestamps] of ipLog) {
     if (!timestamps.some(ts => now - ts < CACHE_TTL_MS)) ipLog.delete(ip);
   }
+  for (const [k, v] of cache) {
+    if (now - v.ts >= CACHE_TTL_MS) cache.delete(k);
+  }
 }, CACHE_TTL_MS);
 
 function evictOne() {

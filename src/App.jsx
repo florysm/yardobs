@@ -12,6 +12,7 @@ import { useWeather } from './hooks/useWeather';
 import { CHART_COLORS, META_COLORS, THEME_IDS, DISPLAY_MODES } from './themes.js';
 import { STORAGE_KEYS } from './utils/storageKeys';
 import { toDateStr } from './utils/dateUtils';
+import { detectDefaultUnits } from './utils/units';
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 const TrendsLockedPlaceholder = lazy(() => import('./components/TrendsLockedPlaceholder'));
@@ -84,10 +85,16 @@ export default function App() {
   const [previewCondition, setPreviewCondition] = useState(null);
   const [componentError, setComponentError]     = useState(null);
   const [defaultActivity, setDefaultActivity]   = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.DEFAULT_ACTIVITY) || 'bbq'; } catch { return 'bbq'; } });
+  const [units, setUnits]                       = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.UNITS) || detectDefaultUnits(); } catch { return detectDefaultUnits(); } });
+  const [credentialsVersion, setCredentialsVersion] = useState(0);
 
   const saveProfile = (p) => {
     setProfile(p);
     try { localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(p)); } catch {}
+    // Station ID may be unchanged (e.g. only the TWC key was added/updated), which
+    // wouldn't otherwise invalidate useWeather's memoized fetch callback. Bumping this
+    // forces useWeather's effect to re-run with the freshly saved credentials.
+    if (p.mode === 'station') setCredentialsVersion(v => v + 1);
   };
 
   const handleSetExplore = (lat, lon, label) => saveProfile({ ...profile, exploring: { lat, lon, label } });
@@ -101,7 +108,7 @@ export default function App() {
   const stationId = profile?.stationId ?? null;
   const isExploring = profile?.mode === 'station' && !!profile?.exploring;
 
-  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(profile);
+  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(profile, credentialsVersion);
 
   const currentWithAQI = useMemo(() =>
     current ? { ...current, aqi: airQuality?.current?.us_aqi ?? null } : null,
@@ -130,6 +137,11 @@ export default function App() {
   const saveDefaultActivity = (id) => {
     setDefaultActivity(id);
     try { localStorage.setItem(STORAGE_KEYS.DEFAULT_ACTIVITY, id); } catch {}
+  };
+
+  const saveUnits = (u) => {
+    setUnits(u);
+    try { localStorage.setItem(STORAGE_KEYS.UNITS, u); } catch {}
   };
 
   const handleCloseSettings = () => {
@@ -185,6 +197,7 @@ export default function App() {
         fetchHistoryDaily={fetchHistoryDaily}
         hourlyForecast={hourlyForecast}
         onError={setComponentError}
+        units={units}
       />
       <NavTabs active={activeTab} onChange={setActiveTab} />
 
@@ -199,6 +212,7 @@ export default function App() {
               hourlyForecast={hourlyForecast}
               onError={setComponentError}
               defaultActivity={defaultActivity}
+              units={units}
             />
           </ErrorBoundary>
         )}
@@ -219,6 +233,7 @@ export default function App() {
                   fetchHistoryDaily={fetchHistoryDaily}
                   historyDaily={historyDaily}
                   chartColors={chartColors}
+                  units={units}
                 />
               )}
             </Suspense>
@@ -226,7 +241,7 @@ export default function App() {
         )}
         {activeTab === 'forecast' && (
           <ErrorBoundary>
-            <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} stationId={stationId} sourceType={current?.sourceType ?? null} currentIconCode={current?.iconCode ?? null} currentTemp={current?.temp ?? null} />
+            <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} stationId={stationId} sourceType={current?.sourceType ?? null} currentIconCode={current?.iconCode ?? null} currentTemp={current?.temp ?? null} units={units} />
           </ErrorBoundary>
         )}
         {activeTab === 'radar' && (
@@ -255,6 +270,8 @@ export default function App() {
           onSaveProfile={saveProfile}
           defaultActivity={defaultActivity}
           onSetDefaultActivity={saveDefaultActivity}
+          units={units}
+          onSetUnits={saveUnits}
           isExploring={isExploring}
           onClearExplore={handleClearExplore}
         />

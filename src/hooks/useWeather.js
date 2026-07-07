@@ -28,7 +28,7 @@ const OM_BASE = 'https://api.open-meteo.com/v1/forecast';
 const OM_AQ   = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 const OM_UNITS = 'temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto';
 
-export function useWeather(profile) {
+export function useWeather(profile, credentialsVersion) {
   const [current, setCurrent]           = useState(null);
   const [history, setHistory]           = useState({});       // keyed by YYYYMMDD, hourly obs
   const [historyRecent, setHistoryRecent] = useState([]);     // rolling 7-day hourly, always fresh
@@ -117,7 +117,7 @@ export function useWeather(profile) {
     } finally {
       setIsLoading(false);
     }
-  }, [stationId]);
+  }, [stationId, credentialsVersion]);
 
   // ── Preview/explore mode: fetch current conditions from Open-Meteo ──────────
   const fetchCurrentPreview = useCallback(async () => {

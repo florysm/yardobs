@@ -1,9 +1,10 @@
 import { useRef, useState, useEffect } from 'react';
 import SunCalc from 'suncalc';
-import { fmt, fmtHourIso, fmtSunTime, fmtMoonTime } from '../utils/format';
+import { fmtHourIso, fmtSunTime, fmtMoonTime, getLocaleHour12 } from '../utils/format';
 import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
 import { toISODate } from '../utils/dateUtils';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
+import { formatTempParts } from '../utils/units';
 
 function buildHours(hf, lat, lon) {
   const h = hf?.hourly;
@@ -45,7 +46,7 @@ function groupByDay(hours) {
         date,
         label: date === todayStr
           ? 'Today'
-          : `${d.toLocaleDateString('en-US', { weekday: 'long' })} ${d.getDate()}`,
+          : `${d.toLocaleDateString(navigator.language, { weekday: 'long' })} ${d.getDate()}`,
         hours: [],
       };
       groups.push(current);
@@ -129,7 +130,7 @@ function MoonPhaseIcon({ phase, cx, cy, r = 9 }) {
   );
 }
 
-function HourlyCard({ hr }) {
+function HourlyCard({ hr, units }) {
   return (
     <div
       className="fc-card"
@@ -145,7 +146,7 @@ function HourlyCard({ hr }) {
       </div>
       <div style={{ fontSize: 20, margin: '6px 0 3px' }} aria-hidden="true">{hr.icon}</div>
       <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-        {fmt(hr.temp)}°
+        {formatTempParts(hr.temp, units).value}°
       </div>
       <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 3, visibility: hr.pop > 0 ? 'visible' : 'hidden' }}>
         {hr.pop}%
@@ -154,7 +155,7 @@ function HourlyCard({ hr }) {
   );
 }
 
-function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh }) {
+function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh, units }) {
   return (
     <div
       className="fc-card"
@@ -172,14 +173,14 @@ function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh })
       </div>
       <div style={{ fontSize: 22, margin: '8px 0 4px' }} aria-hidden="true">{day.icon}</div>
       <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-        {fmt(day.isToday
+        {formatTempParts(day.isToday
           ? (currentTemp != null && currentTemp >= (day.tempMax ?? -Infinity)
               ? Math.max(currentTemp, todayObservedHigh ?? currentTemp)
               : (day.tempMax ?? todayObservedHigh))
-          : day.tempMax)}°
+          : day.tempMax, units).value}°
       </div>
       <div style={{ fontSize: 11, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>
-        {fmt(day.tempMin)}°
+        {formatTempParts(day.tempMin, units).value}°
       </div>
       {day.pop != null && (
         <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 4 }}>{day.pop}%</div>
@@ -247,7 +248,7 @@ function ForecastDayInsight({ insight, isLoading }) {
   );
 }
 
-export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon, todayObservedHigh, stationId, sourceType, currentIconCode, currentTemp }) {
+export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon, todayObservedHigh, stationId, sourceType, currentIconCode, currentTemp, units }) {
   const scrollRef = useRef(null);
   const groupRefs = useRef([]);
   const [activeLabel, setActiveLabel] = useState(null);
@@ -271,7 +272,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
     if (!day) return;
 
     const insightId = stationId || 'preview';
-    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date);
+    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date, units);
 
     try {
       const raw = localStorage.getItem(lsKey);
@@ -307,12 +308,13 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             pop: day.pop,
             icon: day.icon,
             sourceType: sourceType ?? 'pws',
+            units,
           }),
         });
         if (!res.ok) throw new Error(res.status);
         const json = await res.json();
         if (cancelToken.cancelled) return;
-        const updatedAt = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const updatedAt = new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() });
         const stored = { narrative: json.narrative ?? '', updatedAt };
         try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
         setDayInsight(stored);
@@ -324,7 +326,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
     })();
 
     return () => { cancelToken.cancelled = true; };
-  }, [selectedDayIndex, forecast, stationId, sourceType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedDayIndex, forecast, stationId, sourceType, units]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <Skeleton />;
 
@@ -384,7 +386,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
                 style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: gi > 0 ? 16 : 0 }}
               >
                 {group.hours.map((hr) => (
-                  <HourlyCard key={hr.time} hr={hr} />
+                  <HourlyCard key={hr.time} hr={hr} units={units} />
                 ))}
               </div>
             ))}
@@ -407,6 +409,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             onClick={() => setSelectedDayIndex(i)}
             currentTemp={currentTemp}
             todayObservedHigh={todayObservedHigh}
+            units={units}
           />
         ))}
       </div>

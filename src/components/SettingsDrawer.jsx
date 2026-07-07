@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
 import { CONDITION_PREVIEWS, WEATHER_THEME_IDS, DISPLAY_MODES } from '../themes.js';
 import { ACTIVITIES } from '../utils/activities';
+import { UNITS } from '../utils/units';
 import ChangelogModal from './ChangelogModal';
 import StationForm from './StationForm';
+
+const UNIT_OPTIONS = [
+  { id: UNITS.IMPERIAL, label: '°F, mph, in' },
+  { id: UNITS.METRIC,   label: '°C, km/h, mm' },
+];
 
 const MODES = [
   { id: DISPLAY_MODES.LIGHT, icon: '☀', label: 'Always Light', desc: 'I prefer light regardless of conditions' },
@@ -29,6 +35,7 @@ export default function SettingsDrawer({
   onClose, mode, onSetMode, autoTheme, previewCondition, onSetPreview,
   profile, onSaveProfile,
   defaultActivity, onSetDefaultActivity,
+  units, onSetUnits,
   isExploring, onClearExplore,
 }) {
   useEffect(() => {
@@ -232,6 +239,38 @@ export default function SettingsDrawer({
                 >
                   <span style={{ fontSize: 15 }}>{a.icon}</span>
                   {a.short}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Units section */}
+        <div style={{ marginBottom: 22 }}>
+          <div className="y-label">Units</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {UNIT_OPTIONS.map(u => {
+              const isActive = units === u.id;
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => onSetUnits(u.id)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 14px',
+                    textAlign: 'center',
+                    background: isActive ? 'var(--accent)' : 'var(--soft)',
+                    border: `1.5px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 20,
+                    cursor: 'pointer',
+                    fontSize: 13, fontWeight: isActive ? 600 : 400,
+                    color: isActive ? '#fff' : 'var(--tp)',
+                    fontFamily: 'var(--font-body)',
+                    boxShadow: isActive ? '0 0 0 3px var(--glow)' : 'none',
+                    transition: 'all var(--tr-fast)',
+                  }}
+                >
+                  {u.label}
                 </button>
               );
             })}

@@ -3,6 +3,7 @@ import { fmtHourShort } from '../utils/format';
 import { ACTIVITIES } from '../utils/activities';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
 import { toISODate, getTimePeriod } from '../utils/dateUtils';
+import { formatTemp, formatWind, formatPrecipRate } from '../utils/units';
 
 function isNotableWeatherChange(stored, current) {
   const c = stored.conditions;
@@ -44,12 +45,12 @@ const FACTOR_DEFS = {
     {
       name: 'Temperature', weight: 0.30,
       fn:  c => pw(c.temp,      [[32,5],[45,30],[55,75],[65,100],[85,100],[92,75],[100,40],[110,10]]),
-      raw: c => c.temp != null ? `${Math.round(c.temp)}°F` : '—',
+      raw: (c, units) => c.temp != null ? formatTemp(c.temp, units) : '—',
     },
     {
       name: 'Wind',        weight: 0.30,
       fn:  c => pw(c.windSpeed, [[0,100],[8,100],[12,80],[18,55],[25,25],[35,5]]),
-      raw: c => c.windSpeed != null ? `${Math.round(c.windSpeed)} mph` : '—',
+      raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
     {
       name: 'Humidity',    weight: 0.20,
@@ -59,16 +60,16 @@ const FACTOR_DEFS = {
     {
       name: 'Precipitation', weight: 0.20,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
-      raw: c => (c.precipRate ?? 0) > 0
-        ? `${(c.precipRate).toFixed(2)}"/hr`
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
+      raw: (c, units) => (c.precipRate ?? 0) > 0
+        ? formatPrecipRate(c.precipRate, units)
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
     },
   ],
   garden: [
     {
       name: 'Temperature', weight: 0.25,
       fn:  c => pw(c.temp,      [[35,10],[50,45],[60,85],[72,100],[80,100],[88,65],[96,30],[105,5]]),
-      raw: c => c.temp != null ? `${Math.round(c.temp)}°F` : '—',
+      raw: (c, units) => c.temp != null ? formatTemp(c.temp, units) : '—',
     },
     {
       name: 'UV Index',    weight: 0.15,
@@ -83,14 +84,14 @@ const FACTOR_DEFS = {
     {
       name: 'Wind',        weight: 0.15,
       fn:  c => pw(c.windSpeed, [[0,90],[10,100],[18,80],[25,55],[35,20]]),
-      raw: c => c.windSpeed != null ? `${Math.round(c.windSpeed)} mph` : '—',
+      raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
     {
       name: 'Precipitation', weight: 0.15,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
-      raw: c => (c.precipRate ?? 0) > 0
-        ? `${(c.precipRate).toFixed(2)}"/hr`
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
+      raw: (c, units) => (c.precipRate ?? 0) > 0
+        ? formatPrecipRate(c.precipRate, units)
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
     },
     {
       name: 'Air Quality', weight: 0.10,
@@ -102,7 +103,7 @@ const FACTOR_DEFS = {
     {
       name: 'Temperature', weight: 0.30,
       fn:  c => pw(c.temp,      [[40,10],[55,45],[62,85],[68,100],[75,100],[82,70],[88,40],[95,10]]),
-      raw: c => c.temp != null ? `${Math.round(c.temp)}°F` : '—',
+      raw: (c, units) => c.temp != null ? formatTemp(c.temp, units) : '—',
     },
     {
       name: 'Humidity',    weight: 0.25,
@@ -112,14 +113,14 @@ const FACTOR_DEFS = {
     {
       name: 'Wind',        weight: 0.15,
       fn:  c => pw(c.windSpeed, [[0,80],[8,100],[15,85],[22,55],[30,25],[40,5]]),
-      raw: c => c.windSpeed != null ? `${Math.round(c.windSpeed)} mph` : '—',
+      raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
     {
       name: 'Precipitation', weight: 0.20,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_SPORT),
-      raw: c => (c.precipRate ?? 0) > 0
-        ? `${(c.precipRate).toFixed(2)}"/hr`
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
+      raw: (c, units) => (c.precipRate ?? 0) > 0
+        ? formatPrecipRate(c.precipRate, units)
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
     },
     {
       name: 'Air Quality', weight: 0.10,
@@ -131,7 +132,7 @@ const FACTOR_DEFS = {
     {
       name: 'Temperature', weight: 0.35,
       fn:  c => pw(c.temp,      [[45,15],[58,50],[65,85],[70,100],[82,100],[88,70],[95,30],[103,5]]),
-      raw: c => c.temp != null ? `${Math.round(c.temp)}°F` : '—',
+      raw: (c, units) => c.temp != null ? formatTemp(c.temp, units) : '—',
     },
     {
       name: 'Humidity',    weight: 0.25,
@@ -141,14 +142,14 @@ const FACTOR_DEFS = {
     {
       name: 'Wind',        weight: 0.15,
       fn:  c => pw(c.windSpeed, [[0,85],[8,100],[15,80],[22,55],[30,20]]),
-      raw: c => c.windSpeed != null ? `${Math.round(c.windSpeed)} mph` : '—',
+      raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
     {
       name: 'Precipitation', weight: 0.15,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
-      raw: c => (c.precipRate ?? 0) > 0
-        ? `${(c.precipRate).toFixed(2)}"/hr`
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
+      raw: (c, units) => (c.precipRate ?? 0) > 0
+        ? formatPrecipRate(c.precipRate, units)
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
     },
     {
       name: 'Air Quality', weight: 0.10,
@@ -163,15 +164,15 @@ const FACTOR_DEFS = {
         const hi = c.feelsLike ?? c.temp ?? 70;
         return pw(hi, [[32,5],[45,30],[55,75],[68,100],[75,80],[80,50],[85,20],[92,5]]);
       },
-      raw: c => {
+      raw: (c, units) => {
         const v = c.feelsLike ?? c.temp;
-        return v != null ? `${Math.round(v)}°F` : '—';
+        return v != null ? formatTemp(v, units) : '—';
       },
     },
     {
       name: 'Wind (Cooling)', weight: 0.15,
       fn:  c => pw(c.windSpeed, [[0,60],[5,80],[12,100],[20,90],[28,65],[38,30]]),
-      raw: c => c.windSpeed != null ? `${Math.round(c.windSpeed)} mph` : '—',
+      raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
     {
       name: 'Humidity',       weight: 0.20,
@@ -181,9 +182,9 @@ const FACTOR_DEFS = {
     {
       name: 'Precipitation',   weight: 0.15,
       fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_DOG),
-      raw: c => (c.precipRate ?? 0) > 0
-        ? `${(c.precipRate).toFixed(2)}"/hr`
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : '0.00"/hr',
+      raw: (c, units) => (c.precipRate ?? 0) > 0
+        ? formatPrecipRate(c.precipRate, units)
+        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
     },
     {
       name: 'Air Quality',    weight: 0.10,
@@ -193,28 +194,29 @@ const FACTOR_DEFS = {
   ],
 };
 
-function computeScore(actId, current) {
+function computeScore(actId, current, units) {
   if (!current) return { score: 0, factors: [], pavementTemp: null };
   const defs = FACTOR_DEFS[actId];
   let total = 0;
   const factors = defs.map(f => {
     const s = Math.round(clamp(f.fn(current)));
     total += s * f.weight;
-    return { name: f.name, score: s, raw: f.raw(current) };
+    return { name: f.name, score: s, raw: f.raw(current, units) };
   });
   const score = Math.round(clamp(total));
 
   let pavementTemp = null;
   if (actId === 'dogwalk' && current.temp != null) {
     // Direct-sun pavement: air temp + 40–60°F. Use UV as proxy for sun intensity.
+    // Always computed/stored in imperial (°F) internally — see units.js for display conversion.
     const sunOffset = (current.uv ?? 0) >= 3 ? 50 : 20;
     pavementTemp = Math.round(current.temp + sunOffset);
   }
   return { score, factors, pavementTemp };
 }
 
-function computeAllScores(current) {
-  return Object.fromEntries(ACTIVITIES.map(a => [a.id, computeScore(a.id, current)]));
+function computeAllScores(current, units) {
+  return Object.fromEntries(ACTIVITIES.map(a => [a.id, computeScore(a.id, current, units)]));
 }
 
 // ── Arc helpers ───────────────────────────────────────────────────────────────
@@ -449,7 +451,7 @@ function TimeArc({ arcData, bestWindow }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ActivityScoreCard({ current, hourlyForecast, onError, defaultActivity }) {
+export default function ActivityScoreCard({ current, hourlyForecast, onError, defaultActivity, units }) {
   const [activeId,       setActiveId]       = useState(defaultActivity ?? 'bbq');
   const [expanded,       setExpanded]       = useState(false);
   const [insight,        setInsight]        = useState(null);
@@ -470,7 +472,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
     forecastMaxProb,
   } : current, [current, forecastRate, forecastMaxProb]);
 
-  const allScores = useMemo(() => computeAllScores(currentWithThreat), [currentWithThreat]);
+  const allScores = useMemo(() => computeAllScores(currentWithThreat, units), [currentWithThreat, units]);
   const active    = allScores[activeId];
   const arcData   = useMemo(() => getArcData(hourlyForecast, activeId, current), [hourlyForecast, activeId, current]);
   const bestWindow = useMemo(() => getBestWindow(arcData), [arcData]);
@@ -487,7 +489,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
     const period = getTimePeriod();
 
     // Fast in-session path: useRef avoids re-renders when switching activities
-    const iKey = `${activeId}|${period}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
+    const iKey = `${activeId}|${period}|${units}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
     const cached = iCache.current[iKey];
     if (cached !== undefined && Date.now() - cached.ts < INSIGHT_TTL_MS) {
       setInsight(cached.text);
@@ -496,7 +498,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
     }
 
     // Persistent path: localStorage survives page refreshes; only bypass on notable weather change
-    const storageKey = STORAGE_KEYS.activityInsightKey(current?.stationId ?? 'preview', activeId, period);
+    const storageKey = STORAGE_KEYS.activityInsightKey(current?.stationId ?? 'preview', activeId, period, units);
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey));
       if (stored && Date.now() - stored.ts < INSIGHT_TTL_MS) {
@@ -531,6 +533,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
           stationId: current?.stationId,
           sourceType: current?.sourceType,
           period,
+          units,
           current: {
             ...currentWithThreat,
             ...(activeId === 'dogwalk' && active.pavementTemp != null
@@ -569,7 +572,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
         .finally(() => { if (!controller.signal.aborted) setInsightLoading(false); });
     }, 400);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [activeId, currentWithThreat]);
+  }, [activeId, currentWithThreat, units]);
 
   if (!current) {
     return (
@@ -683,7 +686,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
               <span style={{ fontSize: 16, flexShrink: 0 }}>🐾</span>
               <div style={{ color: 'var(--ts)' }}>
                 <strong style={{ color: 'var(--score-marginal)' }}>Pavement caution</strong>
-                {' '}— Estimated surface ~{active.pavementTemp}°F in direct sun.
+                {' '}— Estimated surface ~{formatTemp(active.pavementTemp, units)} in direct sun.
                 Use the 7-second rule: if you can't hold the back of your hand on the pavement
                 for 7 seconds, it's too hot for paws.
               </div>

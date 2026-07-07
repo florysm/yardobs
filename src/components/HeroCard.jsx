@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { fmt, degreesToCompass } from '../utils/format';
+import { fmt, getLocaleHour12 } from '../utils/format';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
 import { ICONS, LABELS } from '../utils/weatherIcons';
 import { toDateStr, toISODate, getTimePeriod } from '../utils/dateUtils';
+import { formatTemp, formatTempParts, formatWindWithCompass, formatPrecipTotal, formatPressure } from '../utils/units';
 
 // ── Tabler-style SVG icon primitives for signal tags ─────────────────────────
 
@@ -239,7 +240,7 @@ function buildForecastSummary(hf) {
   return { maxPrecipProb, rainyHoursCount, totalForecastHours };
 }
 
-export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, onError }) {
+export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, onError, units }) {
   const [showHint,      setShowHint]      = useState(false);
   const [view,          setView]          = useState('conditions');
   const [contentFade,   setContentFade]   = useState(true);
@@ -277,7 +278,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     const insightId = stationId || current?.neighborhood || 'preview';
     const today = toISODate();
     const period = getTimePeriod();
-    const lsKey = STORAGE_KEYS.insightKey(insightId, today, period);
+    const lsKey = STORAGE_KEYS.insightKey(insightId, today, period, units);
 
     try {
       const raw = localStorage.getItem(lsKey);
@@ -312,12 +313,13 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
             type: 'daily', stationId: insightId, date: today, period, current, yoyReadings,
             forecastSummary: buildForecastSummary(hourlyForecast),
             sourceType: current?.sourceType,
+            units,
           }),
         });
         if (!res.ok) throw new Error(res.status);
         const json = await res.json();
         if (cancelled) return;
-        const updatedAt = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const updatedAt = new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() });
         const stored = { ...json, updatedAt, _sourceType: current?.sourceType };
         try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
         setInsight(stored);
@@ -333,7 +335,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
 
     run();
     return () => { cancelled = true; };
-  }, [view, current, stationId, fetchHistoryDaily, hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, current, stationId, fetchHistoryDaily, hourlyForecast, units]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function deriveFromSensors(obs) {
     const precip = obs.precipRate ?? 0;
@@ -362,7 +364,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
   const condition = derived?.label ?? 'Loading…';
 
   const windLabel = current
-    ? `${fmt(current.windSpeed)} mph ${degreesToCompass(current.windDir)}`
+    ? formatWindWithCompass(current.windSpeed, current.windDir, units)
     : '—';
 
   const togglePill = (
@@ -472,15 +474,15 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
                 color: 'var(--tp)',
                 lineHeight: 1,
               }}>
-                {isLoading ? '—' : fmt(current?.temp)}
-                <span style={{ fontSize: 26, fontWeight: 400, opacity: 0.55, letterSpacing: 0, verticalAlign: 'super' }}>°F</span>
+                {isLoading ? '—' : formatTempParts(current?.temp, units).value}
+                <span style={{ fontSize: 26, fontWeight: 400, opacity: 0.55, letterSpacing: 0, verticalAlign: 'super' }}>{formatTempParts(current?.temp, units).unit}</span>
               </div>
               <span style={{ fontSize: 58, lineHeight: 1, opacity: 0.92 }} aria-hidden="true">
                 {isLoading ? '…' : icon}
               </span>
             </div>
             <div style={{ fontSize: 12, color: 'var(--ts)', marginBottom: 18, fontWeight: 300 }}>
-              Feels like {fmt(current?.feelsLike)}° · Humidity {fmt(current?.humidity)}%
+              Feels like {formatTemp(current?.feelsLike, units)} · Humidity {fmt(current?.humidity)}%
             </div>
 
             {/* 3-stat footer strip */}
@@ -491,8 +493,8 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
             }}>
               {[
                 { label: 'Wind',     val: windLabel },
-                { label: 'Pressure', val: current ? `${fmt(current.pressure, 2)}"` : '—' },
-                { label: 'Precip',   val: current ? (current.precipTotal != null ? `${fmt(current.precipTotal, 2)}"` : '—') : '—' },
+                { label: 'Pressure', val: current ? formatPressure(current.pressure, units) : '—' },
+                { label: 'Precip',   val: current ? formatPrecipTotal(current.precipTotal, units) : '—' },
               ].map(({ label, val }) => (
                 <div key={label} style={{ background: 'var(--glass)', padding: '10px 8px', textAlign: 'center', backdropFilter: 'blur(8px)' }}>
                   <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--tm)' }}>{label}</div>

@@ -2,9 +2,10 @@ import ActivityScoreCard from './ActivityScoreCard';
 import MetricCard from './MetricCard';
 import { fmt, aqiCategory } from '../utils/format';
 import { beaufort } from '../utils/weatherCalc';
+import { formatTempParts, formatWindParts, formatPrecipRateParts } from '../utils/units';
 
 
-export default function NowTab({ current, isLoading, error, stationId, hourlyForecast, onError, defaultActivity }) {
+export default function NowTab({ current, isLoading, error, stationId, hourlyForecast, onError, defaultActivity, units }) {
   if (isLoading) {
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -27,21 +28,25 @@ export default function NowTab({ current, isLoading, error, stationId, hourlyFor
 
   const isPreview = current?.sourceType === 'forecast_model';
 
+  const dewPoint = formatTempParts(current?.dewPoint, units);
+  const windGust = formatWindParts(current?.windGust, units);
+  const rainRate = formatPrecipRateParts(current?.precipRate, units);
+
   return (
     <div>
       {/* Activity score card */}
-      <ActivityScoreCard current={current} hourlyForecast={hourlyForecast} onError={onError} defaultActivity={defaultActivity} />
+      <ActivityScoreCard current={current} hourlyForecast={hourlyForecast} onError={onError} defaultActivity={defaultActivity} units={units} />
 
       {/* 4-metric grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-        <MetricCard icon="🌡️" label="Dew Point" value={fmt(current?.dewPoint)} unit="°F" />
-        <MetricCard icon="💨" label="Wind Gust" value={fmt(current?.windGust)} unit=" mph" trend={current?.windGust != null ? beaufort(current.windGust) : undefined} />
+        <MetricCard icon="🌡️" label="Dew Point" value={dewPoint.value} unit={dewPoint.unit} />
+        <MetricCard icon="💨" label="Wind Gust" value={windGust.value} unit={windGust.unit} trend={current?.windGust != null ? beaufort(current.windGust) : undefined} />
         <MetricCard icon="🌬️" label="Air Quality" value={fmt(current?.aqi)} unit=" AQI" trend={aqiCategory(current?.aqi)} />
         <MetricCard
           icon="🌧️"
           label="Rain Rate"
-          value={isPreview ? '—' : fmt(current?.precipRate, 2)}
-          unit={isPreview ? '' : '"'}
+          value={isPreview ? '—' : rainRate.value}
+          unit={isPreview ? '' : rainRate.unit}
           trend={isPreview ? 'Not available' : undefined}
         />
       </div>

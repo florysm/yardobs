@@ -41,6 +41,11 @@ function evictOne() {
 
 import { applyCors } from './lib/cors.js';
 import { degreesToCompass, aqiCategory } from '../src/utils/format.js';
+import { formatTemp, formatWind, formatPrecipRate, formatPrecipTotal, formatPressure, convertTemp, tempUnitLabel } from '../src/utils/units.js';
+
+function resolveUnits(body) {
+  return body?.units === 'metric' ? 'metric' : 'imperial';
+}
 
 function isOverloaded(err) {
   return err.status === 529 || err.message?.startsWith('529');
@@ -77,8 +82,9 @@ function activityCacheKey(stationId, actId, score, c, period) {
 async function handleActivityInsight(req, res) {
   const { activity, activityLabel, score, factors, current: c,
           firstRainyHour, lastRainyHour, stationId, sourceType, period } = req.body ?? {};
+  const units = resolveUnits(req.body);
   const isPreview = sourceType === 'forecast_model';
-  const key = (isPreview ? 'preview|' : '') + activityCacheKey(stationId ?? 'unknown', activity, score, c, period);
+  const key = `${units}|${isPreview ? 'preview|' : ''}` + activityCacheKey(stationId ?? 'unknown', activity, score, c, period);
 
   const hit = getCacheHit(key);
   if (hit) return res.status(200).json({ insight: hit.text });
@@ -105,12 +111,12 @@ async function handleActivityInsight(req, res) {
     ? `Rain window: ${firstRainyHour}:00–${lastRainyHour + 1}:00 (hours with ≥50% probability)`
     : 'Rain window: none expected';
   const pavementLine = c?.pavementTemp != null
-    ? `\n- Pavement temp (direct sun): ~${c.pavementTemp}°F` : '';
+    ? `\n- Pavement temp (direct sun): ~${formatTemp(c.pavementTemp, units)}` : '';
 
   // Preview mode omits actual rain rate/total since Open-Meteo doesn't provide them
   const rainLine = isPreview
     ? `Forecast rain risk: ${forecastLine}`
-    : `Rain: ${c?.precipRate ?? 0}"/hr now, ${c?.precipTotal ?? 0}" today; ${forecastLine}`;
+    : `Rain: ${formatPrecipRate(c?.precipRate ?? 0, units)} now, ${formatPrecipTotal(c?.precipTotal ?? 0, units)} today; ${forecastLine}`;
 
   const prompt = `Time of day: ${period ?? 'daytime'}
 Activity: ${activityLabel} — Overall score: ${score}/100
@@ -118,8 +124,8 @@ Limiting factors: ${topFactors}
 ${rainWindow}
 
 Conditions right now:
-- ${c?.temp ?? '?'}°F, feels like ${c?.feelsLike ?? '?'}°F (${feelsLikeLabel}), dew point ${c?.dewPoint ?? '?'}°F
-- Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusts to ${c?.windGust ?? '?'} mph
+- ${formatTemp(c?.temp, units)}, feels like ${formatTemp(c?.feelsLike, units)} (${feelsLikeLabel}), dew point ${formatTemp(c?.dewPoint, units)}
+- Wind: ${formatWind(c?.windSpeed, units)} ${dir}, gusts to ${formatWind(c?.windGust, units)}
 - Humidity: ${c?.humidity ?? '?'}%, UV ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi) ?? 'unknown'})
 - ${rainLine}${pavementLine}
 
@@ -155,10 +161,11 @@ const ALLOWED_ICONS = [
 
 async function handleDailyInsight(req, res) {
   const { stationId, date, current: c, yoyReadings, forecastSummary, sourceType, period } = req.body ?? {};
+  const units = resolveUnits(req.body);
   const isPreview = sourceType === 'forecast_model';
   const tempBucket    = Math.round((c?.temp ?? 70) / 2) * 2;
   const precipBucket  = Math.round((forecastSummary?.maxPrecipProb ?? 0) / 20) * 20;
-  const key = `${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${precipBucket}|${period ?? 'morning'}`;
+  const key = `${units}|${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${precipBucket}|${period ?? 'morning'}`;
 
   const hit = getCacheHit(key);
   if (hit) return res.status(200).json(hit.data);
@@ -175,10 +182,10 @@ async function handleDailyInsight(req, res) {
     if (!yoy || c?.temp == null) return '';
     const avg = yoy.imperial?.tempAvg ?? yoy.imperial?.temp ?? null;
     if (avg == null) return '';
-    const diff = Math.round(c.temp - avg);
+    const diff = Math.round(convertTemp(c.temp, units) - convertTemp(avg, units));
     const precip = yoy.imperial?.precipTotal ?? 0;
     return diff !== 0
-      ? `\nVs. last year same date: ${diff > 0 ? '+' : ''}${diff}°F on temp, ${precip}" precip.`
+      ? `\nVs. last year same date: ${diff > 0 ? '+' : ''}${diff}${tempUnitLabel(units)} on temp, ${formatPrecipTotal(precip, units)} precip.`
       : '\nSame date last year was nearly identical in temperature.';
   })();
 
@@ -191,7 +198,7 @@ async function handleDailyInsight(req, res) {
   // Preview mode: no rain rate/total; use forecast context only
   const rainLine = isPreview
     ? (forecastContext ? '' : '\n- No rain expected today')
-    : `\n- Rain: ${c?.precipRate ?? 0}"/hr, ${c?.precipTotal ?? 0}" today`;
+    : `\n- Rain: ${formatPrecipRate(c?.precipRate ?? 0, units)}, ${formatPrecipTotal(c?.precipTotal ?? 0, units)} today`;
 
   const locationLabel = isPreview ? 'Location' : 'Station';
   const yoyInstruction = isPreview
@@ -202,9 +209,9 @@ async function handleDailyInsight(req, res) {
 Time of day: ${period ?? 'daytime'}
 
 Right now:
-- Temp: ${c?.temp ?? '?'}°F (feels ${c?.feelsLike ?? '?'}°F), humidity ${c?.humidity ?? '?'}%, dew point ${c?.dewPoint ?? '?'}°F
-- Wind: ${c?.windSpeed ?? '?'} mph ${dir}, gusting ${c?.windGust ?? '?'} mph
-- Pressure: ${c?.pressure ?? '?'} inHg
+- Temp: ${formatTemp(c?.temp, units)} (feels ${formatTemp(c?.feelsLike, units)}), humidity ${c?.humidity ?? '?'}%, dew point ${formatTemp(c?.dewPoint, units)}
+- Wind: ${formatWind(c?.windSpeed, units)} ${dir}, gusting ${formatWind(c?.windGust, units)}
+- Pressure: ${formatPressure(c?.pressure, units)}
 - UV index: ${c?.uv ?? '?'}, AQI ${c?.aqi ?? '?'} (${aqiCategory(c?.aqi) ?? 'unknown'})${rainLine}${forecastContext}${yoyDelta}
 
 Return:
@@ -256,7 +263,8 @@ Return only the JSON object, no markdown, no other text.`;
 
 async function handleForecastDayInsight(req, res) {
   const { stationId, date, dayLabel, tempMax, tempMin, pop, icon } = req.body ?? {};
-  const key = `fcday|${stationId ?? 'preview'}|${date}`;
+  const units = resolveUnits(req.body);
+  const key = `${units}|fcday|${stationId ?? 'preview'}|${date}`;
 
   const hit = getCacheHit(key);
   if (hit) return res.status(200).json({ narrative: hit.text });
@@ -267,7 +275,7 @@ async function handleForecastDayInsight(req, res) {
   const SYSTEM = 'You are a concise weather outlook writer for YardObs. Write in second person. Given a daily forecast summary, write 2–3 sentences describing what the day will feel like and what to expect. Lead with the most notable condition. Be practical and specific. No bullets, headers, or sign-off phrases. Return only the narrative text.';
 
   const prompt = `Day: ${dayLabel ?? date}
-Forecast: high ${tempMax ?? '?'}°F / low ${tempMin ?? '?'}°F
+Forecast: high ${formatTemp(tempMax, units)} / low ${formatTemp(tempMin, units)}
 Conditions: ${icon ?? ''}
 Precipitation chance: ${pop ?? 0}%
 

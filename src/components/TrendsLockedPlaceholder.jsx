@@ -95,7 +95,7 @@ export default function TrendsLockedPlaceholder({ onOpenSettings }) {
         lineHeight: 1.6,
         textAlign: 'center',
       }}>
-        Your city forecast can vary 5–10°F from your actual backyard depending on shade, pavement, and elevation.
+        Your city forecast can vary noticeably from your actual backyard depending on shade, pavement, and elevation.
         A personal weather station captures what&apos;s really happening at your specific location.
       </div>
     </div>

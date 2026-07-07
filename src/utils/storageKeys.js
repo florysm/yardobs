@@ -6,7 +6,8 @@ export const STORAGE_KEYS = {
 STATION_ID:       'yardobs-station-id',
   TWC_API_KEY:      'yardobs-twc-key',
   DEFAULT_ACTIVITY: 'yardobs-default-activity',
-  insightKey: (stationId, today, period) => `yardobs-insight-${stationId}-${today}-${period}`,
-  activityInsightKey: (stationId, activityId, period) => `yardobs-activity-insight-${stationId}-${activityId}-${period}`,
-  forecastDayInsightKey: (stationId, date) => `yardobs-fcday-insight-${stationId}-${date}`,
+  UNITS:            'yardobs-units',
+  insightKey: (stationId, today, period, units) => `yardobs-insight-${stationId}-${today}-${period}-${units}`,
+  activityInsightKey: (stationId, activityId, period, units) => `yardobs-activity-insight-${stationId}-${activityId}-${period}-${units}`,
+  forecastDayInsightKey: (stationId, date, units) => `yardobs-fcday-insight-${stationId}-${date}-${units}`,
 };

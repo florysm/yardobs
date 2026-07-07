@@ -2,6 +2,15 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] - 2026-07-07
+
+### Added
+- Added a Units setting (°F/mph/inches or °C/km/h/mm) that's automatically detected from your device's language and region, with a manual override in Settings — used throughout current conditions, the activity score, forecasts, trends, and AI-generated insights.
+- Time displays (sunrise/sunset, hourly forecast, "updated" timestamps) now automatically follow your device's 12-hour or 24-hour clock preference instead of always showing AM/PM.
+
+### Fixed
+- Fixed an issue where saving or updating your weather station connection wouldn't reliably start pulling in live data until the app was reloaded.
+
 ## [1.2.1] - 2026-06-11
 
 ### Fixed

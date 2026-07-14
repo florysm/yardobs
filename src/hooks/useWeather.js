@@ -1,9 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import SunCalc from 'suncalc';
 import { apiFetch } from '../utils/apiFetch';
 import { toDateStr } from '../utils/dateUtils';
 import { calcFeelsLike } from '../utils/weatherCalc';
+import { normalizeAlerts } from '../utils/alerts';
 
 const POLL_MS = 5 * 60 * 1000;
+
+// TWC PWS observations omit the day/night flag, so derive it locally from the
+// sun's position (works everywhere, incl. polar day/night). Falls back to day
+// when coordinates are missing.
+function computeIsDay(lat, lon) {
+  if (lat == null || lon == null) return 1;
+  try {
+    return SunCalc.getPosition(new Date(), lat, lon).altitude > 0 ? 1 : 0;
+  } catch {
+    return 1;
+  }
+}
 
 // Converts Open-Meteo WMO weather codes to approximate TWC icon codes so that
 // resolveAutoTheme and ForecastTab's buildDays (which both expect TWC codes) work
@@ -20,7 +34,8 @@ function wmoToTwc(code, isDay = 1) {
   if (code <= 77) return 16;     // Snow / snow grains
   if (code <= 82) return 40;     // Rain showers → heavy showers
   if (code <= 86) return 46;     // Snow showers
-  return 4;                       // Thunderstorm
+  if (code >= 95) return 4;      // Thunderstorm (95/96/99)
+  return 26;                      // Unmapped code → cloudy (neutral default)
 }
 
 // ── Open-Meteo base URLs ──────────────────────────────────────────────────────
@@ -37,6 +52,7 @@ export function useWeather(profile, credentialsVersion) {
   const [forecast, setForecast]         = useState(null);
   const [hourlyForecast, setHourlyForecast] = useState(null);
   const [airQuality, setAirQuality]     = useState(null);
+  const [alerts, setAlerts]             = useState(null);
   const [isLoading, setIsLoading]       = useState(true);
   const [error, setError]               = useState(null);
   const [lastUpdated, setLastUpdated]   = useState(null);
@@ -71,6 +87,10 @@ export function useWeather(profile, credentialsVersion) {
       locationRef.current = { lat: obs.lat, lon: obs.lon };
       setLastUpdated(new Date());
 
+      // TWC PWS observations carry no day/night flag — derive it from the sun's
+      // position so night themes actually engage after sunset.
+      const isDay = computeIsDay(obs.lat, obs.lon);
+
       // When the station lacks solar/UV sensors (the only local sky-clarity signals),
       // supplement TWC's iconCode with Open-Meteo's model-based weather_code so the
       // theme reflects actual conditions rather than TWC's regional inference.
@@ -83,7 +103,7 @@ export function useWeather(profile, credentialsVersion) {
           );
           const omData = await omRes.json();
           if (omData.current?.weather_code != null) {
-            resolvedIconCode = wmoToTwc(omData.current.weather_code, obs.isDay ?? 1);
+            resolvedIconCode = wmoToTwc(omData.current.weather_code, isDay);
           }
         } catch { /* non-fatal — falls back to TWC iconCode */ }
       }
@@ -102,7 +122,7 @@ export function useWeather(profile, credentialsVersion) {
         uv:          obs.uv                    ?? null,
         solar:       obs.solarRadiation        ?? null,
         iconCode:    resolvedIconCode,
-        isDay:       obs.isDay                 ?? 1,
+        isDay:       isDay,
         stationId:    obs.stationID,
         neighborhood: obs.neighborhood ?? null,
         country:      obs.country      ?? null,
@@ -237,9 +257,14 @@ export function useWeather(profile, credentialsVersion) {
       const data = await apiFetch(`/api/weather?type=forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
       setForecast(data);
     } catch (err) {
-      if (err.name !== 'AbortError') setError(err.message);
+      if (err.name === 'AbortError') return;
+      // The daily forecast needs an owner/station key. For non-station (preview) users it is a
+      // best-effort enhancement — fail quietly rather than surface a station-key error they
+      // can't act on. The forecast card falls back to its normal empty state.
+      if (!stationId) return;
+      setError(err.message);
     }
-  }, []);
+  }, [stationId]);
 
   // ── Hourly forecast — Open-Meteo (multi-model ensemble, global, includes UV index) ─
   const fetchHourlyForecast = useCallback(async () => {
@@ -268,7 +293,20 @@ export function useWeather(profile, credentialsVersion) {
     }
   }, []);
 
-  // Clear forecast/hourly/AQ caches when the data source location changes
+  // ── Severe-weather alerts — via proxy (NWS, US-only). Failures are silent:
+  //    outside NWS coverage the endpoint 4xxs, which simply means "no alerts". ─
+  const fetchAlerts = useCallback(async () => {
+    const loc = locationRef.current;
+    if (!loc) return;
+    try {
+      const raw = await apiFetch(`/api/weather?type=alerts&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
+      setAlerts(normalizeAlerts(raw));
+    } catch (err) {
+      if (err.name !== 'AbortError') setAlerts([]);
+    }
+  }, []);
+
+  // Clear forecast/hourly/AQ/alert caches when the data source location changes
   const dataSourceKey = isPreviewMode
     ? `preview:${previewLat ?? ''},${previewLon ?? ''}`
     : `station:${stationId ?? ''}`;
@@ -278,6 +316,7 @@ export function useWeather(profile, credentialsVersion) {
     setForecast(null);
     setHourlyForecast(null);
     setAirQuality(null);
+    setAlerts(null);
   }, [dataSourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -286,15 +325,19 @@ export function useWeather(profile, credentialsVersion) {
     const schedule = () => {
       // ±30s jitter prevents all open tabs from hitting the server simultaneously
       const jitter = (Math.random() - 0.5) * 60_000;
-      timer = setTimeout(() => { fetchCurrent(); schedule(); }, POLL_MS + jitter);
+      timer = setTimeout(() => {
+        fetchCurrent();
+        fetchAlerts();  // refresh alerts each poll so mid-session warnings surface
+        schedule();
+      }, POLL_MS + jitter);
     };
     schedule();
     return () => clearTimeout(timer);
-  }, [fetchCurrent]);
+  }, [fetchCurrent, fetchAlerts]);
 
   return {
-    current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality,
+    current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, alerts,
     isLoading, error, lastUpdated,
-    fetchCurrent, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality,
+    fetchCurrent, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality, fetchAlerts,
   };
 }

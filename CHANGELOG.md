@@ -2,6 +2,20 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] - 2026-07-14
+
+### Added
+
+- Severe weather alerts from the National Weather Service now appear as a colored banner at the top of the dashboard whenever there are active alerts for your location. Tap the banner to read the full alert text, timing, and any safety instructions. The banner refreshes automatically every 5 minutes.
+
+### Fixed
+
+- The weather-based app theme (stormy / rainy / cloudy / sunny) now uses your station's own rain gauge as the ground truth — a regional storm reported by the weather model won't flip the app to stormy when your backyard is measurably dry.
+- Night themes (dark / stormy at night) now reliably activate after sunset, derived from your location's actual sun position instead of a day/night flag that the weather service sometimes omits.
+- Searching for a location on iPhone no longer zooms the screen in — the keyboard dismisses at normal zoom.
+- Fixed an intermittent error on the forecast card that could appear in location preview mode (where no station API key is expected).
+- A fatal app crash now shows a "Reload" button instead of a blank screen.
+
 ## [1.3.0] - 2026-07-07
 
 ### Added

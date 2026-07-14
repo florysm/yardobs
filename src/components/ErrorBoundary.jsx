@@ -13,14 +13,15 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (this.state.error) {
+      const { label = 'Something went wrong loading this tab.', reload = false } = this.props;
       return (
         <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>
-          <div style={{ marginBottom: 8 }}>Something went wrong loading this tab.</div>
+          <div style={{ marginBottom: 8 }}>{label}</div>
           <button
-            onClick={() => this.setState({ error: null })}
+            onClick={() => (reload ? window.location.reload() : this.setState({ error: null }))}
             style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
           >
-            Try again
+            {reload ? 'Reload' : 'Try again'}
           </button>
         </div>
       );

@@ -4,13 +4,47 @@ export const UNITS = { IMPERIAL: 'imperial', METRIC: 'metric' };
 
 const IMPERIAL_REGIONS = new Set(['US', 'LR', 'MM']);
 
-// Metric by default; imperial only for US-style locales. Falls back to metric
-// on any failure (older browsers, non-browser contexts) since that's the
+// IANA time zones covering the US (incl. territories with distinct zones),
+// Liberia, and Myanmar — the only places that use imperial units day to day.
+// Time zone comes from the device's physical location (OS/GPS), so unlike
+// navigator.language it isn't fooled by someone who leaves their phone's
+// language set to "English (United States)" while living abroad.
+const IMPERIAL_TIMEZONES = new Set([
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'America/Anchorage', 'America/Phoenix', 'America/Detroit', 'America/Boise',
+  'America/Indianapolis', 'America/Indiana/Knox', 'America/Indiana/Marengo',
+  'America/Indiana/Petersburg', 'America/Indiana/Tell_City', 'America/Indiana/Vevay',
+  'America/Indiana/Vincennes', 'America/Indiana/Winamac', 'America/Louisville',
+  'America/Kentucky/Monticello', 'America/Menominee', 'America/North_Dakota/Beulah',
+  'America/North_Dakota/Center', 'America/North_Dakota/New_Salem', 'America/Juneau',
+  'America/Metlakatla', 'America/Nome', 'America/Sitka', 'America/Yakutat',
+  'America/Adak', 'Pacific/Honolulu',
+  'Africa/Monrovia', 'Asia/Yangon',
+]);
+
+// Pure decision helpers (extracted so the imperial/metric logic is testable
+// without stubbing the whole Intl/navigator environment).
+export function unitsForTimezone(tz) {
+  if (!tz) return null; // unknown → let the caller fall back to region
+  return IMPERIAL_TIMEZONES.has(tz) ? UNITS.IMPERIAL : UNITS.METRIC;
+}
+
+export function unitsForRegion(region) {
+  return IMPERIAL_REGIONS.has(region) ? UNITS.IMPERIAL : UNITS.METRIC;
+}
+
+// Metric by default; imperial only when the device is physically located in an
+// imperial-unit place. Time zone is the primary signal (reflects location, not
+// language preference); language-region is a weaker fallback. Falls back to
+// metric on any failure (older browsers, non-browser contexts) since that's the
 // international-first default this app is moving toward.
 export function detectDefaultUnits() {
   try {
-    const region = new Intl.Locale(navigator.language).maximize().region;
-    return IMPERIAL_REGIONS.has(region) ? UNITS.IMPERIAL : UNITS.METRIC;
+    const byTz = unitsForTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    if (byTz) return byTz;
+  } catch { /* fall through to language-based detection */ }
+  try {
+    return unitsForRegion(new Intl.Locale(navigator.language).maximize().region);
   } catch {
     return UNITS.METRIC;
   }

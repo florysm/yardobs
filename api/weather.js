@@ -1,4 +1,5 @@
 import { applyCors } from './lib/cors.js';
+import { validCoords, validStationId, validDate } from './lib/validate.js';
 
 const TWC_BASE = 'https://api.weather.com';
 
@@ -47,9 +48,21 @@ export default async function handler(req, res) {
 
   const { type, date, lat, lon, stationId } = req.query;
 
-  const apiKey = req.headers['x-twc-key'] || process.env.TWC_API_KEY;
-  const keylessTypes = new Set(['hourly-forecast', 'air-quality']);
-  if (!apiKey && !keylessTypes.has(type)) return res.status(401).json({ error: 'TWC_API_KEY not configured' });
+  // ── Input validation — reject malformed params before they reach upstream URLs
+  if (!validCoords(lat, lon)) return res.status(400).json({ error: 'Invalid coordinates' });
+  if (!validStationId(stationId)) return res.status(400).json({ error: 'Invalid station ID' });
+  if (!validDate(date)) return res.status(400).json({ error: 'Invalid date' });
+
+  // The owner's server key powers only preview mode's keyless daily forecast.
+  // Every other TWC/PWS endpoint must use the caller's own key (sent as
+  // X-TWC-Key by station owners) so the shared key can't be used to query
+  // arbitrary stations.
+  const clientKey = req.headers['x-twc-key'];
+  const apiKey = clientKey || (type === 'forecast' ? process.env.TWC_API_KEY : undefined);
+  const keylessTypes = new Set(['hourly-forecast', 'air-quality', 'alerts']);
+  if (!apiKey && !keylessTypes.has(type)) {
+    return res.status(401).json({ error: 'TWC API key required — add your station key in Settings.' });
+  }
 
   // ── Route dispatch ─────────────────────────────────────────────────────────
   let url;
@@ -86,15 +99,27 @@ export default async function handler(req, res) {
       if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
       url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&timezone=auto`;
       break;
+    case 'alerts':
+      // Severe-weather alerts. NWS is free/keyless but US-only; the client
+      // normalizes the response (src/utils/alerts.js) so another source can be
+      // swapped in here later without touching the UI.
+      if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
+      url = `https://api.weather.gov/alerts/active?point=${lat},${lon}`;
+      break;
     default:
-      return res.status(400).json({ error: 'Invalid type. Use: current, history, history-daily, forecast, hourly-forecast, air-quality' });
+      return res.status(400).json({ error: 'Invalid type. Use: current, history, history-daily, forecast, hourly-forecast, air-quality, alerts' });
   }
+
+  // NWS requires an identifying User-Agent; other upstreams ignore it.
+  const fetchHeaders = type === 'alerts'
+    ? { 'User-Agent': '(YardObs, https://yardobs.app)', 'Accept': 'application/geo+json' }
+    : {};
 
   const timeoutCtrl = new AbortController();
   const timeoutId = setTimeout(() => timeoutCtrl.abort(), 10_000);
 
   try {
-    const upstream = await fetch(url, { signal: timeoutCtrl.signal });
+    const upstream = await fetch(url, { signal: timeoutCtrl.signal, headers: fetchHeaders });
     clearTimeout(timeoutId);
     const text = await upstream.text();
 

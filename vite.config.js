@@ -26,4 +26,10 @@ export default defineConfig({
       },
     },
   },
+  test: {
+    // Pure-logic unit tests run in Node (no DOM). Component/e2e are a later pass.
+    environment: 'node',
+    globals: true,
+    include: ['src/**/*.test.{js,jsx}', 'api/**/*.test.js'],
+  },
 });

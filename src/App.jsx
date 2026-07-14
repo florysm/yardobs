@@ -6,6 +6,8 @@ import NavTabs from './components/NavTabs';
 import NowTab from './components/NowTab';
 import ForecastTab from './components/ForecastTab';
 import SettingsDrawer from './components/SettingsDrawer';
+import AlertBar from './components/AlertBar';
+import AlertsSheet from './components/AlertsSheet';
 import ErrorBoundary from './components/ErrorBoundary';
 import LocationSetup from './components/LocationSetup';
 import { useWeather } from './hooks/useWeather';
@@ -27,36 +29,55 @@ const ICON_RAINY  = [5, 6, 8, 9, 10, 11, 12, 35, 39, 40, 45];
 const ICON_CLOUDY = [7, 13, 14, 15, 16, 18, 19, 20, 21, 22, 25, 26, 27, 28, 41, 42, 43, 46];
 const ICON_PARTLY = [23, 24, 29, 30];
 
-// Resolves current conditions → one of the 6 theme names.
-// Uses iconCode when the API returns it; falls back to PWS sensor data.
+// Resolves current conditions → one of the 6 theme names using a sensor-aware
+// cascade. Prefers the station's own measurements and only leans on the model
+// iconCode when local sensors can't answer, so a regional-model storm can't
+// override a backyard that's measurably dry. Day/night comes from current.isDay,
+// which useWeather derives via SunCalc (the TWC observation omits it).
 function resolveAutoTheme(current) {
-  const iconCode = current?.iconCode ?? null;
-  const isDay    = current?.isDay    ?? 1;
+  if (!current) return THEME_IDS.light;
 
-  if (iconCode != null) {
-    if (ICON_STORMY.includes(iconCode)) return THEME_IDS.stormy;
-    if (ICON_RAINY.includes(iconCode))  return THEME_IDS.rainy;
-    if (ICON_CLOUDY.includes(iconCode)) return THEME_IDS.cloudy;
-    if (!isDay) return THEME_IDS.dark;
-    if (ICON_PARTLY.includes(iconCode)) {
-      if ((current?.uv ?? 0) >= 5 || (current?.solar ?? 0) >= 450) return THEME_IDS.sunny;
-      return THEME_IDS.light;
-    }
-    return THEME_IDS.sunny;
+  const isDay      = (current.isDay ?? 1) === 1;
+  const iconCode   = current.iconCode ?? null;
+  const precipRate = current.precipRate;   // null → station has no rain sensor
+  const uv         = current.uv;           // null → no UV sensor
+  const solar      = current.solar;        // null → no solar sensor
+
+  const hasRainSensor = precipRate != null;
+
+  const modelStormy = iconCode != null && ICON_STORMY.includes(iconCode);
+  const modelRainy  = iconCode != null && ICON_RAINY.includes(iconCode);
+  const modelCloudy = iconCode != null && ICON_CLOUDY.includes(iconCode);
+  const modelPartly = iconCode != null && ICON_PARTLY.includes(iconCode);
+
+  // 1. Wetness. A local rain gauge is ground truth: a dry reading (0) vetoes the
+  //    model's precipitation; the model's wetness is trusted only when the
+  //    station has no gauge of its own (e.g. preview mode, which has no sensors).
+  const isWet = hasRainSensor ? precipRate > 0 : (modelStormy || modelRainy);
+  if (isWet) {
+    const severe = modelStormy || (hasRainSensor && precipRate > 0.1);
+    return severe ? THEME_IDS.stormy : THEME_IDS.rainy;
   }
 
-  // PWS sensor fallback — iconCode absent from this API endpoint
-  if (current) {
-    const precip = current.precipRate ?? 0;
-    if (precip > 0.05) return isDay ? THEME_IDS.rainy : THEME_IDS.stormy;
-    if (precip > 0)    return THEME_IDS.rainy;
-    if (!isDay)        return THEME_IDS.dark;
-    if ((current.uv ?? 0) >= 6) return THEME_IDS.sunny;
-    if (current.solar != null && current.solar < 150) return THEME_IDS.cloudy;
-    return THEME_IDS.light;
-  }
+  // 2. Dry night → dark.
+  if (!isDay) return THEME_IDS.dark;
 
-  return isDay ? THEME_IDS.light : THEME_IDS.dark;
+  // 3. Dry day → decide sunny / partly / cloudy, using the strongest signal
+  //    available. Measured sunlight is only ever a positive "sunny" signal or,
+  //    via solar radiation, a positive "overcast" signal — a low UV reading
+  //    alone is ambiguous, so it never forces cloudy. When sensors are silent
+  //    (preview mode, or a station without solar/UV) we defer to the model
+  //    iconCode for the cloud state, which is the only clarity signal we have.
+  if ((uv ?? 0) >= 5 || (solar ?? 0) >= 450) return THEME_IDS.sunny;  // strong sun
+  if (solar != null && solar < 150)          return THEME_IDS.cloudy; // measured overcast
+  // A storm/rain code reaching here was vetoed by a dry gauge, so treat it as
+  // merely cloudy rather than a phantom storm.
+  if (modelCloudy || modelStormy || modelRainy) return THEME_IDS.cloudy;
+  if (modelPartly) return THEME_IDS.light;
+  if (iconCode != null) return THEME_IDS.sunny;   // model reports clear sky
+  // No strong sun reading and no model info: a silent solar sensor implies a
+  // hazy/indeterminate day (light); nothing at all defaults to sunny daytime.
+  return solar != null ? THEME_IDS.light : THEME_IDS.sunny;
 }
 
 function initProfile() {
@@ -81,6 +102,7 @@ export default function App() {
 
   const [activeTab, setActiveTab]               = useState('now');
   const [settingsOpen, setSettingsOpen]         = useState(false);
+  const [alertsOpen, setAlertsOpen]             = useState(false);
   const [mode, setMode]                         = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || DISPLAY_MODES.AUTO; } catch { return DISPLAY_MODES.AUTO; } });
   const [previewCondition, setPreviewCondition] = useState(null);
   const [componentError, setComponentError]     = useState(null);
@@ -108,7 +130,7 @@ export default function App() {
   const stationId = profile?.stationId ?? null;
   const isExploring = profile?.mode === 'station' && !!profile?.exploring;
 
-  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality } = useWeather(profile, credentialsVersion);
+  const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, alerts, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality, fetchAlerts } = useWeather(profile, credentialsVersion);
 
   const currentWithAQI = useMemo(() =>
     current ? { ...current, aqi: airQuality?.current?.us_aqi ?? null } : null,
@@ -153,7 +175,8 @@ export default function App() {
     if (!forecast && (current || activeTab === 'forecast')) fetchForecast();
     if (!hourlyForecast && (current || activeTab === 'forecast')) fetchHourlyForecast();
     if (!airQuality && current) fetchAirQuality();
-  }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast, airQuality, fetchAirQuality]);
+    if (alerts == null && current) fetchAlerts();
+  }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast, airQuality, fetchAirQuality, alerts, fetchAlerts]);
 
   // Ensure today's recorded high is available for the forecast card even when TrendsTab hasn't been visited
   useEffect(() => {
@@ -189,6 +212,7 @@ export default function App() {
         onClearExplore={handleClearExplore}
         onUpdatePreviewLocation={handleUpdatePreviewLocation}
       />
+      <AlertBar alerts={alerts} onOpen={() => setAlertsOpen(true)} />
       <HeroCard
         current={currentWithAQI}
         isLoading={isLoading}
@@ -275,6 +299,10 @@ export default function App() {
           isExploring={isExploring}
           onClearExplore={handleClearExplore}
         />
+      )}
+
+      {alertsOpen && alerts?.length > 0 && (
+        <AlertsSheet alerts={alerts} onClose={() => setAlertsOpen(false)} />
       )}
 
       {((error && !isLoading) || componentError) && (

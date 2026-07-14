@@ -40,6 +40,7 @@ function evictOne() {
 }
 
 import { applyCors } from './lib/cors.js';
+import { clampBody } from './lib/sanitize.js';
 import { degreesToCompass, aqiCategory } from '../src/utils/format.js';
 import { formatTemp, formatWind, formatPrecipRate, formatPrecipTotal, formatPressure, convertTemp, tempUnitLabel } from '../src/utils/units.js';
 
@@ -306,6 +307,8 @@ export default async function handler(req, res) {
 
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? 'unknown';
   if (isRateLimited(ip)) return res.status(429).json({ error: 'Rate limit exceeded. Try again shortly.' });
+
+  req.body = clampBody(req.body);
 
   if (req.body?.type === 'daily')        return handleDailyInsight(req, res);
   if (req.body?.type === 'forecast-day') return handleForecastDayInsight(req, res);

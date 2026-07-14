@@ -1,6 +1,6 @@
 # YardObs
 
-![version](https://img.shields.io/badge/version-1.2.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![node](https://img.shields.io/badge/node-18%2B-brightgreen) [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fflorysm%2Fyardobs)
+![version](https://img.shields.io/badge/version-1.4.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![node](https://img.shields.io/badge/node-18%2B-brightgreen) [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fflorysm%2Fyardobs)
 
 A mobile-first personal weather station dashboard with AI-powered activity scoring and hyperlocal insights.
 
@@ -42,13 +42,15 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 ## Features
 
 - **Live Conditions** — temperature, feels-like, humidity, wind, pressure, dew point, UV index, solar radiation, and precipitation; auto-refreshes every 5 minutes
+- **Severe Weather Alerts** — active NWS alerts appear as a colored banner at the top of the dashboard; tap to read the full alert text, timing, and safety instructions; refreshes every 5 minutes
 - **Activity Score** — 0–100 suitability score for 5 activities (BBQ & Smoking, Gardening, Sports & Recreation, Outdoor Leisure, Dog Walking), with a weighted factor breakdown and best time-of-day window
 - **AI Insights** — Claude-generated daily backyard briefing and per-activity narrative, cached to minimize API calls
 - **Trends** — hourly and daily charts for temperature, humidity, pressure, and precipitation across 24h / 7d / 30d ranges, with optional year-over-year overlay
 - **5-day Forecast** — daily highs/lows and precipitation chance, plus an hourly scroll view grouped by day
 - **Live Radar** — animated RainViewer radar tiles on an interactive Leaflet map with play/pause controls
 - **Air Quality** — current AQI with plain-language label (Good, Moderate, etc.)
-- **Adaptive Theming** — 6 themes (sunny, cloudy, rainy, stormy, light, dark) auto-selected from current conditions; manual override persisted in `localStorage`
+- **Units & Locale** — imperial (°F / mph / in) or metric (°C / km/h / mm) auto-detected from your device's region, with a manual override in Settings; time displays follow your device's 12h or 24h clock preference
+- **Adaptive Theming** — 6 themes (sunny, cloudy, rainy, stormy, light, dark) auto-selected from current conditions using your station's rain gauge as ground truth; manual override persisted in `localStorage`
 - **Preview Mode** — explore with any location without owning a personal weather station
 - **In-app Changelog** — version history accessible from the settings drawer
 - **Location Search** — geocoding via Open-Meteo to find any location for preview or comparison
@@ -66,6 +68,8 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 | Weather data | The Weather Company (TWC) PWS API | Current obs, history, 5-day forecast |
 | Hourly forecast | Open-Meteo (free, no key required) | Global hourly forecast (~48h), works for any location worldwide |
 | Air quality | Open-Meteo (free, no key required) | Current AQI, PM2.5, PM10, ozone |
+| Weather alerts | NOAA / NWS (free, no key required) | US severe-weather alerts |
+| Sun position | SunCalc | Derives day/night from coordinates for reliable night theming |
 | Deployment | Vercel | |
 
 The frontend is a React SPA. Two Vercel serverless functions act as API proxies: `api/weather.js` keeps the TWC key server-side, and `api/insight.js` calls Claude without exposing the Anthropic key to the browser. Open-Meteo requests also go through the same proxy for consistency (and are also called directly from the browser in a couple of places); it doesn't require a key.
@@ -75,16 +79,23 @@ The frontend is a React SPA. Two Vercel serverless functions act as API proxies:
 ```
 yardobs/
 ├── api/
-│   ├── weather.js        # TWC + Open-Meteo proxy (keeps TWC_API_KEY server-side)
-│   └── insight.js        # Claude AI insight engine (activity + daily briefings)
+│   ├── weather.js        # TWC + Open-Meteo + NWS proxy (keeps TWC_API_KEY server-side)
+│   ├── insight.js        # Claude AI insight engine (activity + daily briefings)
+│   └── lib/
+│       ├── cors.js       # Origin allowlist + OPTIONS preflight
+│       ├── sanitize.js   # Request body size clamping (prevents token inflation)
+│       └── validate.js   # Pure validators for coords, station IDs, dates
 ├── src/
 │   ├── App.jsx           # Root: theme resolution, tab routing, settings drawer
+│   ├── themes.js         # Single source of truth for all theme color values
 │   ├── components/
 │   │   ├── TopBar.jsx              # Station ID + live last-updated timestamp
 │   │   ├── HeroCard.jsx            # Current temp hero; toggles to AI daily briefing
 │   │   ├── NavTabs.jsx             # Now / Trends / Forecast / Radar tab bar
 │   │   ├── NowTab.jsx              # Conditions detail grid + Activity Score Card
 │   │   ├── ActivityScoreCard.jsx   # Scored activity picker with factor breakdown
+│   │   ├── AlertBar.jsx            # Active severe-weather alert banner
+│   │   ├── AlertsSheet.jsx         # Full alert detail sheet (tap-to-expand)
 │   │   ├── TrendsTab.jsx           # History charts with YoY overlay (lazy-loaded)
 │   │   ├── ForecastTab.jsx         # 5-day + hourly forecast view
 │   │   ├── RadarTab.jsx            # Animated radar map (lazy-loaded)
@@ -94,18 +105,23 @@ yardobs/
 │   │   ├── ChangelogModal.jsx      # In-app changelog viewer
 │   │   ├── MetricCard.jsx          # Reusable single-metric display card
 │   │   ├── TrendsLockedPlaceholder.jsx  # "Connect a station to unlock trends"
-│   │   └── ErrorBoundary.jsx       # React error boundary
+│   │   └── ErrorBoundary.jsx       # React error boundary (supports reload)
 │   ├── hooks/
-│   │   └── useWeather.js           # Data fetching, polling, caching
+│   │   └── useWeather.js           # Data fetching, polling, caching, alert fetch
 │   ├── utils/
 │   │   ├── activities.js           # Activity definitions and scoring weights
+│   │   ├── alerts.js               # NWS alert normalization + severity helpers
 │   │   ├── apiFetch.js             # HTTP client with error handling
-│   │   ├── format.js               # Unit formatting helpers
+│   │   ├── dateUtils.js            # Date helpers (toISODate, getTimePeriod, etc.)
+│   │   ├── format.js               # Display formatting helpers
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
+│   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── storageKeys.js          # localStorage key constants
+│   │   ├── units.js                # Imperial/metric conversion + locale detection
+│   │   ├── weatherCalc.js          # Feels-like, dew point, and related calculations
 │   │   └── weatherIcons.js         # WMO code → emoji/label mapping
-│   └── index.css                   # CSS variable theme definitions
+│   └── index.css                   # CSS variable theme definitions + component classes
 ├── .env.example
 ├── vercel.json
 └── vite.config.js
@@ -187,6 +203,7 @@ Proxies weather data requests, keeping `TWC_API_KEY` server-side. Accepts a `typ
 | `hourly-forecast` | `lat`, `lon` | Open-Meteo | Global hourly forecast (~48h), works for any location worldwide |
 | `hourly-forecast-twc` | `lat`, `lon` | TWC | TWC hourly forecast (alternate source) |
 | `air-quality` | `lat`, `lon` | Open-Meteo | Current AQI, PM2.5, PM10, ozone |
+| `alerts` | `lat`, `lon` | NWS | Active severe-weather alerts (US only; returns empty array outside NWS coverage) |
 
 ### `POST /api/insight`
 
@@ -200,9 +217,9 @@ Caching: 30-minute in-memory TTL on the server (keyed by bucketed weather values
 
 ## Theming
 
-Six themes are defined as CSS variable blocks on `body.theme-<name>` in [src/index.css](src/index.css). The active theme is resolved automatically from the TWC icon code (mapped to WMO weather codes), with fallbacks to sensor readings (precipitation rate, UV index, solar radiation, `isDay` flag). Manual override is stored in `localStorage` under `yardobs-mode`.
+Six themes are defined as CSS variable blocks on `body.theme-<name>` in [src/index.css](src/index.css). The active theme is resolved automatically using a sensor-aware cascade: your station's rain gauge is treated as ground truth (a dry reading vetoes a model storm), day/night is derived from your coordinates via SunCalc, and measured solar/UV data determines sunny vs. cloudy. Manual override is stored in `localStorage` under `yardobs-mode`.
 
-Because SVG chart attributes cannot consume CSS variables, resolved hex values for chart colors are mirrored in the `CHART_COLORS` map in [src/App.jsx](src/App.jsx) and passed as props to Recharts components.
+All theme color values (CSS hex values, chart palette, PWA meta theme-color, settings preview chips) live in [src/themes.js](src/themes.js) as the single source of truth. [src/index.css](src/index.css) mirrors them as CSS custom properties. Because SVG chart attributes cannot consume CSS variables, resolved hex values for chart colors are exported as `CHART_COLORS` from `themes.js` and passed as props to Recharts components.
 
 ## Contributing
 

@@ -13,13 +13,6 @@ What goes wrong, why, and under what condition.
 - Impact: [user-visible / data loss / silent failure / crash]
 -->
 
-**Stale fetch response overwrites newer data when station/location changes**
-
-A single AbortController is created once on mount and only aborted on unmount — it is never re-aborted between fetches. When the user switches stations or preview locations, the in-flight request for the old location keeps running; if it resolves after the new location's request, its late response overwrites `current` and `locationRef.current` with stale data. Because `fetchForecast`/`fetchHourlyForecast`/`fetchAirQuality`/`fetchAlerts` all read `locationRef.current`, subsequent fetches then key off the wrong coordinates.
-
-- File: `src/hooks/useWeather.js:62-66` (controller lifecycle), `src/hooks/useWeather.js:326-340` (re-fetch effect that never cancels the prior request)
-- Impact: user-visible
-
 **Falsy-zero coordinate guards reject latitude/longitude of exactly 0**
 
 `if (!previewLat || !previewLon)` treats a coordinate of exactly `0` (equator or prime meridian, e.g. Greenwich) as "no location set," so a valid preview/explore location shows the "No location set" error and never loads. The same falsy pattern at line 88 (`obs.lat && obs.lon`) silently skips the Open-Meteo icon supplement for stations at lat/lon 0. Guards should check `== null` instead of falsiness.

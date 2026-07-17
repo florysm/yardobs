@@ -59,11 +59,19 @@ export function useWeather(profile, credentialsVersion) {
   const previewLon   = isExploring ? profile.exploring.lon   : profile?.lon;
   const previewLabel = isExploring ? profile.exploring.label : profile?.label;
 
+  // Identifies the active data source (station id, or preview/explore coords).
+  const dataSourceKey = isPreviewMode
+    ? `preview:${previewLat ?? ''},${previewLon ?? ''}`
+    : `station:${stationId ?? ''}`;
+
+  // Fresh AbortController per data source: aborting the previous one cancels any
+  // in-flight request for the old station/location, so a late response can't
+  // overwrite the new location's `current`/`locationRef`.
   useEffect(() => {
     const controller = new AbortController();
     abortRef.current = controller;
     return () => controller.abort();
-  }, []);
+  }, [dataSourceKey]);
 
   // ── Station mode: fetch current PWS observation ───────────────────────────
   const fetchCurrentStation = useCallback(async () => {
@@ -311,9 +319,6 @@ export function useWeather(profile, credentialsVersion) {
   }, []);
 
   // Clear forecast/hourly/AQ/alert caches when the data source location changes
-  const dataSourceKey = isPreviewMode
-    ? `preview:${previewLat ?? ''},${previewLon ?? ''}`
-    : `station:${stationId ?? ''}`;
   const isFirstDataRender = useRef(true);
   useEffect(() => {
     if (isFirstDataRender.current) { isFirstDataRender.current = false; return; }

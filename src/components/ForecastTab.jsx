@@ -36,6 +36,15 @@ function buildHours(hf, lat, lon) {
     .map((hr, i) => ({ ...hr, isNow: i === 0 }));
 }
 
+// Matches HourlyCard's `flex: '0 0 56px'` and .fc-hourly-group's `gap: 8`.
+const HOUR_CARD_W = 56;
+const HOUR_CARD_GAP = 8;
+const HOUR_GROUP_MARGIN = 16; // marginLeft applied to every group after the first
+
+function groupWidthPx(hourCount) {
+  return hourCount * HOUR_CARD_W + Math.max(0, hourCount - 1) * HOUR_CARD_GAP;
+}
+
 function groupByDay(hours) {
   const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
   const groups = [];
@@ -436,16 +445,24 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             onScroll={handleHourlyScroll}
             style={{ overflowX: 'auto', paddingBottom: 4, marginBottom: 20, width: '100%' }}
           >
-            {/* Layout lives in .fc-hourly-track / .fc-hourly-group (index.css).
-                Do not inline it back as inline-flex — see the comment there; the
-                overnight cards overlap on iOS Safari, and only on iOS Safari. */}
-            <div className="fc-hourly-track">
+            {/* Layout lives in .fc-hourly-track / .fc-hourly-group (index.css),
+                sized here with explicit pixel widths — see the comment there.
+                Do not go back to letting width resolve from content (max-content
+                or inline-flex shrink-to-fit): the overnight cards overlap on iOS
+                Safari, and only on iOS Safari. */}
+            <div
+              className="fc-hourly-track"
+              style={{
+                width: groups.reduce((sum, g) => sum + groupWidthPx(g.hours.length), 0)
+                  + Math.max(0, groups.length - 1) * HOUR_GROUP_MARGIN,
+              }}
+            >
             {groups.map((group, gi) => (
               <div
                 key={group.date}
                 ref={el => { groupRefs.current[gi] = el; }}
                 className="fc-hourly-group"
-                style={{ marginLeft: gi > 0 ? 16 : 0 }}
+                style={{ width: groupWidthPx(group.hours.length), marginLeft: gi > 0 ? HOUR_GROUP_MARGIN : 0 }}
               >
                 {group.hours.map((hr) => (
                   <HourlyCard key={hr.time} hr={hr} units={units} />

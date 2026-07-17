@@ -271,38 +271,52 @@ input:focus-visible {
 .fc-scroll { scrollbar-width: none; }
 .fc-scroll::-webkit-scrollbar { display: none; }
 
-/* ─── Hourly strip track — DO NOT replace with inline-flex ────────────────────
+/* ─── Hourly strip track — DO NOT replace with inline-flex, DO NOT go back to
+ *     sizing width from content (max-content/min-content) ────────────────────
  * iOS Safari only. Reproduced on iPhone; invisible in Chrome, on Android, and in
  * DevTools device emulation, because those run Blink and this is a WebKit layout
  * difference — a narrow viewport alone will never surface it.
  *
- * `inline-flex` is a shrink-to-fit box: its width resolves to
+ * Round 1 (`inline-flex`): a shrink-to-fit box whose width resolves to
  * min(max-content, available), and inside `overflow-x: auto` WebKit takes
  * "available" as the *visible* width (~390px) rather than the ~1500px of track.
  * The day groups inside are themselves flex containers, and WebKit then fails to
  * honour their automatic minimum size, collapsing a group's used width to about
- * one card. Its cards spill out on top of the following group — so the overnight
- * hours land on top of the evening ones at the day boundary.
+ * one card. Fixed in 0d6ec59 (1.1.1), silently reverted in 5c4cf2d (1.2.0) when
+ * the strip was rewritten for NWS.
  *
- * `width: max-content` + `min-width: max-content` sizes both levels to their
- * content explicitly, so nothing is over-constrained and no shrink-to-fit
- * calculation happens.
+ * Round 2 (`width/min-width: max-content` on both levels): sized both levels
+ * from content, but content-based sizing is exactly what's unreliable here.
+ * The track holds ~1500px of cards inside a ~390px `overflow-x: auto` viewport,
+ * so the boundary between today's remaining hours and tomorrow's — the "day
+ * group" split — sits off-screen at first paint almost all the time (any
+ * moment except right after local midnight). iOS Safari has a long-documented
+ * history of deferring/misjudging intrinsic (max-content) sizing for flex
+ * children that are off-screen inside a scrollable container, and not
+ * correcting it when they're scrolled into view. So this isn't a time-of-day
+ * or elapsed-time bug: it reproduces the moment you scroll forward to the day
+ * boundary, at 2pm or at 2am, on a phone that's been open ten seconds or ten
+ * hours. "Overnight" describes which *cards* end up corrupted (the ones past
+ * the boundary), not when the corruption happens. Chrome/Blink lays this out
+ * correctly regardless of scroll position, so it's invisible everywhere except
+ * an iPhone, and only once you scroll far enough to reach that boundary.
  *
- * This regressed once already: fixed in 0d6ec59 (1.1.1, "Forecast display fixes
- * for iPhone"), then silently reverted by 5c4cf2d (1.2.0) when the hourly strip
- * was rewritten for NWS. It lives here as a class, rather than inline in the JSX,
- * so it survives the next rewrite. forecastHourlyLayout.test.js guards it.
+ * Fix: give the track and every group an explicit pixel width computed in JS
+ * (ForecastTab.jsx: HOUR_CARD_W / HOUR_CARD_GAP / groupWidthPx) instead of
+ * letting WebKit derive it from content at all. There is no intrinsic-sizing
+ * pass left to go stale.
+ *
+ * It lives here as a class, rather than inline in the JSX, so it survives the
+ * next rewrite. forecastHourlyLayout.test.js guards it.
  * ─────────────────────────────────────────────────────────────────────────── */
 .fc-hourly-track {
   display: flex;
-  width: max-content;
   align-items: flex-start;
 }
 .fc-hourly-group {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
-  min-width: max-content;
 }
 
 /* Leaflet map overrides */

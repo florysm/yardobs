@@ -2,6 +2,12 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.1] - 2026-07-17
+
+### Fixed
+
+- The overnight cards in the hourly forecast no longer overlap the evening ones on iPhone — the previous fix in 1.5.0 only held until you scrolled to the day boundary; this one holds regardless of scrolling.
+
 ## [1.5.0] - 2026-07-17
 
 ### Added

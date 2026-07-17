@@ -14,7 +14,7 @@
     "release:major": "npm version major && git push -u origin HEAD --follow-tags"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.95.2",
+    "@anthropic-ai/sdk": "^0.104.1",
     "@vercel/analytics": "^2.0.1",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",

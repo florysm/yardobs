@@ -8,13 +8,13 @@ A mobile-first personal weather station dashboard with AI-powered activity scori
 
 YardObs is a personal weather dashboard built around your own backyard weather station. Instead of checking a generic city forecast, it shows exactly what's happening at your location right now — temperature, wind, rain, air quality — and uses that data to score whether conditions are good for grilling, gardening, letting the dog out, or any other outdoor activity. It also remembers what the weather was doing a year ago today so you can see how this season compares.
 
-All the sensitive API keys stay on the server. The browser only ever sees your station ID.
+The Anthropic key stays on the server. Your TWC station key is stored only in your own browser and sent straight through to The Weather Company — it is never committed, never bundled, and never shared with other users.
 
 > **No weather station? No problem.** Use [Preview Mode](#option-a--preview-mode-no-weather-station-required) to explore the full app with any location — no API keys or hardware required.
 
 ## Live Demo
 
-**[yardobs.vercel.app](https://yardobs.vercel.app)** — open in Preview Mode to try it without a personal weather station.
+**[yardobs.app](https://yardobs.app)** — open in Preview Mode to try it without a personal weather station.
 
 ## Installing YardObs
 
@@ -63,23 +63,23 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 | Styling | Tailwind CSS v3 + CSS variable themes | 6 condition-aware themes |
 | Charts | Recharts 2 | Line charts with optional YoY overlay |
 | Maps | Leaflet 1.9 + React-Leaflet 4 | RainViewer animated radar tiles |
-| AI insights | Anthropic Claude API (`claude-sonnet-4-6`) | Activity + daily briefing, server-side only |
+| AI insights | Anthropic Claude API (`claude-haiku-4-5`) | Activity, daily briefing, forecast-day; server-side only |
 | Backend | Vercel Serverless Functions (Node.js) | `api/weather.js`, `api/insight.js` |
 | Weather data | The Weather Company (TWC) PWS API | Current obs, history, 5-day forecast |
-| Hourly forecast | Open-Meteo (free, no key required) | Global hourly forecast (~48h), works for any location worldwide |
-| Air quality | Open-Meteo (free, no key required) | Current AQI, PM2.5, PM10, ozone |
+| Hourly forecast | Open-Meteo (free, no key required) | Global hourly forecast (5 days) plus a daily block, works for any location worldwide |
+| Air quality | Open-Meteo (free, no key required) | Current AQI, PM2.5, PM10, ozone, plus 5 days of hourly AQI |
 | Weather alerts | NOAA / NWS (free, no key required) | US severe-weather alerts |
 | Sun position | SunCalc | Derives day/night from coordinates for reliable night theming |
 | Deployment | Vercel | |
 
-The frontend is a React SPA. Two Vercel serverless functions act as API proxies: `api/weather.js` keeps the TWC key server-side, and `api/insight.js` calls Claude without exposing the Anthropic key to the browser. Open-Meteo requests also go through the same proxy for consistency (and are also called directly from the browser in a couple of places); it doesn't require a key.
+The frontend is a React SPA. Two Vercel serverless functions act as API proxies: `api/weather.js` forwards the caller's own TWC key upstream, and `api/insight.js` calls Claude without exposing the Anthropic key to the browser. Open-Meteo requests also go through the same proxy for consistency (and are also called directly from the browser in a couple of places); it doesn't require a key.
 
 ## Project Structure
 
 ```
 yardobs/
 ├── api/
-│   ├── weather.js        # TWC + Open-Meteo + NWS proxy (keeps TWC_API_KEY server-side)
+│   ├── weather.js        # TWC + Open-Meteo + NWS proxy (forwards the caller's own TWC key)
 │   ├── insight.js        # Claude AI insight engine (activity + daily briefings)
 │   └── lib/
 │       ├── cors.js       # Origin allowlist + OPTIONS preflight
@@ -113,8 +113,10 @@ yardobs/
 │   │   ├── alerts.js               # NWS alert normalization + severity helpers
 │   │   ├── apiFetch.js             # HTTP client with error handling
 │   │   ├── dateUtils.js            # Date helpers (toISODate, getTimePeriod, etc.)
+│   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
 │   │   ├── format.js               # Display formatting helpers
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
+│   │   ├── insightVocab.js         # Shared score/AQI/time-of-day wording for prompts and UI
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── storageKeys.js          # localStorage key constants
@@ -133,7 +135,7 @@ yardobs/
 
 Visit [yardobs.app](https://yardobs.app) and choose **Preview Mode** at the prompt — type any city name and explore the full UI with forecast, radar, and activity scoring. No API keys or hardware needed.
 
-To run Preview Mode locally, you only need `ANTHROPIC_API_KEY` (for AI insights) — `TWC_API_KEY` and `VITE_PWS_STATION_ID` are optional.
+To run Preview Mode locally, you only need `ANTHROPIC_API_KEY` (for AI insights) — `VITE_PWS_STATION_ID` is optional. Preview Mode is served entirely by [Open-Meteo](https://open-meteo.com), which needs no API key.
 
 ### Option B — Your Own Weather Station
 
@@ -149,9 +151,9 @@ YardObs uses The Weather Company (TWC) PWS API to access your station's live rea
 1. Create or log in to your account at [wunderground.com](https://www.wunderground.com)
 2. Navigate to [wunderground.com/member/api-keys](https://www.wunderground.com/member/api-keys)
 3. Generate a new API key
-4. Add it to your `.env` file as `TWC_API_KEY`, or set it as an Environment Variable in your Vercel project dashboard
+4. Enter it in **Settings → Station** in the app
 
-> `TWC_API_KEY` must never be prefixed with `VITE_` — it stays server-side and is never exposed to the browser.
+> Your key is stored in your own browser and sent to `api/weather.js` as the `x-twc-key` header, which forwards it to The Weather Company. It is never committed, never bundled, and never shared with other users. There is deliberately no server-side fallback key: Preview Mode uses Open-Meteo instead, so anonymous traffic can't spend someone else's TWC quota.
 
 ### Fork and Run Locally
 
@@ -176,14 +178,15 @@ npx vercel dev
 | Variable | Where | Description |
 |---|---|---|
 | `VITE_PWS_STATION_ID` | `.env` / Vercel dashboard | Your PWS station ID (e.g. `KWASEATT123`). Safe to expose to the browser. Optional — leave blank to use Preview Mode. |
-| `TWC_API_KEY` | `.env` / Vercel dashboard | TWC API key. Never prefix with `VITE_` — stays server-side. Optional in Preview Mode. |
 | `ANTHROPIC_API_KEY` | Vercel dashboard only | Anthropic Claude key for AI insight generation. Server-side only. |
+
+> There is no `TWC_API_KEY` environment variable. Station owners supply their own key in **Settings → Station**; Preview Mode needs no key at all.
 
 ### Deploy Your Own Instance to Vercel
 
 1. Fork the repo on GitHub
 2. Click the **Deploy to Vercel** button at the top of this README, or import your fork in the Vercel dashboard
-3. Set `TWC_API_KEY` and `ANTHROPIC_API_KEY` as Environment Variables (Production) in the Vercel project settings — never commit these to the repo
+3. Set `ANTHROPIC_API_KEY` as an Environment Variable (Production) in the Vercel project settings — never commit it to the repo
 4. Optionally set `VITE_PWS_STATION_ID` if you want to pre-seed your station ID
 5. Deploy — done
 
@@ -191,27 +194,29 @@ npx vercel dev
 
 ### `GET /api/weather`
 
-Proxies weather data requests, keeping `TWC_API_KEY` server-side. Accepts a `type` query parameter:
+Proxies weather data requests. TWC routes require the caller's own key via the `x-twc-key` header; Open-Meteo and NWS routes need no key, which is what lets Preview Mode run unauthenticated.
 
-| `type` | Required params | Source | Returns |
-|---|---|---|---|
-| `current` | `stationId` | TWC | Live PWS observation |
-| `history` | `stationId`, `date` (YYYYMMDD) | TWC | Hourly observations for a specific date |
-| `history-recent` | `stationId` | TWC | Rolling 7-day hourly data |
-| `history-daily` | `stationId`, `date` (YYYYMMDD) | TWC | Daily summary (high/low/precip) |
-| `forecast` | `lat`, `lon` | TWC | 5-day daily forecast |
-| `hourly-forecast` | `lat`, `lon` | Open-Meteo | Global hourly forecast (~48h), works for any location worldwide |
-| `hourly-forecast-twc` | `lat`, `lon` | TWC | TWC hourly forecast (alternate source) |
-| `air-quality` | `lat`, `lon` | Open-Meteo | Current AQI, PM2.5, PM10, ozone |
-| `alerts` | `lat`, `lon` | NWS | Active severe-weather alerts (US only; returns empty array outside NWS coverage) |
+| `type` | Required params | Source | Key | Returns |
+|---|---|---|---|---|
+| `current` | `stationId` | TWC | ✅ | Live PWS observation |
+| `history` | `stationId`, `date` (YYYYMMDD) | TWC | ✅ | Hourly observations for a specific date |
+| `history-recent` | `stationId` | TWC | ✅ | Rolling 7-day hourly data |
+| `history-daily` | `stationId`, `date` (YYYYMMDD) | TWC | ✅ | Daily summary (high/low/precip) |
+| `forecast` | `lat`, `lon` | TWC | ✅ | 5-day daily forecast. Station owners only — Preview Mode reads its daily forecast from the `daily` block of `hourly-forecast` instead. |
+| `hourly-forecast` | `lat`, `lon` | Open-Meteo | — | Global hourly forecast (5 days) **plus** a `daily` block (max/min, weather code, precip probability). Works for any location worldwide. |
+| `hourly-forecast-twc` | `lat`, `lon` | TWC | ✅ | TWC hourly forecast (alternate source; no current caller) |
+| `air-quality` | `lat`, `lon` | Open-Meteo | — | Current AQI, PM2.5, PM10, ozone, **plus** an `hourly` block of `us_aqi` covering 5 days (used for per-day air quality on the Forecast tab) |
+| `alerts` | `lat`, `lon` | NWS | — | Active severe-weather alerts (US only; returns empty array outside NWS coverage) |
 
 ### `POST /api/insight`
 
-Calls Claude to generate hyperlocal weather insights. Two modes via the `type` field:
+Calls Claude to generate hyperlocal weather insights. Three modes via the `type` field:
 
-**`type: 'activity'`** — evaluates current conditions for a specific outdoor activity and returns a short narrative with the key limiting factors.
+**`type: 'activity'`** (the default when no `type` is given) — evaluates current conditions for a specific outdoor activity and returns a short narrative with the key limiting factors.
 
 **`type: 'daily'`** — generates a daily backyard briefing with a narrative summary and 3–4 tagged insight cards. Uses year-over-year data if available.
+
+**`type: 'forecast-day'`** — describes a single day from the 5-day forecast, using that day's hourly temperature curve, rain window, and air quality.
 
 Caching: 30-minute in-memory TTL on the server (keyed by bucketed weather values to maximize reuse); 1-hour `localStorage` TTL on the client.
 

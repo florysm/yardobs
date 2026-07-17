@@ -4,6 +4,8 @@ import { apiFetch } from '../utils/apiFetch';
 import { toDateStr } from '../utils/dateUtils';
 import { calcFeelsLike } from '../utils/weatherCalc';
 import { normalizeAlerts } from '../utils/alerts';
+import { normalizeTwcForecast, normalizeOpenMeteoForecast } from '../utils/forecastNormalize';
+import { wmoToTwc } from '../utils/weatherIcons';
 
 const POLL_MS = 5 * 60 * 1000;
 
@@ -22,22 +24,6 @@ function computeIsDay(lat, lon) {
 // Converts Open-Meteo WMO weather codes to approximate TWC icon codes so that
 // resolveAutoTheme and ForecastTab's buildDays (which both expect TWC codes) work
 // without modification in preview mode.
-function wmoToTwc(code, isDay = 1) {
-  if (code == null) return null;
-  if (code === 0) return isDay ? 32 : 31;   // Clear sky → Sunny (day) / Clear (night)
-  if (code <= 2) return isDay ? 34 : 33;    // Mainly/partly clear → Fair (day/night)
-  if (code === 3) return 26;     // Overcast → cloudy
-  if (code <= 48) return 20;     // Fog/rime fog → haze
-  if (code <= 55) return 9;      // Drizzle → light rain
-  if (code <= 65) return 12;     // Rain → rain
-  if (code <= 67) return 10;     // Freezing rain
-  if (code <= 77) return 16;     // Snow / snow grains
-  if (code <= 82) return 40;     // Rain showers → heavy showers
-  if (code <= 86) return 46;     // Snow showers
-  if (code >= 95) return 4;      // Thunderstorm (95/96/99)
-  return 26;                      // Unmapped code → cloudy (neutral default)
-}
-
 // ── Open-Meteo base URLs ──────────────────────────────────────────────────────
 const OM_BASE = 'https://api.open-meteo.com/v1/forecast';
 const OM_AQ   = 'https://air-quality-api.open-meteo.com/v1/air-quality';
@@ -58,6 +44,10 @@ export function useWeather(profile, credentialsVersion) {
   const [lastUpdated, setLastUpdated]   = useState(null);
   const locationRef = useRef(null);
   const abortRef = useRef(null);
+  // TWC nulls out today's daypart once that period has passed (~mid-afternoon),
+  // so the normalizer falls back to the current observed icon for day 0. A ref
+  // rather than reading `current`, which would rebuild fetchForecast every poll.
+  const currentIconRef = useRef(null);
 
   const isPreview   = profile?.mode === 'preview';
   const isExploring = profile?.mode === 'station' && !!profile?.exploring;
@@ -108,6 +98,7 @@ export function useWeather(profile, credentialsVersion) {
         } catch { /* non-fatal — falls back to TWC iconCode */ }
       }
 
+      currentIconRef.current = resolvedIconCode;
       setCurrent({
         temp:        obs.imperial?.temp        ?? null,
         feelsLike:   calcFeelsLike(obs.imperial?.temp, obs.humidity, obs.imperial?.windSpeed),
@@ -147,7 +138,7 @@ export function useWeather(profile, credentialsVersion) {
       const url = `${OM_BASE}?latitude=${previewLat}&longitude=${previewLon}` +
         `&current=temperature_2m,apparent_temperature,relative_humidity_2m,` +
         `dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,` +
-        `surface_pressure,weather_code,is_day,uv_index` +
+        `surface_pressure,weather_code,is_day,uv_index,precipitation` +
         `&${OM_UNITS}`;
       const omRes = await fetch(url, { signal: abortRef.current?.signal });
       const data = await omRes.json();
@@ -157,6 +148,10 @@ export function useWeather(profile, credentialsVersion) {
 
       locationRef.current = { lat: previewLat, lon: previewLon };
       setLastUpdated(new Date());
+      // Also set while exploring: a station owner viewing another location takes
+      // `current` from Open-Meteo here but still gets their forecast from TWC,
+      // which needs this fallback for today's nulled daypart.
+      currentIconRef.current = wmoToTwc(c.weather_code, c.is_day ?? 1);
       setCurrent({
         temp:        c.temperature_2m           ?? null,
         feelsLike:   c.apparent_temperature     ?? null,
@@ -167,7 +162,11 @@ export function useWeather(profile, credentialsVersion) {
         // Open-Meteo surface_pressure is hPa; convert to inHg
         pressure:    c.surface_pressure != null ? Math.round(c.surface_pressure * 0.02953 * 100) / 100 : null,
         dewPoint:    c.dew_point_2m             ?? null,
-        precipRate:  null,
+        // OM_UNITS sets precipitation_unit=inch, so this is already in/hr and
+        // matches the imperial-internal convention. Without it the activity
+        // scores could never tell that it was raining in preview mode.
+        precipRate:  c.precipitation            ?? null,
+        // Open-Meteo's current block has no daily accumulation figure.
         precipTotal: null,
         uv:          c.uv_index                 ?? null,
         solar:       null,
@@ -249,20 +248,19 @@ export function useWeather(profile, credentialsVersion) {
     }
   }, [isPreviewMode, stationId]);
 
-  // ── Forecast — both modes use TWC daily (lat/lon available in both) ──────────
+  // ── Daily forecast — TWC for station owners, Open-Meteo for preview ──────────
+  // The TWC 5-day is a geocoded model forecast, not station data (the PWS routes
+  // are the stationId-keyed ones) — station owners stay on it so their forecast
+  // icons and phrasing match the TWC conditions they see elsewhere. Preview mode
+  // is served by Open-Meteo, which needs no key: see fetchHourlyForecast.
   const fetchForecast = useCallback(async () => {
     const loc = locationRef.current;
-    if (!loc) return;
+    if (!loc || !stationId) return; // preview's forecast rides along with the hourly fetch
     try {
       const data = await apiFetch(`/api/weather?type=forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
-      setForecast(data);
+      setForecast(normalizeTwcForecast(data, currentIconRef.current));
     } catch (err) {
-      if (err.name === 'AbortError') return;
-      // The daily forecast needs an owner/station key. For non-station (preview) users it is a
-      // best-effort enhancement — fail quietly rather than surface a station-key error they
-      // can't act on. The forecast card falls back to its normal empty state.
-      if (!stationId) return;
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
     }
   }, [stationId]);
 
@@ -273,10 +271,13 @@ export function useWeather(profile, credentialsVersion) {
     try {
       const data = await apiFetch(`/api/weather?type=hourly-forecast&lat=${loc.lat}&lon=${loc.lon}`, { signal: abortRef.current?.signal });
       setHourlyForecast(data);
+      // This response also carries the `daily` block, so preview mode's 5-day
+      // forecast costs no additional request.
+      if (!stationId) setForecast(normalizeOpenMeteoForecast(data));
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     }
-  }, []);
+  }, [stationId]);
 
   // ── Air quality — all modes call Open-Meteo directly from the browser ────
   const fetchAirQuality = useCallback(async () => {
@@ -285,7 +286,10 @@ export function useWeather(profile, credentialsVersion) {
 
     try {
       const { lat, lon } = loc;
-      const url = `${OM_AQ}?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&timezone=auto`;
+      // hourly us_aqi rides along on the same request the current reading needs,
+      // so the Forecast tab can describe air quality per day instead of smearing
+      // today's number across all five. See aqiForDay in forecastNormalize.js.
+      const url = `${OM_AQ}?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&hourly=us_aqi&forecast_days=5&timezone=auto`;
       const data = await fetch(url, { signal: abortRef.current?.signal }).then(r => r.json());
       setAirQuality(data);
     } catch (err) {

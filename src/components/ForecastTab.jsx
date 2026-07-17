@@ -4,7 +4,9 @@ import { fmtHourIso, fmtSunTime, fmtMoonTime, getLocaleHour12 } from '../utils/f
 import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
 import { toISODate } from '../utils/dateUtils';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
-import { formatTempParts } from '../utils/units';
+import { formatTempParts, convertTemp } from '../utils/units';
+import { shortHour, dayPartRange } from '../utils/insightVocab';
+import { aqiForDay } from '../utils/forecastNormalize';
 
 function buildHours(hf, lat, lon) {
   const h = hf?.hourly;
@@ -56,25 +58,72 @@ function groupByDay(hours) {
   return groups;
 }
 
-function buildDays(forecast, currentIconCode = null) {
-  if (!forecast) return [];
-  const { dayOfWeek = [], temperatureMax = [], temperatureMin = [], daypart = [] } = forecast;
-  const icons = daypart?.[0]?.iconCode ?? [];
-  const pops  = daypart?.[0]?.precipChance ?? [];
-  const today = new Date();
-  return dayOfWeek.map((dow, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return {
-      dayOfWeek: dow,
-      tempMax:   temperatureMax[i],
-      tempMin:   temperatureMin[i],
-      icon:      ICON_EMOJI[icons[i * 2] ?? (i === 0 ? currentIconCode : null)] ?? '🌡️',
-      pop:       pops[i * 2] ?? pops[i],
-      isToday:   i === 0,
-      date:      toISODate(d),
-    };
+// `forecast` arrives already normalized from useWeather (see forecastNormalize.js),
+// so this only adds presentation: the emoji and the isToday flag. Vendor quirks —
+// TWC's day/night interleaved dayparts, Open-Meteo's WMO codes — are handled there.
+function buildDays(forecast) {
+  if (!forecast?.length) return [];
+  const todayStr = toISODate(new Date());
+  return forecast.map(day => ({
+    ...day,
+    icon:    ICON_EMOJI[day.iconCode] ?? '🌡️',
+    isToday: day.date === todayStr,
+  }));
+}
+
+
+// Compact hourly temp curve for one day, e.g. "1a 64, 4a 61, 7a 66, 10a 78…".
+// Sampled every 3 hours across the whole day so the dawn minimum is visible —
+// with only a daily high/low the model had to guess the shape, and guessed that
+// the low arrives in the evening. Values are bare numbers; the prompt states the
+// unit once rather than repeating "°F" eight times.
+//
+// Returns a pre-formatted string on purpose: clampBody (api/lib/sanitize.js)
+// silently truncates arrays at 20 elements, so a 24-entry array would lose hours
+// with no error. This stays well inside the 500-char string cap.
+export function buildTrajectory(hf, dateStr, units) {
+  const h = hf?.hourly;
+  if (!h?.time?.length) return null;
+  const parts = [];
+  h.time.forEach((t, i) => {
+    if (!t.startsWith(dateStr)) return;
+    const hour = parseInt(t.split('T')[1], 10);
+    if (hour % 3 !== 1) return; // 1a, 4a, 7a, 10a, 1p, 4p, 7p, 10p
+    const temp = h.temperature_2m?.[i];
+    if (temp == null) return;
+    parts.push(`${shortHour(hour)} ${Math.round(convertTemp(temp, units))}`);
   });
+  return parts.length ? parts.join(', ') : null;
+}
+
+const RAIN_LIKELY_PCT = 30;
+
+// When rain is likely and how likely it gets, e.g.
+// "overnight (12a–3a), peaking at 80%".
+//
+// The day-part name is resolved here rather than left to the model: given a bare
+// "12a–3a" it reasons that a.m. means morning and writes "thunderstorms Sunday
+// morning between midnight and 3 a.m." — true, but not how anyone speaks.
+//
+// Scans every hour rather than sampling: a shower confined to 2–3pm would fall
+// between the 3-hour temperature samples and vanish. Null on a dry day, so the
+// prompt can stay silent instead of asserting a timing it doesn't have.
+export function buildPrecipWindow(hf, dateStr) {
+  const h = hf?.hourly;
+  if (!h?.time?.length) return null;
+  let first = null, last = null, peak = 0;
+  h.time.forEach((t, i) => {
+    if (!t.startsWith(dateStr)) return;
+    const prob = h.precipitation_probability?.[i];
+    if (prob == null || prob < RAIN_LIKELY_PCT) return;
+    const hour = parseInt(t.split('T')[1], 10);
+    if (first === null) first = hour;
+    last = hour;
+    if (prob > peak) peak = prob;
+  });
+  if (first === null) return null;
+  const span = first === last ? shortHour(first) : `${shortHour(first)}–${shortHour(last + 1)}`;
+  return `${dayPartRange(first, last)} (${span}), peaking at ${peak}%`;
 }
 
 function fmtDaylight(riseStr, setStr) {
@@ -248,7 +297,7 @@ function ForecastDayInsight({ insight, isLoading }) {
   );
 }
 
-export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, lat, lon, todayObservedHigh, stationId, sourceType, currentIconCode, currentTemp, units }) {
+export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, airQuality, lat, lon, todayObservedHigh, stationId, sourceType, currentTemp, units }) {
   const scrollRef = useRef(null);
   const groupRefs = useRef([]);
   const [activeLabel, setActiveLabel] = useState(null);
@@ -266,13 +315,16 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
   }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const days = buildDays(forecast, currentIconCode);
+    const days = buildDays(forecast);
     if (!days.length) return;
     const day = days[selectedDayIndex];
     if (!day) return;
 
     const insightId = stationId || 'preview';
-    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date, units);
+    const dayAqi = aqiForDay(airQuality, day.date);
+    // Same 25-wide bucket the server keys on, so client and server invalidate together.
+    const aqiBucket = dayAqi == null ? 'na' : Math.round(dayAqi / 25) * 25;
+    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date, units, aqiBucket);
 
     try {
       const raw = localStorage.getItem(lsKey);
@@ -306,7 +358,10 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             tempMax: day.tempMax,
             tempMin: day.tempMin,
             pop: day.pop,
-            icon: day.icon,
+            conditions: day.phrase,
+            trajectory: buildTrajectory(hourlyForecast, day.date, units),
+            precipWindow: buildPrecipWindow(hourlyForecast, day.date),
+            aqi: dayAqi,
             sourceType: sourceType ?? 'pws',
             units,
           }),
@@ -326,7 +381,10 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
     })();
 
     return () => { cancelToken.cancelled = true; };
-  }, [selectedDayIndex, forecast, stationId, sourceType, units]); // eslint-disable-line react-hooks/exhaustive-deps
+  // hourlyForecast and airQuality are deps because the trajectory and the AQI
+  // sent to the model are derived from them — both arrive after `forecast`, and
+  // without them the first request for a day goes out missing that detail.
+  }, [selectedDayIndex, forecast, hourlyForecast, airQuality, stationId, sourceType, units]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <Skeleton />;
 
@@ -341,7 +399,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
     );
   }
 
-  const days = buildDays(forecast, currentIconCode);
+  const days = buildDays(forecast);
 
   function handleHourlyScroll() {
     if (!scrollRef.current) return;
@@ -378,12 +436,16 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             onScroll={handleHourlyScroll}
             style={{ overflowX: 'auto', paddingBottom: 4, marginBottom: 20, width: '100%' }}
           >
-            <div style={{ display: 'inline-flex', alignItems: 'flex-start' }}>
+            {/* Layout lives in .fc-hourly-track / .fc-hourly-group (index.css).
+                Do not inline it back as inline-flex — see the comment there; the
+                overnight cards overlap on iOS Safari, and only on iOS Safari. */}
+            <div className="fc-hourly-track">
             {groups.map((group, gi) => (
               <div
                 key={group.date}
                 ref={el => { groupRefs.current[gi] = el; }}
-                style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: gi > 0 ? 16 : 0 }}
+                className="fc-hourly-group"
+                style={{ marginLeft: gi > 0 ? 16 : 0 }}
               >
                 {group.hours.map((hr) => (
                   <HourlyCard key={hr.time} hr={hr} units={units} />

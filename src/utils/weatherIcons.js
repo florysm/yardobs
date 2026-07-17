@@ -35,3 +35,22 @@ export const WMO_EMOJI = {
 };
 
 export const NIGHT_ICON = { 0: '🌙', 1: '🌙', 2: '☁️' };
+
+// Open-Meteo speaks WMO codes; the rest of the app is keyed on TWC iconCodes
+// (ICONS / LABELS above). Lives here rather than in useWeather so the forecast
+// normalizer can reach it too.
+export function wmoToTwc(code, isDay = 1) {
+  if (code == null) return null;
+  if (code === 0) return isDay ? 32 : 31;   // Clear sky → Sunny (day) / Clear (night)
+  if (code <= 2) return isDay ? 34 : 33;    // Mainly/partly clear → Fair (day/night)
+  if (code === 3) return 26;     // Overcast → cloudy
+  if (code <= 48) return 20;     // Fog/rime fog → haze
+  if (code <= 55) return 9;      // Drizzle → light rain
+  if (code <= 65) return 12;     // Rain → rain
+  if (code <= 67) return 10;     // Freezing rain
+  if (code <= 77) return 16;     // Snow / snow grains
+  if (code <= 82) return 40;     // Rain showers → heavy showers
+  if (code <= 86) return 46;     // Snow showers
+  if (code >= 95) return 4;      // Thunderstorm (95/96/99)
+  return 26;                      // Unmapped code → cloudy (neutral default)
+}

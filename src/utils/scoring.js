@@ -1,6 +1,7 @@
 import { toISODate } from './dateUtils';
 import { formatTemp, formatWind, formatPrecipRate } from './units';
 import { ACTIVITIES } from './activities';
+import { scoreBand } from './insightVocab';
 
 // Activity-scoring engine — extracted from ActivityScoreCard so the pure logic
 // is unit-testable. The component imports these; it keeps only its React/fetch
@@ -37,34 +38,62 @@ export function pw(x, pts) {
 const PRECIP_STD  = [[0, 100], [0.01, 85], [0.05, 55], [0.1, 25],  [0.3,  5]];
 const PRECIP_SPORT= [[0, 100], [0.01, 80], [0.05, 45], [0.1, 15],  [0.3,  5]];
 const PRECIP_DOG  = [[0, 100], [0.01, 85], [0.05, 65], [0.1, 35],  [0.3, 10]];
-const AQI_CURVE   = [[0, 100], [50, 100],  [100, 80],  [150, 45],  [200, 15], [300, 5]];
+
+// Control points anchored to the EPA boundaries in format.js AQI_BOUNDS. The
+// previous curve held 100 all the way to AQI 50 and only fell to 80 at AQI 100,
+// which scored the entire Moderate band as "excellent" — hence "air quality is
+// solid" at AQI 86. Moderate now lands in the 60s–70s.
+const AQI_CURVE   = [[0, 100], [50, 92], [75, 78], [100, 60], [125, 48], [150, 38], [200, 15], [300, 5]];
+
+// Maps the worst *critical* factor score to a ceiling on the overall score, so
+// a single disqualifying condition can't be averaged away by pleasant ones.
+const CRITICAL_CAP = [[0, 25], [25, 45], [50, 70], [75, 90], [100, 100]];
 
 // Factor definitions keyed by activity id.
-// fn(current) → raw score 0–100; raw(current, units) → display string
+//   fn(current)          → raw score 0–100
+//   raw(current, units)  → display string
+//   critical             → this factor can veto the overall score (see computeScore)
+//   has(current)         → is the underlying reading actually available? Critical
+//                          factors only cap when true, so missing data reads as
+//                          "unknown", not "bad".
+//
+// Precipitation scores off measured precipRate — is it raining on you right now.
+// Forecast probability is a *risk*, not a current condition, and is surfaced via
+// the rain window, the arc, and getBestWindow instead of docking today's score.
+const precipFactor = (weight, curve) => ({
+  name: 'Precipitation', weight, critical: true,
+  fn:  c => pw(c.precipRate, curve),
+  has: c => c.precipRate != null,
+  raw: (c, units) => (c.precipRate ?? 0) > 0
+    ? formatPrecipRate(c.precipRate, units)
+    : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
+});
+
+const airQualityFactor = (weight = 0.10) => ({
+  name: 'Air Quality', weight,
+  fn:  c => pw(c.aqi ?? null, AQI_CURVE),
+  raw: c => c.aqi != null ? `AQI ${Math.round(c.aqi)}` : '—',
+});
+
 const FACTOR_DEFS = {
   bbq: [
     {
-      name: 'Temperature', weight: 0.30,
+      name: 'Temperature', weight: 0.28,
       fn:  c => pw(c.temp,      [[32,5],[45,30],[55,75],[65,100],[85,100],[92,75],[100,40],[110,10]]),
       raw: (c, units) => c.temp != null ? formatTemp(c.temp, units) : '—',
     },
     {
-      name: 'Wind',        weight: 0.30,
+      name: 'Wind',        weight: 0.27,
       fn:  c => pw(c.windSpeed, [[0,100],[8,100],[12,80],[18,55],[25,25],[35,5]]),
       raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
     {
-      name: 'Humidity',    weight: 0.20,
+      name: 'Humidity',    weight: 0.18,
       fn:  c => pw(c.humidity,  [[10,55],[35,80],[45,100],[70,100],[80,65],[90,30],[100,10]]),
       raw: c => c.humidity != null ? `${Math.round(c.humidity)}%` : '—',
     },
-    {
-      name: 'Precipitation', weight: 0.20,
-      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
-      raw: (c, units) => (c.precipRate ?? 0) > 0
-        ? formatPrecipRate(c.precipRate, units)
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
-    },
+    precipFactor(0.17, PRECIP_STD),
+    airQualityFactor(),
   ],
   garden: [
     {
@@ -87,18 +116,8 @@ const FACTOR_DEFS = {
       fn:  c => pw(c.windSpeed, [[0,90],[10,100],[18,80],[25,55],[35,20]]),
       raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
-    {
-      name: 'Precipitation', weight: 0.15,
-      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
-      raw: (c, units) => (c.precipRate ?? 0) > 0
-        ? formatPrecipRate(c.precipRate, units)
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
-    },
-    {
-      name: 'Air Quality', weight: 0.10,
-      fn:  c => pw(c.aqi ?? null, AQI_CURVE),
-      raw: c => c.aqi != null ? `AQI ${Math.round(c.aqi)}` : '—',
-    },
+    precipFactor(0.15, PRECIP_STD),
+    airQualityFactor(),
   ],
   sports: [
     {
@@ -116,18 +135,8 @@ const FACTOR_DEFS = {
       fn:  c => pw(c.windSpeed, [[0,80],[8,100],[15,85],[22,55],[30,25],[40,5]]),
       raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
-    {
-      name: 'Precipitation', weight: 0.20,
-      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_SPORT),
-      raw: (c, units) => (c.precipRate ?? 0) > 0
-        ? formatPrecipRate(c.precipRate, units)
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
-    },
-    {
-      name: 'Air Quality', weight: 0.10,
-      fn:  c => pw(c.aqi ?? null, AQI_CURVE),
-      raw: c => c.aqi != null ? `AQI ${Math.round(c.aqi)}` : '—',
-    },
+    precipFactor(0.20, PRECIP_SPORT),
+    airQualityFactor(),
   ],
   leisure: [
     {
@@ -145,26 +154,16 @@ const FACTOR_DEFS = {
       fn:  c => pw(c.windSpeed, [[0,85],[8,100],[15,80],[22,55],[30,20]]),
       raw: (c, units) => c.windSpeed != null ? formatWind(c.windSpeed, units) : '—',
     },
-    {
-      name: 'Precipitation', weight: 0.15,
-      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_STD),
-      raw: (c, units) => (c.precipRate ?? 0) > 0
-        ? formatPrecipRate(c.precipRate, units)
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
-    },
-    {
-      name: 'Air Quality', weight: 0.10,
-      fn:  c => pw(c.aqi ?? null, AQI_CURVE),
-      raw: c => c.aqi != null ? `AQI ${Math.round(c.aqi)}` : '—',
-    },
+    precipFactor(0.15, PRECIP_STD),
+    airQualityFactor(),
   ],
   dogwalk: [
     {
-      name: 'Heat Index',     weight: 0.40,
-      fn:  c => {
-        const hi = c.feelsLike ?? c.temp ?? 70;
-        return pw(hi, [[32,5],[45,30],[55,75],[68,100],[75,80],[80,50],[85,20],[92,5]]);
-      },
+      // Critical: pavement and heat stress can make a walk unsafe regardless of
+      // how pleasant everything else is.
+      name: 'Heat Index',     weight: 0.40, critical: true,
+      fn:  c => pw(c.feelsLike ?? c.temp, [[32,5],[45,30],[55,75],[68,100],[75,80],[80,50],[85,20],[92,5]]),
+      has: c => (c.feelsLike ?? c.temp) != null,
       raw: (c, units) => {
         const v = c.feelsLike ?? c.temp;
         return v != null ? formatTemp(v, units) : '—';
@@ -180,18 +179,8 @@ const FACTOR_DEFS = {
       fn:  c => pw(c.humidity,  [[10,60],[30,90],[45,100],[55,85],[65,55],[75,25],[85,5]]),
       raw: c => c.humidity != null ? `${Math.round(c.humidity)}%` : '—',
     },
-    {
-      name: 'Precipitation',   weight: 0.15,
-      fn:  c => pw(c.rainThreat ?? c.precipRate ?? 0, PRECIP_DOG),
-      raw: (c, units) => (c.precipRate ?? 0) > 0
-        ? formatPrecipRate(c.precipRate, units)
-        : (c.forecastMaxProb ?? 0) >= 20 ? `${c.forecastMaxProb}% fcst` : formatPrecipRate(0, units),
-    },
-    {
-      name: 'Air Quality',    weight: 0.10,
-      fn:  c => pw(c.aqi ?? null, AQI_CURVE),
-      raw: c => c.aqi != null ? `AQI ${Math.round(c.aqi)}` : '—',
-    },
+    precipFactor(0.15, PRECIP_DOG),
+    airQualityFactor(),
   ],
 };
 
@@ -204,7 +193,20 @@ export function computeScore(actId, current, units) {
     total += s * f.weight;
     return { name: f.name, score: s, raw: f.raw(current, units) };
   });
-  const score = Math.round(clamp(total));
+
+  // A weighted average alone lets a disqualifying condition be outvoted: with
+  // rain weighted 0.17, an otherwise-perfect day still scored ~81 ("Excellent")
+  // in a downpour. Critical factors additionally cap the overall score. Only
+  // factors whose reading is actually present participate — a missing sensor is
+  // unknown, not bad.
+  const criticalScores = defs
+    .filter(f => f.critical && (f.has ? f.has(current) : true))
+    .map(f => Math.round(clamp(f.fn(current))));
+  const cap = criticalScores.length
+    ? pw(Math.min(...criticalScores), CRITICAL_CAP)
+    : 100;
+
+  const score = Math.round(clamp(Math.min(total, cap)));
 
   let pavementTemp = null;
   if (actId === 'dogwalk' && current.temp != null) {
@@ -222,11 +224,17 @@ export function computeAllScores(current, units) {
 
 // ── Arc helpers ───────────────────────────────────────────────────────────────
 
+// Probability → a pseudo rate, so forecast hours can be scored with the same
+// precip curves as measured rain. Used for the arc and getBestWindow, where the
+// question genuinely is "will it be raining at hour X". The old ceiling of 0.1
+// stopped short of the curves' 0.3 endpoint, so even a 100% chance could never
+// score below 25 — high-probability hours now reach the bottom of the curve.
 export function precipProbToRate(prob) {
   if (prob < 20) return 0;
-  if (prob < 50) return 0.01;
-  if (prob < 75) return 0.05;
-  return 0.1;
+  if (prob < 40) return 0.01;
+  if (prob < 60) return 0.05;
+  if (prob < 80) return 0.15;
+  return 0.3;
 }
 
 export function getForecastRainThreat(hf) {
@@ -325,9 +333,17 @@ export function scoreColor(s) {
   return 'var(--delta-dn)';
 }
 
+// Delegates to scoreBand so the card headline and the LLM prompt's score guide
+// can't drift apart — they previously used different thresholds (80/65/50 here
+// vs 80/60/40/20 in the prompt) to describe the same number.
+const VERDICTS = {
+  'excellent': 'Excellent conditions',
+  'good':      'Good conditions today',
+  'marginal':  'Marginal conditions',
+  'poor':      'Poor conditions today',
+  'very poor': 'Very poor conditions',
+};
+
 export function scoreVerdict(s) {
-  if (s >= 80) return 'Excellent conditions';
-  if (s >= 65) return 'Good conditions today';
-  if (s >= 50) return 'Marginal conditions';
-  return 'Poor conditions today';
+  return VERDICTS[scoreBand(s)];
 }

@@ -2,6 +2,27 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0] - 2026-07-17
+
+### Added
+
+- Preview Mode now has its own 5-day forecast — previously the forecast card sat empty unless you had a weather station key.
+- Forecast-day write-ups now account for air quality and the day's hour-by-hour temperature curve, so they can tell you when the cool part of the day actually arrives.
+- Air quality now counts toward the BBQ & Smoking activity score, as it already did for the other four activities.
+
+### Fixed
+
+- Activity scores no longer read "Excellent" while it's pouring — a genuinely disqualifying condition (heavy rain, or dangerous heat on a dog walk) now caps the overall score instead of being averaged away by pleasant temperatures.
+- Air quality in the Moderate range no longer scores as excellent; the scale now follows the EPA's own categories, and the app and its AI insights describe the same reading the same way instead of one calling it "solid" and the other "decent".
+- Forecast-day write-ups no longer suggest it's a great day to be outside when the air is unhealthy.
+- Rain later in today's forecast no longer drags down your current activity score as though it were already raining — the score reflects what's falling now, and the rain window still tells you what's coming.
+- Preview Mode activity scores now register rain that is actually falling.
+- AI insights no longer call the hours just after midnight "morning", and no longer invent a temperature for a time of day they have no data for.
+- The overnight hours in the hourly forecast no longer overlap the evening cards on iPhone.
+- Today's forecast icon no longer vanishes partway through the afternoon.
+- Forecast-day write-ups now refresh when the forecast is revised, instead of staying frozen for an hour.
+- AI insight text is no longer occasionally cut off mid-sentence, and a malformed response no longer renders a blank briefing card.
+
 ## [1.4.0] - 2026-07-14
 
 ### Added

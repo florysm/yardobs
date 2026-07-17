@@ -2,7 +2,7 @@
 
 Companion to `TechDebt.md` items 3 and 4 (2026-07-17 scan). These two refactors are too large for an opportunistic `/debtpayer` pass — each touches multiple files or moves 150+ lines — so they are broken out here with a concrete plan and risk notes, pending a decision on how to handle them.
 
-## A. Extract a shared `useInsight` hook (TechDebt item 3)
+## A. Extract a shared `useInsight` hook (TechDebt item 2)
 
 **Scope:** 3 components, ~200 lines net-touched, plus a new hook file.
 
@@ -18,7 +18,7 @@ useInsight({ lsKey, enabled, buildBody, onError, debounceMs })
 
 - localStorage read + `INSIGHT_TTL_MS` gate and the `{data, ts}` write become the hook's job (keys still built by callers via `STORAGE_KEYS` builders).
 - One cancellation idiom (AbortController) replaces the three divergent ones (`cancelled` flag / cancel-token ref / AbortController).
-- `onError` reporting funnels through the hook — 3 of the 6 `componentError` report sites (TechDebt item 2) collapse into one, making the eventual "clear on success" fix a one-place change.
+- `onError` reporting funnels through the hook — 3 of the 6 `componentError` report sites (TechDebt item 1) collapse into one, making the eventual "clear on success" fix a one-place change.
 
 **Per-caller wrinkles to preserve:**
 
@@ -28,7 +28,7 @@ useInsight({ lsKey, enabled, buildBody, onError, debounceMs })
 
 **Risk:** medium. Behavior-preserving but touches all three insight surfaces at once; each has subtle timing (debounce, notable-change bypass) that needs the existing `forecastHourlyLayout.test.js`-style unit coverage before the move. Best done on its own branch.
 
-## B. Split ForecastTab.jsx / extract `<SunMoonCard>` (TechDebt item 4)
+## B. Split ForecastTab.jsx / extract `<SunMoonCard>` (TechDebt item 3)
 
 **Scope:** 1 file (~660 lines) → 2–3 files; ~154 lines move.
 

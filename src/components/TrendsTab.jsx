@@ -561,7 +561,7 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
   const lySum         = yoy.lastYear;
   const lyCurrentObs  = lyObsAtCurrentHour(yoy.lyRaw);
   const lyCurrentTemp = lyCurrentObs?.imperial?.tempAvg ?? lyCurrentObs?.imperial?.tempHigh ?? null;
-  const forecastHighToday  = forecast?.temperatureMax?.[0] ?? null;
+  const forecastHighToday  = forecast?.[0]?.tempMax ?? null;
   const observedHighToday  = todaySum?.tempHigh ?? null;
   const highVals           = [observedHighToday, forecastHighToday].filter(v => v != null);
   const todayDisplayHigh   = highVals.length ? Math.max(...highVals) : null;

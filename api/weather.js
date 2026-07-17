@@ -53,12 +53,11 @@ export default async function handler(req, res) {
   if (!validStationId(stationId)) return res.status(400).json({ error: 'Invalid station ID' });
   if (!validDate(date)) return res.status(400).json({ error: 'Invalid date' });
 
-  // The owner's server key powers only preview mode's keyless daily forecast.
-  // Every other TWC/PWS endpoint must use the caller's own key (sent as
-  // X-TWC-Key by station owners) so the shared key can't be used to query
-  // arbitrary stations.
-  const clientKey = req.headers['x-twc-key'];
-  const apiKey = clientKey || (type === 'forecast' ? process.env.TWC_API_KEY : undefined);
+  // Every TWC/PWS endpoint uses the caller's own key (sent as X-TWC-Key by
+  // station owners). There is deliberately no server-side fallback key: preview
+  // mode is served entirely by Open-Meteo, so no shared credential is exposed to
+  // anonymous traffic and no owner quota is spent on it.
+  const apiKey = req.headers['x-twc-key'];
   const keylessTypes = new Set(['hourly-forecast', 'air-quality', 'alerts']);
   if (!apiKey && !keylessTypes.has(type)) {
     return res.status(401).json({ error: 'TWC API key required — add your station key in Settings.' });
@@ -93,11 +92,20 @@ export default async function handler(req, res) {
       break;
     case 'hourly-forecast':
       if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
-      url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation_probability,weathercode,apparent_temperature,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,uv_index&daily=sunrise,sunset&forecast_days=2&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto`;
+      // forecast_days=5 matches the TWC 5-day span, so every day the Forecast tab
+      // shows also has an hourly curve to narrate from. Hourly consumers either
+      // filter to today (getArcData, getForecastRainThreat) or slice (buildHours),
+      // so the longer arrays are additive.
+      //
+      // The `daily` block is what preview mode uses for its 5-day forecast — it
+      // rides along on this request rather than costing a second round trip.
+      url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation_probability,weathercode,apparent_temperature,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,uv_index&daily=sunrise,sunset,temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max&forecast_days=5&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto`;
       break;
     case 'air-quality':
       if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
-      url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&timezone=auto`;
+      // Kept in step with the client's direct call in useWeather (fetchAirQuality):
+      // `hourly=us_aqi` is what lets the Forecast tab report air quality per day.
+      url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&hourly=us_aqi&forecast_days=5&timezone=auto`;
       break;
     case 'alerts':
       // Severe-weather alerts. NWS is free/keyless but US-only; the client

@@ -143,6 +143,10 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
     () => getRainyHourWindow(hourlyForecast),
     [hourlyForecast]
   );
+  // rainThreat combines measured rain with forecast risk. Scoring deliberately
+  // ignores it (computeScore keys off measured precipRate, so a dry morning with
+  // afternoon storms isn't penalized as though it were raining now) — it survives
+  // for cache invalidation via isNotableWeatherChange and for display.
   const currentWithThreat = useMemo(() => current ? {
     ...current,
     rainThreat: Math.max(current.precipRate ?? 0, forecastRate),

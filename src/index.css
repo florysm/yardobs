@@ -271,6 +271,40 @@ input:focus-visible {
 .fc-scroll { scrollbar-width: none; }
 .fc-scroll::-webkit-scrollbar { display: none; }
 
+/* ─── Hourly strip track — DO NOT replace with inline-flex ────────────────────
+ * iOS Safari only. Reproduced on iPhone; invisible in Chrome, on Android, and in
+ * DevTools device emulation, because those run Blink and this is a WebKit layout
+ * difference — a narrow viewport alone will never surface it.
+ *
+ * `inline-flex` is a shrink-to-fit box: its width resolves to
+ * min(max-content, available), and inside `overflow-x: auto` WebKit takes
+ * "available" as the *visible* width (~390px) rather than the ~1500px of track.
+ * The day groups inside are themselves flex containers, and WebKit then fails to
+ * honour their automatic minimum size, collapsing a group's used width to about
+ * one card. Its cards spill out on top of the following group — so the overnight
+ * hours land on top of the evening ones at the day boundary.
+ *
+ * `width: max-content` + `min-width: max-content` sizes both levels to their
+ * content explicitly, so nothing is over-constrained and no shrink-to-fit
+ * calculation happens.
+ *
+ * This regressed once already: fixed in 0d6ec59 (1.1.1, "Forecast display fixes
+ * for iPhone"), then silently reverted by 5c4cf2d (1.2.0) when the hourly strip
+ * was rewritten for NWS. It lives here as a class, rather than inline in the JSX,
+ * so it survives the next rewrite. forecastHourlyLayout.test.js guards it.
+ * ─────────────────────────────────────────────────────────────────────────── */
+.fc-hourly-track {
+  display: flex;
+  width: max-content;
+  align-items: flex-start;
+}
+.fc-hourly-group {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: max-content;
+}
+
 /* Leaflet map overrides */
 .leaflet-container {
   border-radius: 12px;

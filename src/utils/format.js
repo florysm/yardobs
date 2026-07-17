@@ -1,11 +1,19 @@
+// EPA US AQI category boundaries (upper bound, inclusive). The scoring curve in
+// scoring.js anchors its control points to these same numbers — see the
+// band-alignment test in scoring.test.js.
+export const AQI_BOUNDS = [
+  [50,  'Good'],
+  [100, 'Moderate'],
+  [150, 'Sensitive Groups'],
+  [200, 'Unhealthy'],
+  [300, 'Very Unhealthy'],
+];
+const AQI_ABOVE_RANGE = 'Hazardous';
+
 export function aqiCategory(aqi) {
   if (aqi == null) return null;
-  if (aqi <= 50)  return 'Good';
-  if (aqi <= 100) return 'Moderate';
-  if (aqi <= 150) return 'Sensitive Groups';
-  if (aqi <= 200) return 'Unhealthy';
-  if (aqi <= 300) return 'Very Unhealthy';
-  return 'Hazardous';
+  const hit = AQI_BOUNDS.find(([max]) => aqi <= max);
+  return hit ? hit[1] : AQI_ABOVE_RANGE;
 }
 
 export function fmt(val, digits = 0) {

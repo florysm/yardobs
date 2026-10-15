@@ -2,6 +2,12 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.1] - 2026-10-15
+
+### Changed
+
+- Behind-the-scenes improvements to how new versions are published.
+
 ## [1.6.0] - 2026-10-15
 
 ### Added

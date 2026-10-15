@@ -1,0 +1,43 @@
+name: Tag release
+
+# `/ship` bumps package.json and CHANGELOG.md inside the feature PR. When that PR
+# merges, this tags the merge commit and publishes a GitHub release for the new
+# version. Pushes that don't change the version find the tag already exists and
+# do nothing.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need existing tags
+
+      - name: Create tag and release for a new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists, nothing to do."
+            exit 0
+          fi
+
+          # Release notes = this version's block from CHANGELOG.md (without its heading)
+          awk -v v="$VERSION" 'index($0, "## [" v "]") == 1 { f = 1; next } /^## \[/ { f = 0 } f' CHANGELOG.md > notes.md
+
+          if [ -s notes.md ]; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          else
+            echo "No CHANGELOG block found for $VERSION, using generated notes."
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          fi

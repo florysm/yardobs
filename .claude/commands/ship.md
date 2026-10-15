@@ -2,12 +2,11 @@
 
 Prepare a feature branch to merge: summarize its changes in plain English, bring the documentation back in step with the code, write the CHANGELOG entry, bump the version, and open a PR whose title carries the version. Run it **on the feature branch, right before the PR** — the version bump and changelog travel in the same PR as the change that caused them. Always confirms with the user before writing or publishing anything.
 
-Every merge to `main` deploys to Vercel, so the PR you open here *is* the release. There is no separate release PR.
+Every merge to `main` deploys to Vercel, so the PR you open here *is* the release. There is no separate release PR, and no step after the merge: `.github/workflows/release.yml` tags the merge commit and publishes the GitHub release automatically when the new version lands on `main`.
 
 ## Usage
 
 `/ship` — prepare the current branch and open the PR.
-`/ship tag` — after the PR has been merged: create the git tag and GitHub release, and check the deploy.
 
 ## Steps (`/ship`)
 
@@ -127,19 +126,20 @@ EOF
 
 ### 10. Report
 
-Confirm: the version, the PR URL, which docs were updated (or that none needed it), and that **merging deploys to Vercel**. Remind the user to run `/ship tag` after merging.
+Confirm: the version, the PR URL, which docs were updated (or that none needed it), and that **merging deploys to Vercel** and the **Tag release** workflow tags it automatically.
 
-## Steps (`/ship tag`)
+## After the merge
 
-Run after the PR is merged.
+Nothing to run. When asked how the release went, verify rather than assume:
 
-1. `git fetch origin --tags` and confirm the PR is merged: `gh pr view <number> --json state,mergeCommit`. If it is not merged, stop.
-2. Read the version from `package.json` on `origin/main` (`git show origin/main:package.json`) and confirm no tag for it exists yet.
-3. Create the tag and release on the merged commit, using the CHANGELOG block as notes:
-   ```bash
-   gh release create vX.Y.W --target main --title "vX.Y.W" --notes "<changelog bullets>"
-   ```
-4. Check the Vercel deployment for the merge commit is green (`gh api repos/{owner}/{repo}/commits/<sha>/status`, or the Vercel connector if available) and report it.
+1. `git fetch origin --tags`; confirm the tag exists: `git tag -l vX.Y.W`.
+2. Confirm the **Tag release** run succeeded: `gh run list --workflow release.yml --limit 1`.
+3. Check the Vercel deployment for the merge commit (`gh api repos/{owner}/{repo}/commits/<sha>/status`).
+
+If the workflow failed or didn't run, create the release by hand as a fallback:
+```bash
+gh release create vX.Y.W --target main --title "vX.Y.W" --notes "<changelog bullets>"
+```
 
 ---
 
@@ -203,7 +203,7 @@ When in doubt between patch and minor, choose minor. When in doubt between minor
 - Do not proceed past step 3 if `npm test` or `npm run build` fails.
 - Do not write to `CHANGELOG.md`, edit any doc, bump the version, push, or open a PR before the user confirms.
 - Do not run `/ship` from `main`.
-- Do not create or push a tag from a feature branch — tags are created after the merge, by `/ship tag`.
+- Do not create or push a tag from a feature branch — the Tag release workflow tags the merge commit after the merge.
 - Do not use `npm run release:*`.
 - Do not fabricate changelog entries — derive every bullet from the actual diff and commits.
 - Do not commit local-only files (for example `.claude/launch.json`, `.env`). Stage deliberately.

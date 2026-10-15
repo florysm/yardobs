@@ -7,6 +7,7 @@ STATION_ID:       'yardobs-station-id',
   TWC_API_KEY:      'yardobs-twc-key',
   DEFAULT_ACTIVITY: 'yardobs-default-activity',
   UNITS:            'yardobs-units',
+  RADAR_RANGE:      'yardobs-radar-range',
   insightKey: (stationId, today, period, units) => `yardobs-insight-${stationId}-${today}-${period}-${units}`,
   activityInsightKey: (stationId, activityId, period, units) => `yardobs-activity-insight-${stationId}-${activityId}-${period}-${units}`,
   // aqiBucket participates so a day whose air quality changes category doesn't

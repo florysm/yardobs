@@ -47,7 +47,7 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 - **AI Insights** — Claude-generated daily backyard briefing and per-activity narrative, cached to minimize API calls
 - **Trends** — hourly and daily charts for temperature, humidity, pressure, and precipitation across 24h / 7d / 30d ranges, with optional year-over-year overlay
 - **5-day Forecast** — daily highs/lows and precipitation chance, plus an hourly scroll view grouped by day
-- **Live Radar** — animated RainViewer radar tiles on an interactive Leaflet map with play/pause controls
+- **Live Radar** — animated US radar (last hour observed + 2-hour HRRR forecast) on an interactive Leaflet map with play/pause controls
 - **Air Quality** — current AQI with plain-language label (Good, Moderate, etc.)
 - **Units & Locale** — imperial (°F / mph / in) or metric (°C / km/h / mm) auto-detected from your device's region, with a manual override in Settings; time displays follow your device's 12h or 24h clock preference
 - **Adaptive Theming** — 6 themes (sunny, cloudy, rainy, stormy, light, dark) auto-selected from current conditions using your station's rain gauge as ground truth; manual override persisted in `localStorage`
@@ -59,10 +59,10 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 
 | Layer | Technology | Notes |
 |---|---|---|
-| UI framework | React 18 + Vite 5 | Mobile-first, 420px max-width |
+| UI framework | React 19 + Vite 6 | Mobile-first, 420px max-width |
 | Styling | Tailwind CSS v3 + CSS variable themes | 6 condition-aware themes |
 | Charts | Recharts 2 | Line charts with optional YoY overlay |
-| Maps | Leaflet 1.9 + React-Leaflet 4 | RainViewer animated radar tiles |
+| Maps | Leaflet 1.9 + React-Leaflet 5 | Iowa Environmental Mesonet radar tiles, Stadia Maps basemap |
 | AI insights | Anthropic Claude API (`claude-haiku-4-5`) | Activity, daily briefing, forecast-day; server-side only |
 | Backend | Vercel Serverless Functions (Node.js) | `api/weather.js`, `api/insight.js` |
 | Weather data | The Weather Company (TWC) PWS API | Current obs, history, 5-day forecast |
@@ -118,6 +118,7 @@ yardobs/
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
 │   │   ├── insightVocab.js         # Shared score/AQI/time-of-day wording for prompts and UI
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
+│   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── storageKeys.js          # localStorage key constants
 │   │   ├── units.js                # Imperial/metric conversion + locale detection
@@ -178,6 +179,7 @@ npx vercel dev
 | Variable | Where | Description |
 |---|---|---|
 | `VITE_PWS_STATION_ID` | `.env` / Vercel dashboard | Your PWS station ID (e.g. `KWASEATT123`). Safe to expose to the browser. Optional — leave blank to use Preview Mode. |
+| `VITE_STADIA_API_KEY` | `.env` / Vercel dashboard | [Stadia Maps](https://stadiamaps.com) key for the radar basemap. Bundled into the browser, so restrict it by domain in the Stadia dashboard. Optional on `localhost`. |
 | `ANTHROPIC_API_KEY` | Vercel dashboard only | Anthropic Claude key for AI insight generation. Server-side only. |
 
 > There is no `TWC_API_KEY` environment variable. Station owners supply their own key in **Settings → Station**; Preview Mode needs no key at all.
@@ -187,8 +189,9 @@ npx vercel dev
 1. Fork the repo on GitHub
 2. Click the **Deploy to Vercel** button at the top of this README, or import your fork in the Vercel dashboard
 3. Set `ANTHROPIC_API_KEY` as an Environment Variable (Production) in the Vercel project settings — never commit it to the repo
-4. Optionally set `VITE_PWS_STATION_ID` if you want to pre-seed your station ID
-5. Deploy — done
+4. Set `VITE_STADIA_API_KEY` (Production) with a [Stadia Maps](https://stadiamaps.com) key, restricted to your domain — without it the radar basemap won't load on a deployed site
+5. Optionally set `VITE_PWS_STATION_ID` if you want to pre-seed your station ID
+6. Deploy — done
 
 ## API Reference
 
@@ -238,7 +241,8 @@ If YardObs is useful to you, you can support the project on [Ko-fi](https://ko-f
 
 - [The Weather Company PWS API](https://docs.google.com/document/d/1eKCnKXI9xnoMGRRzOL1xPCBihNV2rOet08qpE_gArAY) — real-time personal weather station data
 - [Open-Meteo](https://open-meteo.com) — free, open-source weather forecast and air quality API
-- [RainViewer](https://www.rainviewer.com/api.html) — animated global radar tiles
+- [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/ogc/) — NOAA NEXRAD and HRRR radar tiles
+- [Stadia Maps](https://stadiamaps.com) — basemap tiles, © OpenMapTiles © OpenStreetMap contributors
 - [Anthropic Claude](https://www.anthropic.com) — AI-powered weather insights
 
 ## License

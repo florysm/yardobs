@@ -2,6 +2,23 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.0] - 2026-10-15
+
+### Added
+
+- The radar now shows a forecast: the last hour of observed radar plus a projected look ahead, with a new selector for 2, 6 or 12 hours (it remembers your choice).
+- The radar map opens zoomed in closer so your area is easier to see.
+
+### Changed
+
+- The radar now uses NOAA radar data and covers the United States only; other locations see a short message instead of an empty map.
+- Updated the app's underlying software, including React 19 and the map library, and cleared security alerts in the build tools.
+
+### Fixed
+
+- Fixed the radar's base map showing "API Key Required" tiles.
+- Switching between weather stations or preview locations no longer risks briefly showing the previous location's weather when a slow response arrives late.
+
 ## [1.5.1] - 2026-07-17
 
 ### Fixed

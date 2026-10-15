@@ -275,7 +275,6 @@ export default function App() {
                 lat={current?.lat ?? null}
                 lon={current?.lon ?? null}
                 isLoading={isLoading}
-                onError={setComponentError}
               />
             </Suspense>
           </ErrorBoundary>

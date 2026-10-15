@@ -1,30 +1,31 @@
 import { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { buildRadarFrames, hasRadarCoverage, RADAR_RANGES, DEFAULT_RADAR_RANGE } from '../utils/radarFrames.js';
+import { STORAGE_KEYS } from '../utils/storageKeys.js';
 
-const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
-const CARTO_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// Stadia authorizes localhost without a key, so the key is optional in dev.
+const STADIA_KEY = import.meta.env.VITE_STADIA_API_KEY;
+const BASEMAP_TILES = 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png'
+  + (STADIA_KEY ? `?api_key=${encodeURIComponent(STADIA_KEY)}` : '');
 const RADAR_OPACITY = 0.8;
 const FRAME_INTERVAL_MS = 600;
 const LAST_FRAME_HOLD_MS = 1500; // pause on most-recent frame before looping
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // IEM tiles are cached for 5 minutes
 
-// The free RainViewer API enforces scheme 2 (Universal Blue) regardless of what
-// value is in the URL — paid tier required for any other scheme.
-const COLOR_SCHEME = 2;
-
-// Colors sourced from rainviewer.com/files/rainviewer_api_colors_table.csv
+// Approximates the NWS reflectivity ramp used by the IEM tiles (dBZ, light → extreme).
 const LEGEND = [
-  { color: '#087fdb', label: 'Light' },
-  { color: '#6e0dc6', label: 'Moderate' },
-  { color: '#d2883b', label: 'Heavy' },
-  { color: '#fac431', label: 'Very Heavy' },
-  { color: '#fd341c', label: 'Extreme' },
+  { color: '#3fb8c7', label: 'Light' },
+  { color: '#2ea84f', label: 'Moderate' },
+  { color: '#f2d33b', label: 'Heavy' },
+  { color: '#f08a24', label: 'Very Heavy' },
+  { color: '#e0301e', label: 'Extreme' },
 ];
 
 // Preloads every frame as an invisible tile layer on mount so tiles enter the
 // browser cache before animation starts. Frame transitions swap opacity instead
 // of creating/destroying layers, which eliminates the blank flash between frames.
-function RadarLayer({ host, frames, frameIndex }) {
+function RadarLayer({ frames, frameIndex }) {
   const map        = useMap();
   const cacheRef   = useRef({});  // index → L.TileLayer
   const loadedRef  = useRef({});  // index → bool
@@ -32,14 +33,13 @@ function RadarLayer({ host, frames, frameIndex }) {
   const pendingRef = useRef(null); // { layer, handler } — cancelled on frame change
 
   useEffect(() => {
-    if (!frames.length || !host) return;
+    if (!frames.length) return;
     frames.forEach((frame, i) => {
       if (cacheRef.current[i]) return;
-      const url = `${host}${frame.path}/256/{z}/{x}/{y}/${COLOR_SCHEME}/1_1.png`;
-      const layer = L.tileLayer(url, {
+      const layer = L.tileLayer(frame.url, {
         tileSize: 256,
         opacity: 0.001,
-        maxNativeZoom: 7,
+        maxNativeZoom: 8,
         maxZoom: 12,
         zIndex: 10,
       });
@@ -55,7 +55,7 @@ function RadarLayer({ host, frames, frameIndex }) {
       pendingRef.current = null;
     };
   // cacheRef/loadedRef/activeRef/pendingRef are stable refs — no dep needed
-  }, [frames, host, map]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [frames, map]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cancel any stale load listener before showing the new frame. Without this,
   // a slow-loading earlier frame can flash briefly after we've already advanced.
@@ -91,34 +91,43 @@ function formatTime(unixSec) {
   return new Date(unixSec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function RadarTab({ lat, lon, isLoading, onError }) {
-  const [frames, setFrames]         = useState([]);
-  const [pastCount, setPastCount]   = useState(0);
-  const [host, setHost]             = useState('');
-  const [frameIndex, setFrameIndex] = useState(0);
-  const [playing, setPlaying]       = useState(false);
-  const [fetchError, setFetchError] = useState(null);
-  const timerRef = useRef(null);
+function readStoredRange() {
+  try {
+    const v = localStorage.getItem(STORAGE_KEYS.RADAR_RANGE);
+    return v in RADAR_RANGES ? v : DEFAULT_RADAR_RANGE;
+  } catch { return DEFAULT_RADAR_RANGE; }
+}
 
+export default function RadarTab({ lat, lon, isLoading }) {
+  const [range, setRange]           = useState(readStoredRange);
+  const [plan, setPlan]             = useState(() => buildRadarFrames(Date.now(), range));
+  const [frameIndex, setFrameIndex] = useState(() => plan.pastCount - 1); // most recent observed frame
+  const [playing, setPlaying]       = useState(false);
+  const timerRef = useRef(null);
+  const { frames, pastCount } = plan;
+  const covered = lat != null && lon != null && hasRadarCoverage(lat, lon);
+
+  // Frames are computed from the clock, so refreshing is just rebuilding the
+  // plan; the radar layer then preloads the new tiles.
   useEffect(() => {
-    let cancelled = false;
-    fetch(RAINVIEWER_API)
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return;
-        const past    = data?.radar?.past    ?? [];
-        const nowcast = data?.radar?.nowcast ?? [];
-        const all = [...past, ...nowcast];
-        if (all.length) {
-          setHost(data.host);
-          setFrames(all);
-          setPastCount(past.length);
-          setFrameIndex(past.length - 1); // start on most recent observed frame
-        }
-      })
-      .catch(e => { if (!cancelled) { setFetchError(e.message); onError?.('Radar data unavailable'); } });
-    return () => { cancelled = true; };
-  }, []);
+    if (!covered) return;
+    const id = setInterval(() => {
+      const next = buildRadarFrames(Date.now(), range);
+      setPlan(next);
+      setFrameIndex(next.pastCount - 1);
+    }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [covered, range]);
+
+  const selectRange = (key) => {
+    if (key === range) return;
+    const next = buildRadarFrames(Date.now(), key);
+    setPlaying(false);
+    setRange(key);
+    setPlan(next);
+    setFrameIndex(next.pastCount - 1);
+    try { localStorage.setItem(STORAGE_KEYS.RADAR_RANGE, key); } catch { /* storage unavailable */ }
+  };
 
   useEffect(() => {
     if (!playing || frames.length === 0) return;
@@ -148,12 +157,15 @@ export default function RadarTab({ lat, lon, isLoading, onError }) {
     setFrameIndex(i => (i + 1) % frames.length);
   };
 
-  if (!lat || !lon) {
+  if (lat == null || lon == null || !covered) {
+    const hasLocation = lat != null && lon != null;
     return (
       <div className="y-card" style={{ textAlign: 'center', padding: '32px 16px' }}>
         <div style={{ fontSize: 13, color: 'var(--tm)' }}>Radar unavailable</div>
         <div style={{ fontSize: 11, color: 'var(--tm)', opacity: 0.6, marginTop: 4 }}>
-          {isLoading ? 'Waiting for station location…' : 'Station location not available'}
+          {hasLocation
+            ? 'Radar currently covers the United States only'
+            : isLoading ? 'Waiting for station location…' : 'Station location not available'}
         </div>
       </div>
     );
@@ -183,15 +195,13 @@ export default function RadarTab({ lat, lon, isLoading, onError }) {
       >
         <MapContainer
           center={[lat, lon]}
-          zoom={7}
+          zoom={8}
           style={{ height: 320, width: '100%' }}
           zoomControl={true}
           attributionControl={false}
         >
-          <TileLayer url={CARTO_TILES} />
-          {frames.length > 0 && host && (
-            <RadarLayer host={host} frames={frames} frameIndex={frameIndex} />
-          )}
+          <TileLayer url={BASEMAP_TILES} />
+          <RadarLayer frames={frames} frameIndex={frameIndex} />
           <CircleMarker
             center={[lat, lon]}
             radius={6}
@@ -212,14 +222,10 @@ export default function RadarTab({ lat, lon, isLoading, onError }) {
       <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ fontSize: 11, color: 'var(--tm)', fontVariantNumeric: 'tabular-nums' }}>
-            {currentFrame
-              ? formatTime(currentFrame.time)
-              : fetchError ? 'Radar unavailable' : 'Loading radar…'}
-            {frames.length > 0 && (
-              <span style={{ opacity: 0.5, marginLeft: 6 }}>
-                {frameIndex + 1} / {frames.length}
-              </span>
-            )}
+            {formatTime(currentFrame.time)}
+            <span style={{ opacity: 0.5, marginLeft: 6 }}>
+              {frameIndex + 1} / {frames.length}
+            </span>
           </div>
           {isProjected && (
             <span className="y-pill" style={{
@@ -254,8 +260,23 @@ export default function RadarTab({ lat, lon, isLoading, onError }) {
             style={{ minWidth: 36 }}>&#8594;</button>
         </div>
 
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: 'var(--tm)', opacity: 0.7 }}>Forecast</span>
+          {Object.keys(RADAR_RANGES).map(key => (
+            <button
+              key={key}
+              className={`y-pill${key === range ? ' active' : ''}`}
+              onClick={() => selectRange(key)}
+              aria-pressed={key === range}
+              style={{ minWidth: 40, fontSize: 11 }}
+            >
+              {key}
+            </button>
+          ))}
+        </div>
+
         <div style={{ fontSize: 10, color: 'var(--tm)', opacity: 0.5, textAlign: 'center' }}>
-          Radar: RainViewer · Map: © CartoDB
+          Radar: NOAA NEXRAD / HRRR via Iowa Environmental Mesonet · Map: © Stadia Maps © OpenMapTiles © OpenStreetMap contributors
         </div>
       </div>
     </div>

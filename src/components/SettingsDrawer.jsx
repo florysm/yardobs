@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { CONDITION_PREVIEWS, WEATHER_THEME_IDS, DISPLAY_MODES } from '../themes.js';
 import { ACTIVITIES } from '../utils/activities';
 import { UNITS } from '../utils/units';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+import { buildWidgetScript, widgetConfigFromSettings, WIDGET_TEMPLATE_URL, SCRIPTABLE_APP_URL } from '../utils/widgetScript';
 import ChangelogModal from './ChangelogModal';
 import StationForm from './StationForm';
 
@@ -55,6 +57,29 @@ export default function SettingsDrawer({
     : 'Auto-synced to current conditions';
 
   const [showChangelog, setShowChangelog] = useState(false);
+  const [widgetCopy, setWidgetCopy] = useState(null); // null | 'copied' | error message
+
+  const twcKey = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_API_KEY) || ''; } catch { return ''; } })();
+  const widgetConfig = widgetConfigFromSettings({ profile, twcKey, units });
+
+  const copyWidgetScript = async () => {
+    const scriptBlob = fetch(WIDGET_TEMPLATE_URL)
+      .then(r => { if (!r.ok) throw new Error('Could not load the widget script'); return r.text(); })
+      .then(template => new Blob([buildWidgetScript(template, widgetConfig)], { type: 'text/plain' }));
+    scriptBlob.catch(() => {}); // surfaced through the clipboard call below
+    try {
+      // Safari drops the click's user activation across an await, so hand the
+      // clipboard a pending item rather than awaiting the fetch first.
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': scriptBlob })]);
+      } else {
+        await navigator.clipboard.writeText(await (await scriptBlob).text());
+      }
+      setWidgetCopy('copied');
+    } catch (err) {
+      setWidgetCopy(err?.message || 'Copy failed — try again');
+    }
+  };
 
   return (
     <>
@@ -284,6 +309,52 @@ export default function SettingsDrawer({
             initialStationId={profile?.stationId ?? ''}
             onSave={(sid) => onSaveProfile({ mode: 'station', stationId: sid })}
           />
+        </div>
+
+        {/* iPhone widget section — Scriptable script pre-filled with these settings */}
+        <div style={{ marginBottom: 22 }}>
+          <div className="y-label">iPhone Home Screen Widget</div>
+          <div style={{
+            padding: '12px 14px', background: 'var(--soft)',
+            border: '1px solid var(--border)', borderRadius: 12,
+            fontSize: 12, color: 'var(--ts)', lineHeight: 1.6,
+          }}>
+            <ol style={{ margin: 0, paddingLeft: 18 }}>
+              <li>
+                Install{' '}
+                <a href={SCRIPTABLE_APP_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
+                  Scriptable
+                </a>{' '}
+                (free) from the App Store.
+              </li>
+              <li>Tap <strong style={{ color: 'var(--tp)' }}>Copy widget script</strong> below.</li>
+              <li>In Scriptable, tap <strong style={{ color: 'var(--tp)' }}>+</strong>, paste, and name it “YardObs”.</li>
+              <li>Long-press your home screen, add a Scriptable widget, then edit it and choose YardObs.</li>
+            </ol>
+            <button
+              onClick={copyWidgetScript}
+              disabled={!widgetConfig}
+              style={{
+                width: '100%', marginTop: 12, padding: '10px 0', borderRadius: 20,
+                background: widgetConfig ? 'var(--accent)' : 'var(--border)', border: 'none',
+                color: '#fff', fontSize: 13, fontWeight: 600,
+                cursor: widgetConfig ? 'pointer' : 'not-allowed', fontFamily: 'var(--font-body)',
+              }}
+            >
+              {widgetCopy === 'copied' ? 'Copied ✓' : 'Copy widget script'}
+            </button>
+            <div style={{ fontSize: 11, marginTop: 8 }}>
+              {!widgetConfig
+                ? (profile?.mode === 'station'
+                    ? 'Save your station ID and TWC API key above to set up the widget.'
+                    : 'Choose a location to set up the widget.')
+                : widgetCopy && widgetCopy !== 'copied'
+                  ? widgetCopy
+                  : profile?.mode === 'station'
+                    ? 'The script includes your TWC API key — don’t share it. Re-copy after changing your station or units.'
+                    : 'Re-copy after changing your location or units.'}
+            </div>
+          </div>
         </div>
 
         {/* Support section */}

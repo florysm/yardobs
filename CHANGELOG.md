@@ -2,6 +2,12 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.0] - 2026-11-03
+
+### Added
+
+- An iPhone home screen widget: copy a ready-made script from Settings into the free Scriptable app to see current conditions from your station (or your preview location), today's high and low, and the chance of rain at a glance.
+
 ## [1.6.1] - 2026-10-15
 
 ### Changed

@@ -8,7 +8,7 @@ A mobile-first personal weather station dashboard with AI-powered activity scori
 
 YardObs is a personal weather dashboard built around your own backyard weather station. Instead of checking a generic city forecast, it shows exactly what's happening at your location right now — temperature, wind, rain, air quality — and uses that data to score whether conditions are good for grilling, gardening, letting the dog out, or any other outdoor activity. It also remembers what the weather was doing a year ago today so you can see how this season compares.
 
-The Anthropic key stays on the server. Your TWC station key is stored only in your own browser and sent straight through to The Weather Company — it is never committed, never bundled, and never shared with other users.
+The Anthropic key stays on the server. Your TWC station key is stored only in your own browser and sent straight through to The Weather Company — it is never committed, never bundled, and never shared with other users. If you set up the iPhone widget, a copy also lives in that script on your phone.
 
 > **No weather station? No problem.** Use [Preview Mode](#option-a--preview-mode-no-weather-station-required) to explore the full app with any location — no API keys or hardware required.
 
@@ -39,6 +39,17 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 
 > YardObs is designed mobile-first and feels native on a phone home screen. Desktop works well too, but the experience is optimized for a narrow viewport.
 
+### iPhone Home Screen Widget
+
+iOS only allows home screen widgets from native apps, so YardObs provides one through the free [Scriptable](https://apps.apple.com/app/scriptable/id1405459188) app:
+
+1. Install Scriptable from the App Store
+2. In YardObs, open **Settings → iPhone Home Screen Widget** and tap **Copy widget script**
+3. In Scriptable, tap **+**, paste, and name the script "YardObs"
+4. Long-press your home screen, add a small or medium Scriptable widget, then edit it and choose **YardObs**
+
+The widget shows current conditions from your station (or your preview location) plus today's high/low and rain chance, and taps through to the app. The script calls Weather.com and Open-Meteo directly from your phone. In station mode it contains your TWC API key, so don't share it. Re-copy it after changing your station, location, or units.
+
 ## Features
 
 - **Live Conditions** — temperature, feels-like, humidity, wind, pressure, dew point, UV index, solar radiation, and precipitation; auto-refreshes every 5 minutes
@@ -53,6 +64,7 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 - **Adaptive Theming** — 6 themes (sunny, cloudy, rainy, stormy, light, dark) auto-selected from current conditions using your station's rain gauge as ground truth; manual override persisted in `localStorage`
 - **Preview Mode** — explore with any location without owning a personal weather station
 - **In-app Changelog** — version history accessible from the settings drawer
+- **iPhone Widget** — small and medium home screen widgets via the free Scriptable app, set up from Settings with one copy-and-paste
 - **Location Search** — geocoding via Open-Meteo to find any location for preview or comparison
 
 ## Tech Stack
@@ -99,7 +111,7 @@ yardobs/
 │   │   ├── TrendsTab.jsx           # History charts with YoY overlay (lazy-loaded)
 │   │   ├── ForecastTab.jsx         # 5-day + hourly forecast view
 │   │   ├── RadarTab.jsx            # Animated radar map (lazy-loaded)
-│   │   ├── SettingsDrawer.jsx      # Theme picker, station setup, changelog viewer
+│   │   ├── SettingsDrawer.jsx      # Theme picker, station setup, widget setup, changelog viewer
 │   │   ├── LocationSetup.jsx       # Onboarding: station ID entry or preview mode
 │   │   ├── LocationSearchInput.jsx # Geocoding search for preview mode
 │   │   ├── ChangelogModal.jsx      # In-app changelog viewer
@@ -123,8 +135,12 @@ yardobs/
 │   │   ├── storageKeys.js          # localStorage key constants
 │   │   ├── units.js                # Imperial/metric conversion + locale detection
 │   │   ├── weatherCalc.js          # Feels-like, dew point, and related calculations
+│   │   ├── widgetScript.js         # Fills your settings into the Scriptable widget script
 │   │   └── weatherIcons.js         # WMO code → emoji/label mapping
 │   └── index.css                   # CSS variable theme definitions + component classes
+├── public/
+│   └── widget/
+│       └── yardobs-widget.js       # Scriptable home screen widget template
 ├── .env.example
 ├── vercel.json
 └── vite.config.js

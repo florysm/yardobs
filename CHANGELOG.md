@@ -2,6 +2,19 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.8.0] - 2026-11-03
+
+### Added
+
+- The iPhone widget now works on the Lock Screen, with layouts sized for the rectangular, circular and inline spots instead of a cut-off home screen layout.
+- You can save your TWC API key's expiration date in Settings, and YardObs shows a reminder two weeks before it expires, with links to renew it and update it.
+- The widget warns you during the last week before your key expires, and tells you how to fix it once the key has expired.
+- A new "Update installed widget" button sends a renewed key or changed settings straight to your widget, with no need to paste the script again.
+
+### Changed
+
+- When Weather.com rejects your API key, the message now explains that the key may have expired and where to renew it.
+
 ## [1.7.0] - 2026-11-03
 
 ### Added

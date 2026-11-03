@@ -3,7 +3,7 @@ import { CONDITION_PREVIEWS, WEATHER_THEME_IDS, DISPLAY_MODES } from '../themes.
 import { ACTIVITIES } from '../utils/activities';
 import { UNITS } from '../utils/units';
 import { STORAGE_KEYS } from '../utils/storageKeys';
-import { buildWidgetScript, widgetConfigFromSettings, WIDGET_TEMPLATE_URL, SCRIPTABLE_APP_URL } from '../utils/widgetScript';
+import { buildWidgetScript, buildWidgetUpdatePayload, widgetConfigFromSettings, WIDGET_TEMPLATE_URL, WIDGET_UPDATE_URL, SCRIPTABLE_APP_URL } from '../utils/widgetScript';
 import ChangelogModal from './ChangelogModal';
 import StationForm from './StationForm';
 
@@ -60,7 +60,8 @@ export default function SettingsDrawer({
   const [widgetCopy, setWidgetCopy] = useState(null); // null | 'copied' | error message
 
   const twcKey = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_API_KEY) || ''; } catch { return ''; } })();
-  const widgetConfig = widgetConfigFromSettings({ profile, twcKey, units });
+  const keyExpires = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_KEY_EXPIRES) || null; } catch { return null; } })();
+  const widgetConfig = widgetConfigFromSettings({ profile, twcKey, keyExpires, units });
 
   const copyWidgetScript = async () => {
     const scriptBlob = fetch(WIDGET_TEMPLATE_URL)
@@ -78,6 +79,18 @@ export default function SettingsDrawer({
       setWidgetCopy('copied');
     } catch (err) {
       setWidgetCopy(err?.message || 'Copy failed — try again');
+    }
+  };
+
+  // For a widget that's already installed: hand the new settings over through
+  // the clipboard and run the script, which saves them in Scriptable's Keychain.
+  // No re-pasting, and the key never goes into the URL.
+  const updateWidget = async () => {
+    try {
+      await navigator.clipboard.writeText(buildWidgetUpdatePayload(widgetConfig));
+      window.location.href = WIDGET_UPDATE_URL;
+    } catch {
+      setWidgetCopy('Couldn’t open Scriptable — copy the script again instead');
     }
   };
 
@@ -343,6 +356,18 @@ export default function SettingsDrawer({
             >
               {widgetCopy === 'copied' ? 'Copied ✓' : 'Copy widget script'}
             </button>
+            <button
+              onClick={updateWidget}
+              disabled={!widgetConfig}
+              style={{
+                width: '100%', marginTop: 8, padding: '9px 0', borderRadius: 20,
+                background: 'transparent', border: `1.5px solid ${widgetConfig ? 'var(--accent)' : 'var(--border)'}`,
+                color: widgetConfig ? 'var(--accent)' : 'var(--ts)', fontSize: 13, fontWeight: 600,
+                cursor: widgetConfig ? 'pointer' : 'not-allowed', fontFamily: 'var(--font-body)',
+              }}
+            >
+              Update installed widget
+            </button>
             <div style={{ fontSize: 11, marginTop: 8 }}>
               {!widgetConfig
                 ? (profile?.mode === 'station'
@@ -351,8 +376,8 @@ export default function SettingsDrawer({
                 : widgetCopy && widgetCopy !== 'copied'
                   ? widgetCopy
                   : profile?.mode === 'station'
-                    ? 'The script includes your TWC API key — don’t share it. Re-copy after changing your station or units.'
-                    : 'Re-copy after changing your location or units.'}
+                    ? 'The script includes your TWC API key — don’t share it. After renewing your key or changing your station or units, tap Update installed widget.'
+                    : 'After changing your location or units, tap Update installed widget.'}
             </div>
           </div>
         </div>

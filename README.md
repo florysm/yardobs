@@ -48,7 +48,7 @@ iOS only allows home screen widgets from native apps, so YardObs provides one th
 3. In Scriptable, tap **+**, paste, and name the script "YardObs"
 4. Long-press your home screen, add a small or medium Scriptable widget, then edit it and choose **YardObs**
 
-The widget shows current conditions from your station (or your preview location) plus today's high/low and rain chance, and taps through to the app. The script calls Weather.com and Open-Meteo directly from your phone. In station mode it contains your TWC API key, so don't share it. Re-copy it after changing your station, location, or units.
+The widget shows current conditions from your station (or your preview location) plus today's high/low and rain chance, and taps through to the app. The script calls Weather.com and Open-Meteo directly from your phone. In station mode it contains your TWC API key, so don't share it. After renewing your key or changing your station, location, or units, tap **Update installed widget** in the same Settings section: it opens Scriptable and updates the widget in place, no re-pasting needed. Lock Screen widgets (rectangular, circular, and inline) are supported too.
 
 ## Features
 
@@ -64,7 +64,8 @@ The widget shows current conditions from your station (or your preview location)
 - **Adaptive Theming** — 6 themes (sunny, cloudy, rainy, stormy, light, dark) auto-selected from current conditions using your station's rain gauge as ground truth; manual override persisted in `localStorage`
 - **Preview Mode** — explore with any location without owning a personal weather station
 - **In-app Changelog** — version history accessible from the settings drawer
-- **iPhone Widget** — small and medium home screen widgets via the free Scriptable app, set up from Settings with one copy-and-paste
+- **iPhone Widget** — small and medium home screen widgets plus Lock Screen widgets via the free Scriptable app, set up from Settings with one copy-and-paste
+- **API Key Expiry Reminders** — record your TWC key's expiration date and YardObs (and the widget) warns you two weeks before it stops working
 - **Location Search** — geocoding via Open-Meteo to find any location for preview or comparison
 
 ## Tech Stack
@@ -107,6 +108,7 @@ yardobs/
 │   │   ├── NowTab.jsx              # Conditions detail grid + Activity Score Card
 │   │   ├── ActivityScoreCard.jsx   # Scored activity picker with factor breakdown
 │   │   ├── AlertBar.jsx            # Active severe-weather alert banner
+│   │   ├── KeyExpiryBanner.jsx     # TWC key expiration reminder strip
 │   │   ├── AlertsSheet.jsx         # Full alert detail sheet (tap-to-expand)
 │   │   ├── TrendsTab.jsx           # History charts with YoY overlay (lazy-loaded)
 │   │   ├── ForecastTab.jsx         # 5-day + hourly forecast view
@@ -128,6 +130,7 @@ yardobs/
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
 │   │   ├── format.js               # Display formatting helpers
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
+│   │   ├── keyExpiry.js            # TWC key expiration date helpers
 │   │   ├── insightVocab.js         # Shared score/AQI/time-of-day wording for prompts and UI
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
 │   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
@@ -168,7 +171,7 @@ YardObs uses The Weather Company (TWC) PWS API to access your station's live rea
 1. Create or log in to your account at [wunderground.com](https://www.wunderground.com)
 2. Navigate to [wunderground.com/member/api-keys](https://www.wunderground.com/member/api-keys)
 3. Generate a new API key
-4. Enter it in **Settings → Station** in the app
+4. Enter it in **Settings → Station** in the app, along with the key's expiration date (optional) so YardObs can remind you before it expires
 
 > Your key is stored in your own browser and sent to `api/weather.js` as the `x-twc-key` header, which forwards it to The Weather Company. It is never committed, never bundled, and never shared with other users. There is deliberately no server-side fallback key: Preview Mode uses Open-Meteo instead, so anonymous traffic can't spend someone else's TWC quota.
 

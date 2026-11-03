@@ -5,6 +5,7 @@ export const STORAGE_KEYS = {
   MODE:             'yardobs-mode',
 STATION_ID:       'yardobs-station-id',
   TWC_API_KEY:      'yardobs-twc-key',
+  TWC_KEY_EXPIRES:  'yardobs-twc-key-expires',
   DEFAULT_ACTIVITY: 'yardobs-default-activity',
   UNITS:            'yardobs-units',
   RADAR_RANGE:      'yardobs-radar-range',

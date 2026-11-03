@@ -3,18 +3,69 @@
 // Setup: in YardObs open Settings → iPhone Home Screen Widget → Copy widget
 // script, paste it into a new Scriptable script, then add a Scriptable widget
 // to your home screen and pick this script. Re-copy after changing your
-// station, location or units in YardObs.
+// station, location or units in YardObs. After renewing your TWC key (or
+// changing settings), YardObs' "Update installed widget" button updates this
+// script in place, no pasting needed, as long as it's named "YardObs".
 //
 // Data is fetched directly from Weather.com (your station, with your own key)
 // and Open-Meteo (conditions + today's forecast) — nothing goes through YardObs.
 // If this script came from YardObs in station mode it contains your TWC API
 // key: don't share it.
 
-const CONFIG = /*YARDOBS_CONFIG*/{ "mode": "preview", "stationId": null, "twcKey": null, "lat": null, "lon": null, "label": null, "units": "imperial" }/*END*/;
+const CONFIG = /*YARDOBS_CONFIG*/{ "mode": "preview", "stationId": null, "twcKey": null, "keyExpires": null, "lat": null, "lon": null, "label": null, "units": "imperial", "generatedAt": 0 }/*END*/;
 
 const APP_URL   = 'https://yardobs.app';
 const CACHE_KEY = 'yardobs-widget-cache.json';
 const REFRESH_MS = 15 * 60 * 1000;
+const KEYCHAIN_KEY = 'yardobs-widget-config';
+
+// ── Settings — pasted CONFIG, or a newer update saved in the Keychain ────────
+function storedConfig() {
+  try { return Keychain.contains(KEYCHAIN_KEY) ? JSON.parse(Keychain.get(KEYCHAIN_KEY)) : null; } catch { return null; }
+}
+// Whichever is newer wins, so re-pasting a fresh script overrides an older
+// update and vice versa.
+function effectiveConfig() {
+  const stored = storedConfig();
+  return stored && (stored.generatedAt ?? 0) > (CONFIG.generatedAt ?? 0) ? stored : CONFIG;
+}
+
+// Opened from YardObs via scriptable:///run/YardObs?update=1 with the new
+// settings on the clipboard.
+async function applyUpdateFromClipboard() {
+  const alert = new Alert();
+  try {
+    const cfg = JSON.parse(Pasteboard.paste() || '')?.yardobsWidgetConfig;
+    if (!cfg || (cfg.mode !== 'station' && cfg.mode !== 'preview')) throw new Error();
+    Keychain.set(KEYCHAIN_KEY, JSON.stringify(cfg));
+    Pasteboard.copy(''); // don't leave the key sitting on the clipboard
+    alert.title = 'Widget updated';
+    alert.message = 'Your YardObs widget will use the new settings on its next refresh.';
+  } catch {
+    alert.title = 'Nothing to update';
+    alert.message = 'Open YardObs Settings and tap "Update installed widget" again.';
+  }
+  alert.addAction('OK');
+  await alert.presentAlert();
+}
+
+const SETTINGS = effectiveConfig();
+
+// Days until the TWC key's recorded expiration date (local calendar days).
+function keyDaysLeft() {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(SETTINGS.keyExpires || '');
+  if (SETTINGS.mode !== 'station' || !m) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - today) / 86400000);
+}
+// Short note shown in the last week before expiry, and after it.
+function keyNote() {
+  const d = keyDaysLeft();
+  if (d == null || d > 7) return null;
+  if (d < 0) return 'Key expired · renew in YardObs';
+  return d === 0 ? 'Key expires today' : `Key expires in ${d}d`;
+}
 
 // ── Conditions: WMO weather code → label, SF Symbol, background ──────────────
 function condition(code, isDay) {
@@ -41,7 +92,7 @@ const SKY_GRADIENTS = {
 };
 
 // ── Units — everything is fetched imperial and converted for display ─────────
-const metric = CONFIG.units === 'metric';
+const metric = SETTINGS.units === 'metric';
 const fmtTemp = (f) => f == null ? '—' : `${Math.round(metric ? (f - 32) * 5 / 9 : f)}°`;
 const fmtWind = (mph) => mph == null ? '—' : `${Math.round(metric ? mph * 1.609344 : mph)} ${metric ? 'km/h' : 'mph'}`;
 
@@ -67,7 +118,7 @@ async function getJSON(url) {
   const data = await req.loadJSON();
   const status = req.response?.statusCode;
   if (status && status >= 400) {
-    if (status === 401 || status === 403) throw new Error('Check your TWC API key');
+    if (status === 401 || status === 403) throw new Error('TWC key rejected — it may have expired. Renew it, then tap Update installed widget in YardObs.');
     if (status === 204 || status === 404) throw new Error('Station not found');
     throw new Error(`Weather service error (${status})`);
   }
@@ -84,11 +135,11 @@ async function fetchOpenMeteo(lat, lon) {
 }
 
 async function loadWeather() {
-  if (CONFIG.mode === 'station') {
-    if (!CONFIG.stationId || !CONFIG.twcKey) throw new Error('Re-copy the script from YardObs Settings');
+  if (SETTINGS.mode === 'station') {
+    if (!SETTINGS.stationId || !SETTINGS.twcKey) throw new Error('Re-copy the script from YardObs Settings');
     const pws = await getJSON(
-      `https://api.weather.com/v2/pws/observations/current?stationId=${encodeURIComponent(CONFIG.stationId)}` +
-      `&format=json&units=e&numericPrecision=decimal&apiKey=${encodeURIComponent(CONFIG.twcKey)}`
+      `https://api.weather.com/v2/pws/observations/current?stationId=${encodeURIComponent(SETTINGS.stationId)}` +
+      `&format=json&units=e&numericPrecision=decimal&apiKey=${encodeURIComponent(SETTINGS.twcKey)}`
     );
     const obs = pws?.observations?.[0];
     if (!obs) throw new Error('No observation from station');
@@ -98,7 +149,7 @@ async function loadWeather() {
     try { om = await fetchOpenMeteo(obs.lat, obs.lon); } catch {}
     const temp = obs.imperial?.temp ?? null;
     return {
-      label:      obs.neighborhood || CONFIG.label || obs.stationID,
+      label:      obs.neighborhood || SETTINGS.label || obs.stationID,
       source:     'Your Station',
       temp,
       feelsLike:  calcFeelsLike(temp, obs.humidity, obs.imperial?.windSpeed),
@@ -114,12 +165,12 @@ async function loadWeather() {
     };
   }
 
-  if (CONFIG.lat == null || CONFIG.lon == null) throw new Error('Re-copy the script from YardObs Settings');
-  const om = await fetchOpenMeteo(CONFIG.lat, CONFIG.lon);
+  if (SETTINGS.lat == null || SETTINGS.lon == null) throw new Error('Re-copy the script from YardObs Settings');
+  const om = await fetchOpenMeteo(SETTINGS.lat, SETTINGS.lon);
   const c = om?.current;
   if (!c) throw new Error('No current conditions');
   return {
-    label:      CONFIG.label || 'Forecast',
+    label:      SETTINGS.label || 'Forecast',
     source:     'Forecast',
     temp:       c.temperature_2m ?? null,
     feelsLike:  c.apparent_temperature ?? null,
@@ -156,13 +207,87 @@ function addText(stack, text, font, opacity = 1) {
   return t;
 }
 
+// Footer line: an expired key outranks "Offline" (it's the likely reason the
+// data is stale); otherwise offline status, then an upcoming-expiry note.
+function statusNote(data, stale, fallback) {
+  const note = keyNote();
+  if (note && (keyDaysLeft() < 0 || !stale)) return note;
+  if (stale) return `Offline · ${timeLabel(data.fetchedAt)}`;
+  return fallback;
+}
+
 function timeLabel(ms) {
   const df = new DateFormatter();
   df.useShortTimeStyle();
   return df.string(new Date(ms));
 }
 
+// Lock Screen widgets are tiny and drawn by iOS in a single tint, so they get
+// their own compact layouts and no background.
+function buildAccessoryWidget(data, family, stale) {
+  const w = new ListWidget();
+  w.url = APP_URL;
+  w.refreshAfterDate = new Date(Date.now() + REFRESH_MS);
+  w.setPadding(0, 0, 0, 0);
+
+  const cond = data ? condition(data.code, data.isDay) : null;
+  const sym = cond ? SFSymbol.named(cond.symbol) : null;
+  const dim = stale ? 0.6 : 1;
+
+  if (family === 'accessoryInline') {
+    // Inline shows a single line of text (plus one symbol) beside the date.
+    if (sym) w.addImage(sym.image);
+    addText(w, data ? `${fmtTemp(data.temp)} ${cond.label}` : 'YardObs —', Font.systemFont(12));
+    return w;
+  }
+
+  if (family === 'accessoryCircular') {
+    w.addAccessoryWidgetBackground = true;
+    const col = w.addStack();
+    col.layoutVertically();
+    col.centerAlignContent();
+    const iconRow = col.addStack();
+    iconRow.addSpacer();
+    if (sym) {
+      const img = iconRow.addImage(sym.image);
+      img.imageSize = new Size(16, 16);
+      img.tintColor = new Color('#ffffff', dim);
+    }
+    iconRow.addSpacer();
+    const tempRow = col.addStack();
+    tempRow.addSpacer();
+    addText(tempRow, data ? fmtTemp(data.temp) : '—', Font.boldSystemFont(18), dim);
+    tempRow.addSpacer();
+    return w;
+  }
+
+  // accessoryRectangular: three short lines
+  if (!data) {
+    addText(w, 'YardObs', Font.boldSystemFont(14));
+    addText(w, 'Unable to load weather', Font.systemFont(12), 0.8);
+    return w;
+  }
+  const top = w.addStack();
+  top.layoutHorizontally();
+  top.centerAlignContent();
+  if (sym) {
+    const img = top.addImage(sym.image);
+    img.imageSize = new Size(18, 18);
+    img.tintColor = new Color('#ffffff', dim);
+    top.addSpacer(4);
+  }
+  addText(top, fmtTemp(data.temp), Font.boldSystemFont(20), dim);
+  top.addSpacer(6);
+  addText(top, cond.label, Font.mediumSystemFont(13), dim);
+  addText(w, `Feels ${fmtTemp(data.feelsLike)} · H ${fmtTemp(data.high)} L ${fmtTemp(data.low)}`, Font.systemFont(12), 0.85 * dim);
+  addText(w, statusNote(data, stale, data.label), Font.systemFont(12), 0.7);
+  return w;
+}
+
 function buildWidget(data, { stale = false, error = null } = {}) {
+  const family = config.widgetFamily ?? 'medium';
+  if (family.startsWith('accessory')) return buildAccessoryWidget(data, family, stale);
+
   const w = new ListWidget();
   w.url = APP_URL;
   w.refreshAfterDate = new Date(Date.now() + REFRESH_MS);
@@ -185,7 +310,6 @@ function buildWidget(data, { stale = false, error = null } = {}) {
   g.locations = [0, 1];
   w.backgroundGradient = g;
 
-  const family = config.widgetFamily ?? 'medium';
   const dim = stale ? 0.6 : 1;
 
   const main = w.addStack();
@@ -239,29 +363,33 @@ function buildWidget(data, { stale = false, error = null } = {}) {
       right.addSpacer(6);
     }
     right.addSpacer();
-    addText(right, stale ? `Offline · ${timeLabel(data.fetchedAt)}` : `${data.source} · ${timeLabel(data.fetchedAt)}`,
-      Font.systemFont(10), 0.7);
-  } else if (stale) {
-    addText(left, `Offline · ${timeLabel(data.fetchedAt)}`, Font.systemFont(9), 0.7);
+    addText(right, statusNote(data, stale, `${data.source} · ${timeLabel(data.fetchedAt)}`), Font.systemFont(10), 0.7);
+  } else {
+    const note = statusNote(data, stale, null);
+    if (note) addText(left, note, Font.systemFont(9), 0.7);
   }
 
   return w;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-let widget;
-try {
-  const data = await loadWeather();
-  writeCache(data);
-  widget = buildWidget(data);
-} catch (err) {
-  const cached = readCache();
-  widget = buildWidget(cached, { stale: !!cached, error: err.message });
-}
-
-if (config.runsInWidget) {
-  Script.setWidget(widget);
+if (args.queryParameters?.update) {
+  await applyUpdateFromClipboard();
 } else {
-  await widget.presentMedium();
+  let widget;
+  try {
+    const data = await loadWeather();
+    writeCache(data);
+    widget = buildWidget(data);
+  } catch (err) {
+    const cached = readCache();
+    widget = buildWidget(cached, { stale: !!cached, error: keyDaysLeft() < 0 ? 'TWC key expired — renew it, then tap Update installed widget in YardObs.' : err.message });
+  }
+
+  if (config.runsInWidget) {
+    Script.setWidget(widget);
+  } else {
+    await widget.presentMedium();
+  }
 }
 Script.complete();

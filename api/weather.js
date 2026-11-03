@@ -30,7 +30,9 @@ setInterval(() => {
 
 // ── Friendly error messages for common TWC status codes ───────────────────────
 function twcErrorMessage(status) {
-  if (status === 401) return 'Invalid API key — check your TWC API key in Settings';
+  // TWC keys expire without notice, and an expired key is indistinguishable from a
+  // wrong one — say so, since that's the common case for a key that used to work.
+  if (status === 401) return 'TWC API key rejected — it may have expired. Renew it at wunderground.com/member/api-keys, then update it in Settings';
   if (status === 403) return 'API access denied — check your TWC API key permissions';
   if (status === 429) return 'TWC API rate limit exceeded — try again in a few minutes';
   if (status === 204 || status === 404) return 'Station not found — check your station ID';

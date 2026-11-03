@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { STORAGE_KEYS } from '../utils/storageKeys';
+import { isValidExpiryDate, daysUntilExpiry, KEY_RENEW_URL } from '../utils/keyExpiry';
 
 export default function StationForm({ initialStationId, onSave }) {
   const [stationId, setStationId] = useState(initialStationId ?? '');
@@ -9,7 +10,9 @@ export default function StationForm({ initialStationId, onSave }) {
 
   const storedKey = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_API_KEY) || ''; } catch { return ''; } })();
   const hasKey = storedKey.length > 0;
-  const hasChanges = stationId.trim() !== (initialStationId ?? '') || twcApiKey.trim() !== '';
+  const storedExpiry = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_KEY_EXPIRES) || ''; } catch { return ''; } })();
+  const [keyExpires, setKeyExpires] = useState(storedExpiry);
+  const hasChanges = stationId.trim() !== (initialStationId ?? '') || twcApiKey.trim() !== '' || keyExpires !== storedExpiry;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -35,6 +38,15 @@ export default function StationForm({ initialStationId, onSave }) {
       }
       // Save credentials only after a successful test
       try { if (twcApiKey.trim()) localStorage.setItem(STORAGE_KEYS.TWC_API_KEY, twcApiKey.trim()); } catch {}
+      // A new key with the old, already-passed date left in place would keep
+      // warning about an expiry that no longer applies — drop it.
+      let expiry = keyExpires;
+      if (twcApiKey.trim() && expiry === storedExpiry && (daysUntilExpiry(expiry) ?? 0) < 0) expiry = '';
+      try {
+        if (isValidExpiryDate(expiry)) localStorage.setItem(STORAGE_KEYS.TWC_KEY_EXPIRES, expiry);
+        else localStorage.removeItem(STORAGE_KEYS.TWC_KEY_EXPIRES);
+      } catch {}
+      setKeyExpires(isValidExpiryDate(expiry) ? expiry : '');
       onSave(sid);
       setSaveStatus('success');
       setTwcApiKey('');
@@ -77,11 +89,19 @@ export default function StationForm({ initialStationId, onSave }) {
           value={twcApiKey} onChange={e => { setTwcApiKey(e.target.value); setSaveStatus('idle'); }} autoComplete="off" />
         <div style={hintStyle}>
           Get your TWC API key at{' '}
-          <a href="https://www.wunderground.com/member/api-keys" target="_blank" rel="noopener noreferrer"
+          <a href={KEY_RENEW_URL} target="_blank" rel="noopener noreferrer"
             style={{ color: 'var(--accent)', textDecoration: 'none' }}>
             wunderground.com/member/api-keys
           </a>
           {' '}(Weather Underground account required). Stored on this device only.
+        </div>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <label style={labelStyle}>Key Expires On (optional)</label>
+        <input style={inputStyle} type="date"
+          value={keyExpires} onChange={e => { setKeyExpires(e.target.value); setSaveStatus('idle'); }} />
+        <div style={hintStyle}>
+          Copy the expiration date from your API keys page and YardObs will remind you two weeks before it stops working.
         </div>
       </div>
       {saveStatus === 'success' && (

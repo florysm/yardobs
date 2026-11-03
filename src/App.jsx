@@ -7,6 +7,7 @@ import NowTab from './components/NowTab';
 import ForecastTab from './components/ForecastTab';
 import SettingsDrawer from './components/SettingsDrawer';
 import AlertBar from './components/AlertBar';
+import KeyExpiryBanner from './components/KeyExpiryBanner';
 import AlertsSheet from './components/AlertsSheet';
 import ErrorBoundary from './components/ErrorBoundary';
 import LocationSetup from './components/LocationSetup';
@@ -130,6 +131,11 @@ export default function App() {
   const stationId = profile?.stationId ?? null;
   const isExploring = profile?.mode === 'station' && !!profile?.exploring;
 
+  // Re-read after each credential save (StationForm writes it alongside the key).
+  const keyExpires = useMemo(() => {
+    try { return localStorage.getItem(STORAGE_KEYS.TWC_KEY_EXPIRES); } catch { return null; }
+  }, [credentialsVersion]);
+
   const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, alerts, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality, fetchAlerts } = useWeather(profile, credentialsVersion);
 
   const currentWithAQI = useMemo(() =>
@@ -213,6 +219,9 @@ export default function App() {
         onUpdatePreviewLocation={handleUpdatePreviewLocation}
       />
       <AlertBar alerts={alerts} onOpen={() => setAlertsOpen(true)} />
+      {profile.mode === 'station' && (
+        <KeyExpiryBanner keyExpires={keyExpires} onOpenSettings={() => setSettingsOpen(true)} />
+      )}
       <HeroCard
         current={currentWithAQI}
         isLoading={isLoading}

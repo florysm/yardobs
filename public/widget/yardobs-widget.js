@@ -261,10 +261,15 @@ function buildAccessoryWidget(data, family, stale) {
     return w;
   }
 
-  // accessoryRectangular: three short lines
+  // accessoryRectangular: three short lines. iOS draws Lock Screen widgets in
+  // a single system tint over the wallpaper, so colors are out of our hands —
+  // legibility comes from the system's frosted backing panel, full-opacity
+  // text and heavier weights rather than faded secondary lines.
+  w.addAccessoryWidgetBackground = true;
+  w.setPadding(6, 10, 6, 10);
   if (!data) {
-    addText(w, 'YardObs', Font.boldSystemFont(14));
-    addText(w, 'Unable to load weather', Font.systemFont(12), 0.8);
+    addText(w, 'YardObs', Font.boldRoundedSystemFont(14));
+    addText(w, 'Unable to load weather', Font.semiboldRoundedSystemFont(12));
     return w;
   }
   const top = w.addStack();
@@ -276,11 +281,11 @@ function buildAccessoryWidget(data, family, stale) {
     img.tintColor = new Color('#ffffff', dim);
     top.addSpacer(4);
   }
-  addText(top, fmtTemp(data.temp), Font.boldSystemFont(20), dim);
+  addText(top, fmtTemp(data.temp), Font.boldRoundedSystemFont(20), dim);
   top.addSpacer(6);
-  addText(top, cond.label, Font.mediumSystemFont(13), dim);
-  addText(w, `Feels ${fmtTemp(data.feelsLike)} · H ${fmtTemp(data.high)} L ${fmtTemp(data.low)}`, Font.systemFont(12), 0.85 * dim);
-  addText(w, statusNote(data, stale, data.label), Font.systemFont(12), 0.7);
+  addText(top, cond.label, Font.semiboldRoundedSystemFont(14), dim);
+  addText(w, `Feels ${fmtTemp(data.feelsLike)} · H ${fmtTemp(data.high)} L ${fmtTemp(data.low)}`, Font.semiboldRoundedSystemFont(13), dim);
+  addText(w, statusNote(data, stale, data.label), Font.mediumRoundedSystemFont(12), 0.9 * dim);
   return w;
 }
 

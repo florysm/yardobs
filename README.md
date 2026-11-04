@@ -48,7 +48,7 @@ iOS only allows home screen widgets from native apps, so YardObs provides one th
 3. In Scriptable, tap **+**, paste, and name the script "YardObs"
 4. Long-press your home screen, add a small or medium Scriptable widget, then edit it and choose **YardObs**
 
-The widget shows current conditions from your station (or your preview location) plus today's high/low and rain chance, and taps through to the app. The script calls Weather.com and Open-Meteo directly from your phone. In station mode it contains your TWC API key, so don't share it. After renewing your key or changing your station, location, or units, tap **Update installed widget** in the same Settings section: it opens Scriptable and updates the widget in place, no re-pasting needed. Lock Screen widgets (rectangular, circular, and inline) are supported too.
+The widget shows current conditions from your station (or your preview location) plus today's high/low and rain chance, and taps through to the app. The script calls Weather.com and Open-Meteo directly from your phone. In station mode it contains your TWC API key, so don't share it. After renewing your key or changing your station, location, or units, tap **Update installed widget** in the same Settings section: it opens Scriptable and updates the widget in place, no re-pasting needed. Lock Screen widgets (rectangular, circular, and inline) are supported too. For a frosted backing panel behind the rectangular Lock Screen widget, edit the widget and type `panel` in its **Parameter** field.
 
 ## Features
 

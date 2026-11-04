@@ -2,6 +2,12 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.8.1] - 2026-11-04
+
+### Changed
+
+- The Lock Screen widget is easier to read over busy wallpapers, with a frosted backing panel and bolder, higher-contrast text.
+
 ## [1.8.0] - 2026-11-03
 
 ### Added

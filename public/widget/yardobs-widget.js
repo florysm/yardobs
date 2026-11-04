@@ -263,13 +263,25 @@ function buildAccessoryWidget(data, family, stale) {
 
   // accessoryRectangular: three short lines. iOS draws Lock Screen widgets in
   // a single system tint over the wallpaper, so colors are out of our hands —
-  // legibility comes from the system's frosted backing panel, full-opacity
-  // text and heavier weights rather than faded secondary lines.
-  w.addAccessoryWidgetBackground = true;
-  w.setPadding(6, 10, 6, 10);
+  // legibility comes from full-opacity text, heavier weights and a soft
+  // shadow. The system's frosted panel (whose shape iOS controls) is opt-in:
+  // type "panel" in the widget's Parameter field when editing it.
+  const panel = /\bpanel\b/i.test(args.widgetParameter || '');
+  if (panel) {
+    w.addAccessoryWidgetBackground = true;
+    w.setPadding(6, 10, 6, 10);
+  }
+  const shadowed = (t) => {
+    if (!panel) {
+      t.shadowColor = new Color('#000000', 0.55);
+      t.shadowRadius = 3;
+      t.shadowOffset = new Point(0, 1);
+    }
+    return t;
+  };
   if (!data) {
-    addText(w, 'YardObs', Font.boldRoundedSystemFont(14));
-    addText(w, 'Unable to load weather', Font.semiboldRoundedSystemFont(12));
+    shadowed(addText(w, 'YardObs', Font.boldRoundedSystemFont(14)));
+    shadowed(addText(w, 'Unable to load weather', Font.semiboldRoundedSystemFont(12)));
     return w;
   }
   const top = w.addStack();
@@ -281,11 +293,11 @@ function buildAccessoryWidget(data, family, stale) {
     img.tintColor = new Color('#ffffff', dim);
     top.addSpacer(4);
   }
-  addText(top, fmtTemp(data.temp), Font.boldRoundedSystemFont(20), dim);
+  shadowed(addText(top, fmtTemp(data.temp), Font.boldRoundedSystemFont(20), dim));
   top.addSpacer(6);
-  addText(top, cond.label, Font.semiboldRoundedSystemFont(14), dim);
-  addText(w, `Feels ${fmtTemp(data.feelsLike)} · H ${fmtTemp(data.high)} L ${fmtTemp(data.low)}`, Font.semiboldRoundedSystemFont(13), dim);
-  addText(w, statusNote(data, stale, data.label), Font.mediumRoundedSystemFont(12), 0.9 * dim);
+  shadowed(addText(top, cond.label, Font.semiboldRoundedSystemFont(14), dim));
+  shadowed(addText(w, `Feels ${fmtTemp(data.feelsLike)} · H ${fmtTemp(data.high)} L ${fmtTemp(data.low)}`, Font.semiboldRoundedSystemFont(13), dim));
+  shadowed(addText(w, statusNote(data, stale, data.label), Font.mediumRoundedSystemFont(12), 0.9 * dim));
   return w;
 }
 

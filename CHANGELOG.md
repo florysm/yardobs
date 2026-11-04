@@ -2,6 +2,16 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.9.0] - 2026-11-04
+
+### Added
+
+- You can put the Lock Screen widget back on a frosted panel by typing "panel" in the widget's Parameter field when editing it.
+
+### Changed
+
+- The Lock Screen widget now blends in like Apple's own widgets, dropping the box in favor of bold text with a soft shadow for readability.
+
 ## [1.8.1] - 2026-11-04
 
 ### Changed

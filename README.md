@@ -76,7 +76,7 @@ The widget shows current conditions from your station (or your preview location)
 | Styling | Tailwind CSS v3 + CSS variable themes | 6 condition-aware themes |
 | Charts | Recharts 2 | Line charts with optional YoY overlay |
 | Maps | Leaflet 1.9 + React-Leaflet 5 | Iowa Environmental Mesonet radar tiles, Stadia Maps basemap |
-| AI insights | Anthropic Claude API (`claude-haiku-4-5`) | Activity, daily briefing, forecast-day; server-side only |
+| AI insights | Anthropic Claude API (`claude-haiku-5-5`) | Activity, daily briefing, forecast-day; server-side only |
 | Backend | Vercel Serverless Functions (Node.js) | `api/weather.js`, `api/insight.js` |
 | Weather data | The Weather Company (TWC) PWS API | Current obs, history, 5-day forecast |
 | Hourly forecast | Open-Meteo (free, no key required) | Global hourly forecast (5 days) plus a daily block, works for any location worldwide |
@@ -96,6 +96,7 @@ yardobs/
 │   ├── insight.js        # Claude AI insight engine (activity + daily briefings)
 │   └── lib/
 │       ├── cors.js       # Origin allowlist + OPTIONS preflight
+│       ├── insightPersona.js  # Shared AI persona and prompt rules
 │       ├── sanitize.js   # Request body size clamping (prevents token inflation)
 │       └── validate.js   # Pure validators for coords, station IDs, dates
 ├── src/
@@ -126,12 +127,13 @@ yardobs/
 │   │   ├── activities.js           # Activity definitions and scoring weights
 │   │   ├── alerts.js               # NWS alert normalization + severity helpers
 │   │   ├── apiFetch.js             # HTTP client with error handling
-│   │   ├── dateUtils.js            # Date helpers (toISODate, getTimePeriod, etc.)
+│   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr)
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
 │   │   ├── format.js               # Display formatting helpers
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
 │   │   ├── keyExpiry.js            # TWC key expiration date helpers
 │   │   ├── insightVocab.js         # Shared score/AQI/time-of-day wording for prompts and UI
+│   │   ├── outlook.js              # Hourly forecast grouped by part of day, for the AI prompts
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
 │   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
@@ -234,13 +236,13 @@ Proxies weather data requests. TWC routes require the caller's own key via the `
 
 Calls Claude to generate hyperlocal weather insights. Three modes via the `type` field:
 
-**`type: 'activity'`** (the default when no `type` is given) — evaluates current conditions for a specific outdoor activity and returns a short narrative with the key limiting factors.
+**`type: 'activity'`** (the default when no `type` is given) — evaluates current conditions for a specific outdoor activity and returns a short narrative with the key limiting factors, plus when to go, using the rest of today's forecast and the card's best window.
 
-**`type: 'daily'`** — generates a daily backyard briefing with a narrative summary and 3–4 tagged insight cards. Uses year-over-year data if available.
+**`type: 'daily'`** — generates a daily backyard briefing with a narrative summary and 3–4 tagged insight cards. Uses year-over-year data if available, and what changes over the next 3 hours.
 
-**`type: 'forecast-day'`** — describes a single day from the 5-day forecast, using that day's hourly temperature curve, rain window, and air quality.
+**`type: 'forecast-day'`** — describes a single day from the 5-day forecast, using that day's hourly forecast grouped by part of day (for today, only the hours still ahead) and air quality.
 
-Caching: 30-minute in-memory TTL on the server (keyed by bucketed weather values to maximize reuse); 1-hour `localStorage` TTL on the client.
+Caching: 15-minute in-memory TTL on the server (keyed by bucketed weather values to maximize reuse); 1-hour `localStorage` TTL on the client.
 
 ## Theming
 

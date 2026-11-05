@@ -2,10 +2,12 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { fmtHourShort } from '../utils/format';
 import { ACTIVITIES } from '../utils/activities';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
-import { getTimePeriod } from '../utils/dateUtils';
+import { toISODate } from '../utils/dateUtils';
+import { currentDayPart } from '../utils/insightVocab';
+import { buildDayOutlook } from '../utils/outlook';
 import { formatTemp } from '../utils/units';
 import {
-  isNotableWeatherChange, computeAllScores, getForecastRainThreat, getRainyHourWindow,
+  isNotableWeatherChange, computeAllScores, getForecastRainThreat,
   getArcData, getBestWindow, firstSentence, restOfInsight, scoreColor, scoreVerdict,
 } from '../utils/scoring';
 
@@ -136,12 +138,15 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
   const iCache = useRef({});
 
   const { rate: forecastRate, maxProb: forecastMaxProb } = useMemo(
-    () => getForecastRainThreat(hourlyForecast),
+    () => getForecastRainThreat(hourlyForecast, new Date().getHours()),
     [hourlyForecast]
   );
-  const { firstRainyHour, lastRainyHour } = useMemo(
-    () => getRainyHourWindow(hourlyForecast),
-    [hourlyForecast]
+  // Rest of today by day part — the Activity card is the one that answers
+  // "when should I go", so it's the one that gets the timing detail. Recomputed
+  // whenever the hourly forecast refreshes (hourly, see useWeather).
+  const outlook = useMemo(
+    () => buildDayOutlook(hourlyForecast, toISODate(), units, { fromHour: new Date().getHours() }),
+    [hourlyForecast, units]
   );
   // rainThreat combines measured rain with forecast risk. Scoring deliberately
   // ignores it (computeScore keys off measured precipRate, so a dry morning with
@@ -156,7 +161,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
   const allScores = useMemo(() => computeAllScores(currentWithThreat, units), [currentWithThreat, units]);
   const active    = allScores[activeId];
   const arcData   = useMemo(() => getArcData(hourlyForecast, activeId, current), [hourlyForecast, activeId, current]);
-  const bestWindow = useMemo(() => getBestWindow(arcData), [arcData]);
+  const bestWindow = useMemo(() => getBestWindow(arcData, new Date().getHours()), [arcData]);
   const act = ACTIVITIES.find(a => a.id === activeId);
 
   const showPawAlert = activeId === 'dogwalk' && (active.pavementTemp ?? 0) >= 100;
@@ -167,7 +172,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
   useEffect(() => {
     if (!currentWithThreat) return;
 
-    const period = getTimePeriod();
+    const period = currentDayPart();
 
     // Fast in-session path: useRef avoids re-renders when switching activities
     const iKey = `${activeId}|${period}|${units}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
@@ -221,8 +226,8 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
               ? { pavementTemp: active.pavementTemp }
               : {}),
           },
-          firstRainyHour,
-          lastRainyHour,
+          outlook,
+          bestWindow,
         }),
       })
         .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -253,7 +258,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
         .finally(() => { if (!controller.signal.aborted) setInsightLoading(false); });
     }, 400);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [activeId, currentWithThreat, units]);
+  }, [activeId, currentWithThreat, units, outlook, bestWindow]);
 
   if (!current) {
     return (

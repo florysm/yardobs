@@ -4,8 +4,9 @@ import { fmtHourIso, fmtSunTime, fmtMoonTime, getLocaleHour12 } from '../utils/f
 import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
 import { toISODate } from '../utils/dateUtils';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
-import { formatTempParts, convertTemp } from '../utils/units';
-import { shortHour, dayPartRange } from '../utils/insightVocab';
+import { formatTempParts } from '../utils/units';
+import { currentDayPart } from '../utils/insightVocab';
+import { buildDayOutlook } from '../utils/outlook';
 import { aqiForDay } from '../utils/forecastNormalize';
 
 function buildHours(hf, lat, lon) {
@@ -80,60 +81,6 @@ function buildDays(forecast) {
   }));
 }
 
-
-// Compact hourly temp curve for one day, e.g. "1a 64, 4a 61, 7a 66, 10a 78…".
-// Sampled every 3 hours across the whole day so the dawn minimum is visible —
-// with only a daily high/low the model had to guess the shape, and guessed that
-// the low arrives in the evening. Values are bare numbers; the prompt states the
-// unit once rather than repeating "°F" eight times.
-//
-// Returns a pre-formatted string on purpose: clampBody (api/lib/sanitize.js)
-// silently truncates arrays at 20 elements, so a 24-entry array would lose hours
-// with no error. This stays well inside the 500-char string cap.
-export function buildTrajectory(hf, dateStr, units) {
-  const h = hf?.hourly;
-  if (!h?.time?.length) return null;
-  const parts = [];
-  h.time.forEach((t, i) => {
-    if (!t.startsWith(dateStr)) return;
-    const hour = parseInt(t.split('T')[1], 10);
-    if (hour % 3 !== 1) return; // 1a, 4a, 7a, 10a, 1p, 4p, 7p, 10p
-    const temp = h.temperature_2m?.[i];
-    if (temp == null) return;
-    parts.push(`${shortHour(hour)} ${Math.round(convertTemp(temp, units))}`);
-  });
-  return parts.length ? parts.join(', ') : null;
-}
-
-const RAIN_LIKELY_PCT = 30;
-
-// When rain is likely and how likely it gets, e.g.
-// "overnight (12a–3a), peaking at 80%".
-//
-// The day-part name is resolved here rather than left to the model: given a bare
-// "12a–3a" it reasons that a.m. means morning and writes "thunderstorms Sunday
-// morning between midnight and 3 a.m." — true, but not how anyone speaks.
-//
-// Scans every hour rather than sampling: a shower confined to 2–3pm would fall
-// between the 3-hour temperature samples and vanish. Null on a dry day, so the
-// prompt can stay silent instead of asserting a timing it doesn't have.
-export function buildPrecipWindow(hf, dateStr) {
-  const h = hf?.hourly;
-  if (!h?.time?.length) return null;
-  let first = null, last = null, peak = 0;
-  h.time.forEach((t, i) => {
-    if (!t.startsWith(dateStr)) return;
-    const prob = h.precipitation_probability?.[i];
-    if (prob == null || prob < RAIN_LIKELY_PCT) return;
-    const hour = parseInt(t.split('T')[1], 10);
-    if (first === null) first = hour;
-    last = hour;
-    if (prob > peak) peak = prob;
-  });
-  if (first === null) return null;
-  const span = first === last ? shortHour(first) : `${shortHour(first)}–${shortHour(last + 1)}`;
-  return `${dayPartRange(first, last)} (${span}), peaking at ${peak}%`;
-}
 
 function fmtDaylight(riseStr, setStr) {
   if (!riseStr || !setStr) return null;
@@ -333,7 +280,10 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
     const dayAqi = aqiForDay(airQuality, day.date);
     // Same 25-wide bucket the server keys on, so client and server invalidate together.
     const aqiBucket = dayAqi == null ? 'na' : Math.round(dayAqi / 25) * 25;
-    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date, units, aqiBucket);
+    // Today describes the rest of the day, so it's keyed to the part of the day
+    // we're in and regenerates as each one passes; other days are an overview.
+    const part = day.isToday ? currentDayPart() : 'day';
+    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date, units, aqiBucket, part);
 
     try {
       const raw = localStorage.getItem(lsKey);
@@ -368,8 +318,12 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
             tempMin: day.tempMin,
             pop: day.pop,
             conditions: day.phrase,
-            trajectory: buildTrajectory(hourlyForecast, day.date, units),
-            precipWindow: buildPrecipWindow(hourlyForecast, day.date),
+            isToday: day.isToday,
+            dayPart: day.isToday ? part : null,
+            // By day part, so the model can't misfile a 10pm reading as evening.
+            // Today starts at the current hour: what's left, not what's passed.
+            outlook: buildDayOutlook(hourlyForecast, day.date, units,
+              { fromHour: day.isToday ? new Date().getHours() : 0 }),
             aqi: dayAqi,
             sourceType: sourceType ?? 'pws',
             units,

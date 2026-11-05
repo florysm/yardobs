@@ -237,31 +237,19 @@ export function precipProbToRate(prob) {
   return 0.3;
 }
 
-export function getForecastRainThreat(hf) {
+// Only hours still ahead count: at 7pm a morning shower that already passed
+// isn't a risk to plan around.
+export function getForecastRainThreat(hf, fromHour = 0) {
   if (!hf?.hourly?.time) return { rate: 0, maxProb: 0 };
   const today = toISODate();
   let maxProb = 0;
   hf.hourly.time.forEach((t, i) => {
     if (!t.startsWith(today)) return;
+    if (parseInt(t.split('T')[1], 10) < fromHour) return;
     const prob = hf.hourly.precipitation_probability?.[i] ?? 0;
     if (prob > maxProb) maxProb = prob;
   });
   return { rate: precipProbToRate(maxProb), maxProb };
-}
-
-export function getRainyHourWindow(hf) {
-  if (!hf?.hourly?.time) return { firstRainyHour: null, lastRainyHour: null };
-  const today = toISODate();
-  let first = null, last = null;
-  hf.hourly.time.forEach((t, i) => {
-    if (!t.startsWith(today)) return;
-    const prob = hf.hourly.precipitation_probability?.[i] ?? 0;
-    if (prob < 50) return;
-    const hour = parseInt(t.split('T')[1], 10);
-    if (first === null) first = hour;
-    last = hour;
-  });
-  return { firstRainyHour: first, lastRainyHour: last };
 }
 
 export function getArcData(hf, actId, current) {
@@ -289,7 +277,11 @@ export function getArcData(hf, actId, current) {
   return result;
 }
 
-export function getBestWindow(arcData) {
+// Only hours still ahead are eligible — a "Peak 9–12 AM" shown at 4pm is no
+// help, and the Activity narrative is handed this same window, so the card and
+// the advice can't point at different times.
+export function getBestWindow(arcData, fromHour = 0) {
+  arcData = arcData.filter(a => a.hour >= fromHour);
   if (arcData.length < 3) return null;
   let bi = 0, best = 0;
   for (let i = 0; i <= arcData.length - 3; i++) {

@@ -43,9 +43,10 @@ export function scoreGuide() {
 // model is given can't drift from the one the code applies.
 //
 // [startHour, name] — each entry runs until the next entry's start.
-// Boundaries deliberately line up with getTimePeriod (dateUtils.js), which is a
-// coarser 4-bucket view of the same day — these names refine it, they must never
-// contradict it (there's a test pinning that).
+// This is the only day-part vocabulary: the "Time of day" line in every prompt,
+// the cache keys, and the outlook segments all come from it. A coarser 4-bucket
+// helper used to label 10pm "evening" in the same prompt whose glossary called
+// it night.
 const DAY_PARTS = [
   [0,  'overnight'],
   [5,  'early morning'],
@@ -88,6 +89,39 @@ export function dayPartRange(firstHour, lastHour) {
   const to = dayPartName(lastHour);
   if (!from) return null;
   return from === to ? from : `${from} into ${to}`;
+}
+
+/** The part of the day the user is in right now — the same names the prompts use. */
+export function currentDayPart(date = new Date()) {
+  return dayPartName(date.getHours());
+}
+
+// ── Rain wording ──────────────────────────────────────────────────────────────
+// NWS convention: 30–50% is a "chance", 60%+ is "likely". The Forecast prompt
+// used to call anything ≥30% "likely", and the model read that as reason to
+// rearrange someone's evening. [minProb, phrase], ascending.
+const RAIN_TERMS = [
+  [0,  'dry'],
+  [20, 'slight chance of rain'],
+  [30, 'chance of rain'],
+  [60, 'rain likely'],
+];
+
+/** The words for a precipitation probability, e.g. 40 → "chance of rain". */
+export function rainTerm(prob) {
+  if (prob == null) return null;
+  let term = RAIN_TERMS[0][1];
+  for (const [min, phrase] of RAIN_TERMS) if (prob >= min) term = phrase;
+  return term;
+}
+
+/** Glossary for the prompt, rendered from the same table rainTerm uses. */
+export function rainGuide() {
+  return RAIN_TERMS.map(([min, phrase], i) => {
+    const next = RAIN_TERMS[i + 1];
+    const range = next ? `${min}–${next[0] - 1}%` : `${min}%+`;
+    return `${range} "${phrase}"`;
+  }).join(', ');
 }
 
 // The exact characterization the model must use for a given AQI. Keyed off

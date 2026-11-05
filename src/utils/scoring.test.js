@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   pw, computeScore, scoreVerdict, scoreColor, firstSentence, restOfInsight,
   isNotableWeatherChange, precipProbToRate, getForecastRainThreat,
-  getRainyHourWindow, getArcData,
+  getArcData, getBestWindow,
 } from './scoring';
 import { AQI_BOUNDS } from './format';
 
@@ -177,12 +177,28 @@ describe('forecast helpers (today-dependent)', () => {
     expect(getForecastRainThreat(hf)).toEqual({ rate: precipProbToRate(60), maxProb: 60 });
     expect(getForecastRainThreat(null)).toEqual({ rate: 0, maxProb: 0 });
   });
-  it('getRainyHourWindow finds the ≥50% window today', () => {
-    expect(getRainyHourWindow(hf)).toEqual({ firstRainyHour: 15, lastRainyHour: 15 });
+  it('getForecastRainThreat ignores hours already past', () => {
+    expect(getForecastRainThreat(hf, 16)).toEqual({ rate: precipProbToRate(0), maxProb: 0 });
+    expect(getForecastRainThreat(hf, 9).maxProb).toBe(60);
   });
   it('getArcData scores daytime hours of today only', () => {
     const arc = getArcData(hf, 'bbq', {});
     expect(arc.map(a => a.hour)).toEqual([8, 15]);
     arc.forEach(a => expect(typeof a.score).toBe('number'));
+  });
+});
+
+describe('getBestWindow', () => {
+  const arc = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => ({
+    hour, score: hour <= 9 ? 95 : hour >= 15 ? 80 : 40,
+  }));
+  it('picks the best 3-hour run', () => {
+    expect(getBestWindow(arc)).toBe('Peak 7 AM–10 AM');
+  });
+  it('never points at hours already past', () => {
+    expect(getBestWindow(arc, 12)).toBe('Peak 3 PM–6 PM');
+  });
+  it('null when fewer than 3 hours remain', () => {
+    expect(getBestWindow(arc, 17)).toBeNull();
   });
 });

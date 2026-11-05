@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   scoreBand, scoreGuide, aqiPhrase,
   dayPartName, dayPartGuide, dayPartRange, shortHour,
+  currentDayPart, rainTerm, rainGuide,
 } from './insightVocab';
 import { scoreVerdict } from './scoring';
-import { getTimePeriod } from './dateUtils';
 import { AQI_BOUNDS } from './format';
 
 describe('scoreBand', () => {
@@ -60,17 +60,36 @@ describe('dayPartName', () => {
   });
   it('null → null', () => expect(dayPartName(null)).toBeNull());
 
-  // Two vocabularies exist: getTimePeriod answers "what time is it for the user
-  // right now" in 4 coarse buckets; dayPartName names an arbitrary hour in a
-  // narrative. They may differ in granularity but must never contradict.
-  it('does not contradict getTimePeriod', () => {
-    const compatible = { overnight: 'night', 'early morning': 'morning', morning: 'morning',
-                         afternoon: 'afternoon', evening: 'evening', night: 'evening' };
-    for (let h = 0; h < 24; h++) {
-      const period = getTimePeriod(new Date(2026, 6, 16, h, 0, 0));
-      expect(compatible[dayPartName(h)], `hour ${h}: dayPartName=${dayPartName(h)} vs getTimePeriod=${period}`)
-        .toBe(period);
-    }
+});
+
+describe('currentDayPart', () => {
+  it('uses the same names as the prompt glossary', () => {
+    // 10pm is night, not evening — the old 4-bucket helper disagreed.
+    expect(currentDayPart(new Date(2026, 6, 16, 22, 0))).toBe('night');
+    expect(currentDayPart(new Date(2026, 6, 16, 19, 0))).toBe('evening');
+    expect(currentDayPart(new Date(2026, 6, 16, 2, 0))).toBe('overnight');
+  });
+});
+
+describe('rainTerm', () => {
+  it('follows NWS wording at the boundaries', () => {
+    expect(rainTerm(0)).toBe('dry');
+    expect(rainTerm(19)).toBe('dry');
+    expect(rainTerm(20)).toBe('slight chance of rain');
+    expect(rainTerm(29)).toBe('slight chance of rain');
+    expect(rainTerm(30)).toBe('chance of rain');
+    expect(rainTerm(59)).toBe('chance of rain');
+    expect(rainTerm(60)).toBe('rain likely');
+    expect(rainTerm(100)).toBe('rain likely');
+  });
+  it('null → null', () => expect(rainTerm(null)).toBeNull());
+});
+
+describe('rainGuide', () => {
+  it('renders the same table rainTerm applies', () => {
+    expect(rainGuide()).toBe(
+      '0–19% "dry", 20–29% "slight chance of rain", 30–59% "chance of rain", 60%+ "rain likely"'
+    );
   });
 });
 

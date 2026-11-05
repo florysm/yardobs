@@ -16,11 +16,3 @@ export function toISODate(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
-// Returns the current local time period as a string suitable for cache keys and prompt text.
-export function getTimePeriod(date = new Date()) {
-  const h = date.getHours();
-  if (h >= 5  && h < 12) return 'morning';
-  if (h >= 12 && h < 18) return 'afternoon';
-  if (h >= 18)           return 'evening';
-  return 'night';
-}

@@ -2,6 +2,25 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.10.0] - 2026-11-05
+
+### Added
+
+- Forecasts and air quality now refresh every hour while the app stays open, so the AI summaries keep up with the latest forecast.
+
+### Changed
+
+- Today's Forecast summary now covers the rest of the day and updates as morning turns to afternoon and evening, while future days keep their full-day overview.
+- All three AI summaries now share one voice and the same forecast details, so they no longer disagree about when rain is coming or what counts as evening.
+- The Activity Score summary now tells you when to head out using the same "best window" shown on the card, and that window never points at hours already past.
+- Your Backyard Today summary now sticks to what it's like right now and over the next few hours.
+- AI summaries now run on a newer, faster Claude model.
+
+### Fixed
+
+- Fixed AI summaries calling rain "likely" when the chance was only 30–50%, and describing late-night rain or temperatures as happening in the evening.
+- Fixed summaries counting rain that had already passed earlier in the day.
+
 ## [1.9.0] - 2026-11-04
 
 ### Added

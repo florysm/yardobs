@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { fmt, getLocaleHour12 } from '../utils/format';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
 import { ICONS, LABELS } from '../utils/weatherIcons';
-import { toDateStr, toISODate, getTimePeriod } from '../utils/dateUtils';
+import { toDateStr, toISODate } from '../utils/dateUtils';
+import { currentDayPart } from '../utils/insightVocab';
+import { buildLookahead } from '../utils/outlook';
 import { formatTemp, formatTempParts, formatWindWithCompass, formatPrecipTotal, formatPressure } from '../utils/units';
 
 // ── Tabler-style SVG icon primitives for signal tags ─────────────────────────
@@ -224,22 +226,6 @@ function InsightView({ insight, isLoading, toggle }) {
 
 // ── HeroCard ──────────────────────────────────────────────────────────────────
 
-function buildForecastSummary(hf) {
-  if (!hf?.hourly?.time) return null;
-  const today = toISODate();
-  let maxPrecipProb = 0;
-  let rainyHoursCount = 0;
-  let totalForecastHours = 0;
-  hf.hourly.time.forEach((t, i) => {
-    if (!t.startsWith(today)) return;
-    totalForecastHours++;
-    const prob = hf.hourly.precipitation_probability?.[i] ?? 0;
-    if (prob > maxPrecipProb) maxPrecipProb = prob;
-    if (prob > 50) rainyHoursCount++;
-  });
-  return { maxPrecipProb, rainyHoursCount, totalForecastHours };
-}
-
 export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, onError, units }) {
   const [showHint,      setShowHint]      = useState(false);
   const [view,          setView]          = useState('conditions');
@@ -277,7 +263,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     // Use location label as cache/API key in preview mode
     const insightId = stationId || current?.neighborhood || 'preview';
     const today = toISODate();
-    const period = getTimePeriod();
+    const period = currentDayPart();
     const lsKey = STORAGE_KEYS.insightKey(insightId, today, period, units);
 
     try {
@@ -311,7 +297,9 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'daily', stationId: insightId, date: today, period, current, yoyReadings,
-            forecastSummary: buildForecastSummary(hourlyForecast),
+            // "What's it doing right now?" — only the next few hours, never the
+            // whole day (that's the Forecast card's question).
+            lookahead: buildLookahead(hourlyForecast, units),
             sourceType: current?.sourceType,
             units,
           }),

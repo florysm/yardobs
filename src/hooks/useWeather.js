@@ -8,6 +8,10 @@ import { normalizeTwcForecast, normalizeOpenMeteoForecast } from '../utils/forec
 import { wmoToTwc } from '../utils/weatherIcons';
 
 const POLL_MS = 5 * 60 * 1000;
+// Forecasts change slowly, but a tab left open all afternoon used to keep
+// narrating the morning's forecast — the AI cards describe "the rest of today",
+// so the hourly data under them has to keep up.
+const FORECAST_POLL_MS = 60 * 60 * 1000;
 
 // TWC PWS observations omit the day/night flag, so derive it locally from the
 // sun's position (works everywhere, incl. polar day/night). Falls back to day
@@ -343,6 +347,23 @@ export function useWeather(profile, credentialsVersion) {
     schedule();
     return () => clearTimeout(timer);
   }, [fetchCurrent, fetchAlerts]);
+
+  // Initial forecast loads stay in App (they wait for the first observation);
+  // this only keeps them fresh. Each fetcher no-ops until a location is known.
+  useEffect(() => {
+    let timer;
+    const schedule = () => {
+      const jitter = (Math.random() - 0.5) * 120_000;
+      timer = setTimeout(() => {
+        fetchForecast();
+        fetchHourlyForecast();
+        fetchAirQuality();
+        schedule();
+      }, FORECAST_POLL_MS + jitter);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [fetchForecast, fetchHourlyForecast, fetchAirQuality]);
 
   return {
     current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, alerts,

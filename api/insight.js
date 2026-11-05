@@ -42,7 +42,7 @@ function evictOne() {
 import { applyCors } from './lib/cors.js';
 import { clampBody } from './lib/sanitize.js';
 import { degreesToCompass } from '../src/utils/format.js';
-import { scoreGuide } from '../src/utils/insightVocab.js';
+import { scoreBand } from '../src/utils/insightVocab.js';
 import { aqiLine, buildSystem } from './lib/insightPersona.js';
 import { formatTemp, formatWind, formatPrecipRate, formatPrecipTotal, formatPressure, convertTemp, tempUnitLabel } from '../src/utils/units.js';
 
@@ -122,16 +122,18 @@ function activityCacheKey(stationId, actId, score, c, period, outlook, bestWindo
 // "When should — or shouldn't — I go?" This is the only card that gives timing
 // advice; Forecast describes the day and Backyard describes the moment.
 const ACTIVITY_JOB = 'Your job on this card is to answer "when should — or shouldn\'t — I do this today?" '
-  + 'The score and limiting factors describe conditions right now. Say whether now is a good time and why, using the limiting factors and their values; '
-  + 'then use the rest-of-today outlook and the best window to say whether waiting would help or whether to skip it today. '
+  + 'The overall rating and the factors describe conditions right now. The score is printed on the card beside you, so never quote a score or a rating number — talk about the weather behind it. '
+  + 'Speak to this particular activity: say what the conditions mean for doing it (paws on hot pavement for a dog walk, sweat and breathing for sports, wind on the flame for a grill, dry soil or wilting for gardening), not just whether they are pleasant. '
+  + 'Open with the condition that matters most for the activity — never with "Right now is a good time" or the activity\'s name. '
+  + 'When conditions are excellent, say what makes them so for this activity and how long they last according to the outlook; when they are not, name what is holding it back and whether waiting helps or it is better to skip today. '
   + 'Only recommend a time that appears in the outlook or the best window. '
-  + `Factor scores are 0–100 where higher = better conditions. Score guide: ${scoreGuide()}. `
-  + 'If any single factor is below 25, treat it as the primary constraint and lead with it even if the overall score is moderate. '
-  + 'Write exactly 2 sentences, then one short actionable tip (timing, gear, or a modification).';
+  + 'If any factor is rated very poor, it is the primary constraint: lead with it even if the overall rating is fair. '
+  + 'Write exactly 2 sentences, then one short actionable tip starting "Tip:" (timing, gear, or a modification).';
 
 const ACTIVITY_EXAMPLES = [
-  'Gusts to 24 mph are what\'s holding a run back right now, even with a comfortable 58°. The wind settles through the afternoon and the best stretch is 3–6 PM, still dry. Tip: wait until after 3 and take the loop with the tailwind home.',
-  'It\'s a good time to fire up the grill — 71° with a light breeze and clean air. Rain is likely after 8p, so this is the window. Tip: start now and plan to be wrapped up by 7.',
+  'Gusts to 24 mph are what\'s holding a run back, even with a comfortable 58°. The wind settles through the afternoon and the best stretch is 3–6 PM, still dry. Tip: wait until after 3 and finish with the tailwind home.',
+  'Seventy-two with a light breeze is easy on paws and people alike, and the pavement hasn\'t had a chance to bake. It holds like this through the afternoon before cooling into the evening. Tip: bring water anyway — 69% humidity wears a dog down faster than you\'d think.',
+  'A light breeze won\'t fight the coals and the air is clean, so smoke drifts off rather than hanging around the patio. Rain is likely after 8p, which makes this afternoon the window. Tip: get the grill lit by 5 and plan to eat outside before it turns.',
 ];
 
 async function handleActivityInsight(req, res) {
@@ -150,7 +152,7 @@ async function handleActivityInsight(req, res) {
   const topFactors = [...(factors ?? [])]
     .sort((a, b) => a.score - b.score)
     .slice(0, 3)
-    .map(f => `${f.name} (${f.score}/100)`)
+    .map(f => `${f.name} (${scoreBand(f.score)})`)
     .join(', ');
 
   const feelsLikeLabel = (c?.feelsLike ?? c?.temp ?? 70) < (c?.temp ?? 70)
@@ -173,8 +175,8 @@ async function handleActivityInsight(req, res) {
   const windowLine = `Best window left today (by score): ${bestWindow ? bestWindow.replace('Peak ', '') : 'none — fewer than 3 daytime hours remain'}`;
 
   const prompt = `Time of day: ${period ?? 'unknown'}
-Activity: ${activityLabel} — Score right now: ${score}/100
-Limiting factors: ${topFactors}
+Activity: ${activityLabel} — overall right now: ${scoreBand(score) ?? 'unknown'}
+Weakest factors: ${topFactors}
 
 Conditions right now:
 - ${formatTemp(c?.temp, units)}, feels like ${formatTemp(c?.feelsLike, units)} (${feelsLikeLabel}), dew point ${formatTemp(c?.dewPoint, units)}
@@ -236,15 +238,19 @@ const DAILY_SCHEMA = {
   additionalProperties: false,
 };
 
-// "What's it doing right now?" — what you'd feel stepping out the back door.
+// "What's it doing right now?" — what you'd feel stepping outside. The station
+// may sit on a roof or a fence post, so the voice says "your yard", not "out back".
 // It looks ahead only a few hours; the rest of the day is the Forecast card's.
-const DAILY_JOB = 'Your job on this card is to answer "what\'s it doing right now?" — what the reader would feel stepping out the back door. '
+const DAILY_JOB = 'Your job on this card is to answer "what\'s it doing right now?" — what the reader would feel stepping outside. '
   + 'Lead with the most notable current condition. Mention the next few hours only if the data shows a change in them, and never describe later in the day. '
   + 'Use type=caution on a tag only when a value is genuinely limiting or hazardous. Each tag covers a distinct aspect of conditions — never repeat a theme across tags.';
 
+// Only a real station can speak for the reader's yard; preview data is city-level.
+const YARD_LINE = 'If you place the conditions, say "in your yard" or "at your place" — not "out back".';
+
 const DAILY_EXAMPLES = [
   'It\'s a raw 47° with a north wind that makes it feel closer to 41. Skies are dry for now, but rain is likely within the next couple of hours.',
-  'A calm, comfortable 68° out back with clean air and barely a breeze. Nothing much changes over the next few hours.',
+  'A calm, comfortable 68° in your yard with clean air and barely a breeze. Nothing much changes over the next few hours.',
 ];
 
 async function handleDailyInsight(req, res) {
@@ -300,7 +306,8 @@ Right now:
 narrative: 2-3 sentences. ${yoyInstruction}
 tags: exactly 3-4, each label 2-3 words, each covering a different aspect (e.g. temperature, precipitation, wind, air quality).`;
 
-  const system = buildSystem({ isPreview, job: DAILY_JOB, examples: DAILY_EXAMPLES });
+  const system = buildSystem({ isPreview, job: isPreview ? DAILY_JOB : `${DAILY_JOB} ${YARD_LINE}`,
+    examples: isPreview ? DAILY_EXAMPLES.map(e => e.replace(' in your yard', '')) : DAILY_EXAMPLES });
 
   try {
     const msg = await callModel({

@@ -13,6 +13,7 @@ All notable changes to YardObs are listed here. Format follows [Keep a Changelog
 - Today's Forecast summary now covers the rest of the day and updates as morning turns to afternoon and evening, while future days keep their full-day overview.
 - All three AI summaries now share one voice and the same forecast details, so they no longer disagree about when rain is coming or what counts as evening.
 - The Activity Score summary now tells you when to head out using the same "best window" shown on the card, and that window never points at hours already past.
+- The Activity Score summary now talks about what the weather means for your specific activity instead of repeating the score already on the card.
 - Your Backyard Today summary now sticks to what it's like right now and over the next few hours.
 - AI summaries now run on a newer, faster Claude model.
 

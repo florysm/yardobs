@@ -90,5 +90,18 @@ describe('insight handlers', () => {
     expect(system).toContain('when should — or shouldn\'t — I do this today?');
     expect(messages[0].content).toContain(`Rest of today by part of day (°F): ${outlook}`);
     expect(messages[0].content).toContain('Best window left today (by score): 3 PM–6 PM');
+    // The score is on the card; the model gets words, not numbers to echo.
+    expect(messages[0].content).toContain('overall right now: marginal');
+    expect(messages[0].content).toContain('Wind (poor)');
+    expect(messages[0].content).not.toMatch(/\d+\/100/);
+    expect(system).toContain('never quote a score');
+  });
+
+  it('daily: says "your yard" only for a real station', async () => {
+    create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"narrative":"n","tags":[]}' }] });
+    await call({ type: 'daily', stationId: 'S5', date: '2026-11-04', current: { temp: 60 }, units: 'imperial' });
+    expect(create.mock.calls[0][0].system).toContain('"in your yard"');
+    await call({ type: 'daily', stationId: 'S6', date: '2026-11-04', current: { temp: 61 }, sourceType: 'forecast_model', units: 'imperial' });
+    expect(create.mock.calls[1][0].system).not.toContain('your yard');
   });
 });

@@ -2,6 +2,13 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.10.1] - 2026-11-05
+
+### Changed
+
+- The Activity Score summary now talks about what the weather means for your specific activity instead of repeating the score already on the card.
+- Your Backyard Today summary now says "in your yard" rather than "out back", since not every station sits behind the house.
+
 ## [1.10.0] - 2026-11-05
 
 ### Added

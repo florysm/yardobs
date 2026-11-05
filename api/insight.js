@@ -41,8 +41,9 @@ function evictOne() {
 
 import { applyCors } from './lib/cors.js';
 import { clampBody } from './lib/sanitize.js';
-import { degreesToCompass, aqiCategory } from '../src/utils/format.js';
-import { aqiPhrase, scoreGuide, dayPartGuide, dayPartRange, shortHour } from '../src/utils/insightVocab.js';
+import { degreesToCompass } from '../src/utils/format.js';
+import { scoreGuide } from '../src/utils/insightVocab.js';
+import { aqiLine, buildSystem } from './lib/insightPersona.js';
 import { formatTemp, formatWind, formatPrecipRate, formatPrecipTotal, formatPressure, convertTemp, tempUnitLabel } from '../src/utils/units.js';
 
 const MODEL = 'claude-haiku-4-5';
@@ -73,28 +74,6 @@ function resolveUnits(body) {
   return body?.units === 'metric' ? 'metric' : 'imperial';
 }
 
-// Shared by every prompt that names a time of day. The glossary is rendered from
-// the same table the code uses (dayPartGuide), and the explicit prohibition is
-// there because it is the exact mistake observed: "thunderstorms Sunday morning
-// between midnight and 3 a.m." — technically a.m., but nobody says that.
-function timeNamingRules() {
-  return `Name times of day the way people speak: ${dayPartGuide()}. `
-    + 'Never call the hours just after midnight "morning" — 1 a.m. is overnight. '
-    + 'When a period is already named for you, use that name rather than inventing your own.';
-}
-
-// Hands the model the exact wording to use for an AQI reading. Two independent
-// calls previously described the same AQI 86 as "solid" and "decent"; worse, the
-// score guide told them 86/100 was "excellent" when EPA calls it Moderate.
-function aqiLine(aqi) {
-  const category = aqiCategory(aqi) ?? 'unknown';
-  const phrase = aqiPhrase(aqi);
-  const guidance = phrase
-    ? ` — describe this as "${phrase}"; do not characterize it more favorably`
-    : '';
-  return `AQI ${aqi ?? '?'} (${category})${guidance}`;
-}
-
 function isOverloaded(err) {
   return err.status === 529 || err.message?.startsWith('529');
 }
@@ -120,19 +99,34 @@ function handleInsightError(res, err, tag, overloadedPayload) {
 
 // ── Activity insight ──────────────────────────────────────────────────────────
 
-function activityCacheKey(stationId, actId, score, c, period) {
+function activityCacheKey(stationId, actId, score, c, period, outlook, bestWindow) {
   const t = Math.round((c?.temp ?? 70) / 2) * 2;
   const w = Math.round((c?.windSpeed ?? 0) / 2) * 2;
   const s = Math.round(score / 5) * 5;
-  return `act|${stationId}|${actId}|${s}|${t}|${w}|${period ?? 'daytime'}`;
+  return `act|${stationId}|${actId}|${s}|${t}|${w}|${period ?? 'daytime'}|${outlook ?? 'none'}|${bestWindow ?? 'none'}`;
 }
+
+// "When should — or shouldn't — I go?" This is the only card that gives timing
+// advice; Forecast describes the day and Backyard describes the moment.
+const ACTIVITY_JOB = 'Your job on this card is to answer "when should — or shouldn\'t — I do this today?" '
+  + 'The score and limiting factors describe conditions right now. Say whether now is a good time and why, using the limiting factors and their values; '
+  + 'then use the rest-of-today outlook and the best window to say whether waiting would help or whether to skip it today. '
+  + 'Only recommend a time that appears in the outlook or the best window. '
+  + `Factor scores are 0–100 where higher = better conditions. Score guide: ${scoreGuide()}. `
+  + 'If any single factor is below 25, treat it as the primary constraint and lead with it even if the overall score is moderate. '
+  + 'Write exactly 2 sentences, then one short actionable tip (timing, gear, or a modification).';
+
+const ACTIVITY_EXAMPLES = [
+  'Gusts to 24 mph are what\'s holding a run back right now, even with a comfortable 58°. The wind settles through the afternoon and the best stretch is 3–6 PM, still dry. Tip: wait until after 3 and take the loop with the tailwind home.',
+  'It\'s a good time to fire up the grill — 71° with a light breeze and clean air. Rain is likely after 8p, so this is the window. Tip: start now and plan to be wrapped up by 7.',
+];
 
 async function handleActivityInsight(req, res) {
   const { activity, activityLabel, score, factors, current: c,
-          firstRainyHour, lastRainyHour, stationId, sourceType, period } = req.body ?? {};
+          outlook, bestWindow, stationId, sourceType, period } = req.body ?? {};
   const units = resolveUnits(req.body);
   const isPreview = sourceType === 'forecast_model';
-  const key = `${units}|${isPreview ? 'preview|' : ''}` + activityCacheKey(stationId ?? 'unknown', activity, score, c, period);
+  const key = `${units}|${isPreview ? 'preview|' : ''}` + activityCacheKey(stationId ?? 'unknown', activity, score, c, period, outlook, bestWindow);
 
   const hit = getCacheHit(key);
   if (hit) return res.status(200).json({ insight: hit.text });
@@ -151,28 +145,23 @@ async function handleActivityInsight(req, res) {
 
   const dir = degreesToCompass(c?.windDir) || 'variable';
 
-  const forecastProb = c?.forecastMaxProb ?? 0;
-  const forecastLine = forecastProb >= 20
-    ? `${forecastProb}% chance of rain in today's forecast`
-    : 'no rain expected today';
-  // Named rather than emitted as raw 24-hour clock time ("0:00–3:00"), which
-  // invites the same midnight-is-morning slip as the forecast-day prompt.
-  const rainWindow = firstRainyHour != null
-    ? `Rain window: ${dayPartRange(firstRainyHour, lastRainyHour)} (${shortHour(firstRainyHour)}–${shortHour(lastRainyHour + 1)}, hours with ≥50% probability)`
-    : 'Rain window: none expected';
   const pavementLine = c?.pavementTemp != null
     ? `\n- Pavement temp (direct sun): ~${formatTemp(c.pavementTemp, units)}` : '';
 
   // Preview mode has a measured rain rate from Open-Meteo but no daily accumulation.
   const rainNow = `Raining now: ${formatPrecipRate(c?.precipRate ?? 0, units)}`;
   const rainLine = isPreview
-    ? `${rainNow}; ${forecastLine}`
-    : `${rainNow}, ${formatPrecipTotal(c?.precipTotal ?? 0, units)} total today; ${forecastLine}`;
+    ? rainNow
+    : `${rainNow}, ${formatPrecipTotal(c?.precipTotal ?? 0, units)} total today`;
 
-  const prompt = `Time of day: ${period ?? 'daytime'}
-Activity: ${activityLabel} — Overall score: ${score}/100
+  const outlookLine = outlook
+    ? `Rest of today by part of day (${tempUnitLabel(units)}): ${outlook}`
+    : 'Rest of today: no hourly forecast available — do not suggest a later time.';
+  const windowLine = `Best window left today (by score): ${bestWindow ? bestWindow.replace('Peak ', '') : 'none — fewer than 3 daytime hours remain'}`;
+
+  const prompt = `Time of day: ${period ?? 'unknown'}
+Activity: ${activityLabel} — Score right now: ${score}/100
 Limiting factors: ${topFactors}
-${rainWindow}
 
 Conditions right now:
 - ${formatTemp(c?.temp, units)}, feels like ${formatTemp(c?.feelsLike, units)} (${feelsLikeLabel}), dew point ${formatTemp(c?.dewPoint, units)}
@@ -180,18 +169,14 @@ Conditions right now:
 - Humidity: ${c?.humidity ?? '?'}%, UV ${c?.uv ?? '?'}, ${aqiLine(c?.aqi)}
 - ${rainLine}${pavementLine}
 
-In 2 sentences: assess conditions using the limiting factors and specific values. End with one actionable tip (timing, gear, or modification).`;
+${outlookLine}
+${windowLine}`;
 
-  // Score guide is generated from the same thresholds the UI renders (scoreBand),
-  // so the model and the card can't describe the same number differently.
-  const SHARED_RULES = `Be direct. Never start with the activity name. Return exactly 2 plain sentences followed by one actionable tip — no bullets, headers, or sign-off phrases. Factor scores are 0–100 where higher = better conditions. Score guide: ${scoreGuide()}. If any single factor is below 25, treat it as the primary constraint and lead with it even if the overall score is moderate. The rain figure is what is falling right now; a rain window later in the day is a risk to plan around, not a present condition. Where a characterization is prescribed for a value, use it verbatim rather than a more flattering synonym. ${timeNamingRules()}`;
-  const ACTIVITY_SYSTEM = isPreview
-    ? `You are a concise, practical weather advisor for YardObs. Help someone decide whether conditions are right for outdoor activities using city-level forecast data. Use actual forecast values. ${SHARED_RULES}`
-    : `You are a concise, practical weather advisor for YardObs, a personal backyard weather station app. You write for someone standing at their back door deciding whether to go outside. Use the actual measured numbers. ${SHARED_RULES}`;
+  const system = buildSystem({ isPreview, job: ACTIVITY_JOB, examples: ACTIVITY_EXAMPLES });
 
   try {
     // 160 was tight for two sentences plus a tip, and truncation was silent.
-    const msg = await callModel({ apiKey, system: ACTIVITY_SYSTEM, prompt, maxTokens: 250 });
+    const msg = await callModel({ apiKey, system, prompt, maxTokens: 250 });
     const text = textOf(msg, 'activity');
     if (cache.size >= CACHE_MAX_SIZE) evictOne();
     cache.set(key, { text, ts: Date.now() });
@@ -234,13 +219,23 @@ const DAILY_SCHEMA = {
   additionalProperties: false,
 };
 
+// "What's it doing right now?" — what you'd feel stepping out the back door.
+// It looks ahead only a few hours; the rest of the day is the Forecast card's.
+const DAILY_JOB = 'Your job on this card is to answer "what\'s it doing right now?" — what the reader would feel stepping out the back door. '
+  + 'Lead with the most notable current condition. Mention the next few hours only if the data shows a change in them, and never describe later in the day. '
+  + 'Use type=caution on a tag only when a value is genuinely limiting or hazardous. Each tag covers a distinct aspect of conditions — never repeat a theme across tags.';
+
+const DAILY_EXAMPLES = [
+  'It\'s a raw 47° with a north wind that makes it feel closer to 41. Skies are dry for now, but rain is likely within the next couple of hours.',
+  'A calm, comfortable 68° out back with clean air and barely a breeze. Nothing much changes over the next few hours.',
+];
+
 async function handleDailyInsight(req, res) {
-  const { stationId, date, current: c, yoyReadings, forecastSummary, sourceType, period } = req.body ?? {};
+  const { stationId, date, current: c, yoyReadings, lookahead, sourceType, period } = req.body ?? {};
   const units = resolveUnits(req.body);
   const isPreview = sourceType === 'forecast_model';
-  const tempBucket    = Math.round((c?.temp ?? 70) / 2) * 2;
-  const precipBucket  = Math.round((forecastSummary?.maxPrecipProb ?? 0) / 20) * 20;
-  const key = `${units}|${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${precipBucket}|${period ?? 'morning'}`;
+  const tempBucket = Math.round((c?.temp ?? 70) / 2) * 2;
+  const key = `${units}|${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${period ?? 'unknown'}|${lookahead ?? 'steady'}`;
 
   const hit = getCacheHit(key);
   if (hit) return res.status(200).json(hit.data);
@@ -264,16 +259,12 @@ async function handleDailyInsight(req, res) {
       : '\nSame date last year was nearly identical in temperature.';
   })();
 
-  let forecastContext = '';
-  if (forecastSummary?.totalForecastHours > 0) {
-    const { maxPrecipProb, rainyHoursCount, totalForecastHours } = forecastSummary;
-    forecastContext = `\n- Today's rain forecast: peak ${maxPrecipProb}% probability, ${rainyHoursCount} of ${totalForecastHours} forecast hours above 50% chance`;
-  }
-
   // Preview mode has a measured rain rate but no daily accumulation.
   const rainLine = isPreview
     ? `\n- Raining now: ${formatPrecipRate(c?.precipRate ?? 0, units)}`
     : `\n- Raining now: ${formatPrecipRate(c?.precipRate ?? 0, units)}, ${formatPrecipTotal(c?.precipTotal ?? 0, units)} total today`;
+
+  const lookaheadLine = `\n\nNext 3 hours: ${lookahead ?? 'no notable change'}`;
 
   const locationLabel = isPreview ? 'Location' : 'Station';
   const yoyInstruction = isPreview
@@ -281,26 +272,22 @@ async function handleDailyInsight(req, res) {
     : (yoyDelta ? 'Reference the year-over-year difference in the final sentence.' : 'No year-over-year data — omit any comparisons.');
 
   const prompt = `${locationLabel}: ${stationId} — ${date}
-Time of day: ${period ?? 'daytime'}
+Time of day: ${period ?? 'unknown'}
 
 Right now:
 - Temp: ${formatTemp(c?.temp, units)} (feels ${formatTemp(c?.feelsLike, units)}), humidity ${c?.humidity ?? '?'}%, dew point ${formatTemp(c?.dewPoint, units)}
 - Wind: ${formatWind(c?.windSpeed, units)} ${dir}, gusting ${formatWind(c?.windGust, units)}
 - Pressure: ${formatPressure(c?.pressure, units)}
-- UV index: ${c?.uv ?? '?'}, ${aqiLine(c?.aqi)}${rainLine}${forecastContext}${yoyDelta}
+- UV index: ${c?.uv ?? '?'}, ${aqiLine(c?.aqi)}${rainLine}${lookaheadLine}${yoyDelta}
 
-narrative: 2-3 sentences. Lead with the most notable condition. ${yoyInstruction} Knowledgeable-neighbor tone, second person.
-tags: exactly 3-4, each label 2-3 words. Each tag covers a different aspect — e.g. temperature, precipitation, wind, air quality — and no two convey the same theme. Use type=caution only when a value is genuinely limiting or hazardous.`;
+narrative: 2-3 sentences. ${yoyInstruction}
+tags: exactly 3-4, each label 2-3 words, each covering a different aspect (e.g. temperature, precipitation, wind, air quality).`;
 
-  const DAILY_RULES = 'Each tag must cover a distinct aspect of conditions — never repeat the same theme across tags. The rain figure is what is falling right now; a rain forecast later in the day is a risk to plan around, not a present condition. Where a characterization is prescribed for a value, use it verbatim rather than a more flattering synonym. '
-    + timeNamingRules();
-  const DAILY_SYSTEM = isPreview
-    ? `You are a weather insight engine for YardObs. Write in second person using forecast values for the area. ${DAILY_RULES}`
-    : `You are a hyperlocal weather insight engine for YardObs. Write in second person using actual measured values. ${DAILY_RULES}`;
+  const system = buildSystem({ isPreview, job: DAILY_JOB, examples: DAILY_EXAMPLES });
 
   try {
     const msg = await callModel({
-      apiKey, system: DAILY_SYSTEM, prompt, maxTokens: 400,
+      apiKey, system, prompt, maxTokens: 400,
       outputConfig: { format: { type: 'json_schema', schema: DAILY_SCHEMA } },
     });
 
@@ -323,21 +310,44 @@ tags: exactly 3-4, each label 2-3 words. Each tag covers a different aspect — 
 
 // ── Forecast-day insight ──────────────────────────────────────────────────────
 
+// "What will the day do?" Describes; never plans. For today it covers only
+// what's still ahead — current conditions are the Backyard card's job, and
+// timing advice is the Activity card's ("plan indoor activities for the
+// evening" over an 11pm shower was this card overreaching).
+function forecastJob(isToday) {
+  const scope = isToday
+    ? 'This is the rest of today, starting now: cover only what is still ahead and do not describe current conditions. '
+    : '';
+  return 'Your job on this card is to answer "what will the day do?" '
+    + scope
+    + 'Walk through how it unfolds using the outlook, which is already split into parts of the day; attach each condition to the part it is listed under. '
+    + 'Describe rather than plan: leave activity and timing advice to the reader, beyond a word about gear such as an umbrella or a jacket. '
+    // Pleasant temperatures alone once earned "a great day to be outside" while the air was Unhealthy.
+    + 'Air quality is part of whether a day is pleasant outdoors; if it is worse than Moderate, it is the most notable condition and must lead. '
+    + 'If no outlook is provided, describe the day in general terms and do not attach temperatures or rain to times of day. '
+    + 'Write 2–3 sentences.';
+}
+
+const FORECAST_EXAMPLES = [
+  'The afternoon stays dry and tops out in the mid 60s before the evening cools into the upper 50s. Rain becomes likely after 11p, so keep an umbrella handy if you\'re out late.',
+  'A chilly start in the 40s gives way to a pleasant, sunny afternoon near 62. It stays dry from start to finish, and the air is clean.',
+];
+
 async function handleForecastDayInsight(req, res) {
   const { stationId, date, dayLabel, tempMax, tempMin, pop, conditions,
-          trajectory, precipWindow, aqi, sourceType } = req.body ?? {};
+          outlook, isToday, dayPart, aqi, sourceType } = req.body ?? {};
   const units = resolveUnits(req.body);
   const isPreview = sourceType === 'forecast_model';
 
-  // The key was previously just the date, so a day's narrative was frozen for the
-  // full TTL regardless of forecast revisions. Bucket on the values that shape the
-  // text — including the trajectory, or two different curves would collide.
+  // Today is keyed to the part of the day so it regenerates as each passes;
+  // the outlook string carries the forecast itself, so a revision changes it.
   const hiBucket = Math.round((tempMax ?? 70) / 2) * 2;
   const loBucket = Math.round((tempMin ?? 50) / 2) * 2;
   const popBucket = Math.round((pop ?? 0) / 20) * 20;
   // Bucketed at 25 so a crossing between EPA categories always changes the key.
   const aqiBucket = aqi == null ? 'na' : Math.round(aqi / 25) * 25;
-  const key = `${units}|${isPreview ? 'preview|' : ''}fcday|${stationId ?? 'preview'}|${date}|${hiBucket}|${loBucket}|${popBucket}|${aqiBucket}|${trajectory ?? 'none'}`;
+  const part = isToday ? (dayPart ?? 'today') : 'day';
+  const key = `${units}|${isPreview ? 'preview|' : ''}fcday|${stationId ?? 'preview'}|${date}|${part}|${hiBucket}|${loBucket}|${popBucket}|${aqiBucket}|${outlook ?? 'none'}`;
 
   const hit = getCacheHit(key);
   if (hit) return res.status(200).json({ narrative: hit.text });
@@ -345,43 +355,28 @@ async function handleForecastDayInsight(req, res) {
   const apiKey = requireApiKey(res);
   if (!apiKey) return;
 
-  // Two rules earn their place here. The anti-fabrication one: given only a
-  // high/low the model infers a diurnal shape and asserts "temperatures drop to
-  // 61 as evening approaches" on a day still in the 80s at 10pm. The naming one:
-  // it reads 12a–3a as a.m. and calls it "morning".
-  const SYSTEM = 'You are a concise weather outlook writer for YardObs. Write in second person. Given a daily forecast, write 2–3 sentences describing what the day will feel like and what to expect. Lead with the most notable condition. Be practical and specific. No bullets, headers, or sign-off phrases. Return only the narrative text. Only state a temperature at a specific time of day if the hourly trajectory shows it — never infer one from the high and low. The daily low typically occurs near dawn, not in the evening. If no hourly trajectory is provided, describe the day in general terms and do not attach temperatures to times of day. '
-    // Pleasant temperatures are not sufficient grounds for "a great day to be
-    // outside" — this prompt recommended exactly that while the air was Unhealthy.
-    + 'Air quality is part of whether a day is good to be outdoors: never recommend spending time outside without accounting for it. If air quality is worse than Moderate, it is the most notable condition and must lead. '
-    + timeNamingRules();
-
-  const trajectoryLine = trajectory
-    ? `Hourly temperatures (${tempUnitLabel(units)}): ${trajectory}`
-    : 'Hourly temperatures: not available for this day — do not state temperatures at specific times.';
-  // A trajectory but no window means we checked every hour and found none likely —
-  // that's "dry", not "unknown". Only plead ignorance when hourly data is missing.
-  const precipLine = precipWindow
-    ? `Rain likely ${precipWindow}`
-    : trajectory
-      ? `No rain expected — peak chance ${pop ?? 0}%`
-      : `Peak rain chance: ${pop ?? 0}% (no hourly timing available)`;
+  // Today's high may already be behind us, and the outlook says what's left.
+  const dayLine = isToday && outlook
+    ? `Day: Today — the rest of the day, from ${dayPart ?? 'now'}`
+    : `Day: ${dayLabel ?? date}\nForecast: high ${formatTemp(tempMax, units)} / low ${formatTemp(tempMin, units)}`;
+  const outlookLine = outlook
+    ? `Outlook by part of day (${tempUnitLabel(units)}): ${outlook}`
+    : `Outlook: no hourly detail for this day — peak rain chance ${pop ?? 0}%. Do not attach temperatures or rain to times of day.`;
   // Without this the model recommended an "ideal day to spend time outside" on a
   // day whose air was Unhealthy — it simply had no air-quality data to weigh.
   const aqiLineText = aqi != null
     ? `Air quality, worst of the 8a–8p stretch: ${aqiLine(aqi)}`
     : 'Air quality: no forecast available for this day — do not comment on air quality.';
 
-  const prompt = `Day: ${dayLabel ?? date}
-Forecast: high ${formatTemp(tempMax, units)} / low ${formatTemp(tempMin, units)}
+  const prompt = `${dayLine}
 Conditions: ${conditions || 'not specified'}
-${trajectoryLine}
-${precipLine}
-${aqiLineText}
+${outlookLine}
+${aqiLineText}`;
 
-Write 2–3 sentences describing this forecast day.`;
+  const system = buildSystem({ isPreview, job: forecastJob(!!isToday), examples: FORECAST_EXAMPLES });
 
   try {
-    const msg = await callModel({ apiKey, system: SYSTEM, prompt, maxTokens: 250 });
+    const msg = await callModel({ apiKey, system, prompt, maxTokens: 250 });
     const text = textOf(msg, 'forecast-day');
     if (cache.size >= CACHE_MAX_SIZE) evictOne();
     cache.set(key, { text, ts: Date.now() });

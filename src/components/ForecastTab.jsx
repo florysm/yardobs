@@ -334,7 +334,10 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
         if (cancelToken.cancelled) return;
         const updatedAt = new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() });
         const stored = { narrative: json.narrative ?? '', updatedAt };
-        try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
+        // Don't pin an empty narrative (refusal, outage) for the full TTL.
+        if (stored.narrative) {
+          try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
+        }
         setDayInsight(stored);
       } catch {
         if (!cancelToken.cancelled) setDayInsight({ narrative: '', updatedAt: '' });

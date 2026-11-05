@@ -48,6 +48,30 @@ describe('insight handlers', () => {
     expect(messages[0].content).toContain('high 62°F');
   });
 
+  it('calls Haiku 5.5 with thinking off and merges the JSON format into output_config', async () => {
+    create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"narrative":"n","tags":[]}' }] });
+    await call({ type: 'daily', stationId: 'S2', date: '2026-11-04', current: { temp: 60 }, units: 'imperial' });
+    const params = create.mock.calls[0][0];
+    expect(params.model).toBe('claude-haiku-5-5');
+    expect(params.thinking).toEqual({ type: 'disabled' });
+    expect(params.output_config.effort).toBe('low');
+    expect(params.output_config.format.type).toBe('json_schema');
+  });
+
+  it('reads the text block by type, not position', async () => {
+    create.mockResolvedValue({ stop_reason: 'end_turn',
+      content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: 'narrative' }] });
+    const res = await call({ type: 'forecast-day', stationId: 'S3', date: '2026-11-07', units: 'imperial' });
+    expect(res.json).toHaveBeenCalledWith({ narrative: 'narrative' });
+  });
+
+  it('a refusal degrades to an empty narrative', async () => {
+    create.mockResolvedValue({ stop_reason: 'refusal', stop_details: { category: null },
+      content: [{ type: 'text', text: 'partial' }] });
+    const res = await call({ type: 'forecast-day', stationId: 'S4', date: '2026-11-08', units: 'imperial' });
+    expect(res.json).toHaveBeenCalledWith({ narrative: '' });
+  });
+
   it('daily: right now plus the next few hours, nothing later', async () => {
     create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"narrative":"n","tags":[]}' }] });
     await call({ type: 'daily', stationId: 'S1', date: '2026-11-04', period: 'evening',

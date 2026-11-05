@@ -46,28 +46,41 @@ import { scoreGuide } from '../src/utils/insightVocab.js';
 import { aqiLine, buildSystem } from './lib/insightPersona.js';
 import { formatTemp, formatWind, formatPrecipRate, formatPrecipTotal, formatPressure, convertTemp, tempUnitLabel } from '../src/utils/units.js';
 
-const MODEL = 'claude-haiku-4-5';
+const MODEL = 'claude-haiku-5-5';
 
-// No cache_control on the system prompts: Haiku 4.5's minimum cacheable prefix
-// is 4096 tokens and these run a few hundred, so the markers never wrote an
-// entry or produced a read.
+// Short narratives over data already summarized in code: thinking buys nothing
+// here and its tokens count toward max_tokens, so it's off (Haiku 5.5 accepts
+// disabled thinking at effort low/medium/high only).
+//
+// No cache_control: the system prompts sit near Haiku 5.5's 512-token minimum
+// and traffic is light, so 5-minute cache writes would rarely be read back — at
+// $0.10/MTok input it isn't worth the complexity.
 function callModel({ apiKey, system, prompt, maxTokens, outputConfig }) {
   const client = new Anthropic({ apiKey, maxRetries: 3 });
   return client.messages.create({
     model: MODEL,
     max_tokens: maxTokens,
+    thinking: { type: 'disabled' },
+    // Merged, not replaced: the daily card adds its JSON schema `format` here.
+    output_config: { effort: 'low', ...outputConfig },
     system,
     messages: [{ role: 'user', content: prompt }],
-    ...(outputConfig ? { output_config: outputConfig } : {}),
   });
 }
 
 // A truncated response used to ship to the UI as though it were complete.
+// Read the text block by type: content[0] isn't guaranteed to be text.
 function textOf(msg, tag) {
   if (msg.stop_reason === 'max_tokens') {
     console.error(`[insight:${tag}] response truncated at max_tokens`);
   }
-  return msg.content[0]?.text?.trim() ?? '';
+  // Haiku 5.5 runs safety classifiers with no server-side fallback; a false
+  // positive on a weather summary should degrade to "unavailable", not junk.
+  if (msg.stop_reason === 'refusal') {
+    console.error(`[insight:${tag}] refusal`, msg.stop_details?.category ?? '');
+    return '';
+  }
+  return msg.content.find(b => b.type === 'text')?.text?.trim() ?? '';
 }
 
 function resolveUnits(body) {
@@ -176,10 +189,14 @@ ${windowLine}`;
 
   try {
     // 160 was tight for two sentences plus a tip, and truncation was silent.
-    const msg = await callModel({ apiKey, system, prompt, maxTokens: 250 });
+    // Haiku 5.5's tokenizer counts the same text as ~30% more tokens.
+    const msg = await callModel({ apiKey, system, prompt, maxTokens: 350 });
     const text = textOf(msg, 'activity');
-    if (cache.size >= CACHE_MAX_SIZE) evictOne();
-    cache.set(key, { text, ts: Date.now() });
+    // An empty result (refusal, truncation) isn't cached, so the next view retries.
+    if (text) {
+      if (cache.size >= CACHE_MAX_SIZE) evictOne();
+      cache.set(key, { text, ts: Date.now() });
+    }
     return res.status(200).json({ insight: text });
   } catch (err) {
     return handleInsightError(res, err, 'activity', { insight: 'Insight temporarily unavailable — API is busy. Try again in a moment.' });
@@ -287,7 +304,7 @@ tags: exactly 3-4, each label 2-3 words, each covering a different aspect (e.g. 
 
   try {
     const msg = await callModel({
-      apiKey, system, prompt, maxTokens: 400,
+      apiKey, system, prompt, maxTokens: 600,
       outputConfig: { format: { type: 'json_schema', schema: DAILY_SCHEMA } },
     });
 
@@ -300,8 +317,10 @@ tags: exactly 3-4, each label 2-3 words, each covering a different aspect (e.g. 
       console.error('[insight:daily] JSON parse error:', parseErr.message);
     }
 
-    if (cache.size >= CACHE_MAX_SIZE) evictOne();
-    cache.set(key, { data, ts: Date.now() });
+    if (data.narrative) {
+      if (cache.size >= CACHE_MAX_SIZE) evictOne();
+      cache.set(key, { data, ts: Date.now() });
+    }
     return res.status(200).json(data);
   } catch (err) {
     return handleInsightError(res, err, 'daily', { narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.', tags: [] });
@@ -376,10 +395,13 @@ ${aqiLineText}`;
   const system = buildSystem({ isPreview, job: forecastJob(!!isToday), examples: FORECAST_EXAMPLES });
 
   try {
-    const msg = await callModel({ apiKey, system, prompt, maxTokens: 250 });
+    const msg = await callModel({ apiKey, system, prompt, maxTokens: 400 });
     const text = textOf(msg, 'forecast-day');
-    if (cache.size >= CACHE_MAX_SIZE) evictOne();
-    cache.set(key, { text, ts: Date.now() });
+    // An empty result (refusal, truncation) isn't cached, so the next view retries.
+    if (text) {
+      if (cache.size >= CACHE_MAX_SIZE) evictOne();
+      cache.set(key, { text, ts: Date.now() });
+    }
     return res.status(200).json({ narrative: text });
   } catch (err) {
     return handleInsightError(res, err, 'forecast-day', { narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.' });

@@ -724,30 +724,29 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
               <YAxis domain={domain} tick={{ fontSize: 9, fill: chartColors.accent, fontFamily: 'monospace' }}
                 tickLine={false} axisLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              {showYoY && showTempBand ? (
-                <>
-                  <Line type="monotone" dataKey="ly_tempHigh" name="Last yr high"
-                    stroke={chartColors.tempHigh} strokeWidth={1.5} strokeDasharray="6 3"
-                    dot={false} connectNulls />
-                  <Line type="monotone" dataKey="ly_tempLow" name="Last yr low"
-                    stroke={chartColors.tempLow} strokeWidth={1.5} strokeDasharray="6 3"
-                    dot={false} connectNulls />
-                </>
-              ) : showYoY ? (
+              {/* Multi-line groups are keyed arrays, never <>…</> fragments: Recharts 2
+                  finds its children with react-is@18, whose isFragment() can't recognise
+                  React 19 elements, so Lines wrapped in a fragment are silently dropped. */}
+              {showYoY && showTempBand ? [
+                <Line key="ly_tempHigh" type="monotone" dataKey="ly_tempHigh" name="Last yr high"
+                  stroke={chartColors.tempHigh} strokeWidth={1.5} strokeDasharray="6 3"
+                  dot={false} connectNulls />,
+                <Line key="ly_tempLow" type="monotone" dataKey="ly_tempLow" name="Last yr low"
+                  stroke={chartColors.tempLow} strokeWidth={1.5} strokeDasharray="6 3"
+                  dot={false} connectNulls />,
+              ] : showYoY ? (
                 <Line type="monotone" dataKey={`ly_${metric}`} name="Last year"
                   stroke={chartColors.yoy} strokeWidth={1.5} strokeDasharray="6 3"
                   dot={false} connectNulls />
               ) : null}
-              {metric === 'temp' && range !== '24h' ? (
-                <>
-                  <Line type="monotone" dataKey="tempHigh" name="High"
-                    stroke={chartColors.tempHigh} strokeWidth={2}
-                    dot={false} connectNulls />
-                  <Line type="monotone" dataKey="tempLow" name="Low"
-                    stroke={chartColors.tempLow} strokeWidth={2}
-                    dot={false} connectNulls />
-                </>
-              ) : (
+              {metric === 'temp' && range !== '24h' ? [
+                <Line key="tempHigh" type="monotone" dataKey="tempHigh" name="High"
+                  stroke={chartColors.tempHigh} strokeWidth={2}
+                  dot={false} connectNulls />,
+                <Line key="tempLow" type="monotone" dataKey="tempLow" name="Low"
+                  stroke={chartColors.tempLow} strokeWidth={2}
+                  dot={false} connectNulls />,
+              ] : (
                 <Line type="monotone" dataKey={metric} name={range === '24h' ? 'This year' : metaCurrent.label}
                   stroke={chartColors.accent} strokeWidth={2}
                   dot={false} connectNulls />

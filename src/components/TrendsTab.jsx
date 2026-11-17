@@ -45,6 +45,8 @@ function addDays(date, n) {
 function mergeHourly(obs = [], units) {
   return obs.map(o => ({
     time:     o.obsTimeLocal?.slice(11, 16) ?? '',
+    date:     o.obsTimeLocal?.slice(0, 10) ?? '',  // YYYY-MM-DD, for YoY hour matching
+    hour:     o.obsTimeLocal?.slice(11, 13) ?? '',
     temp:     convertTemp(o.imperial?.tempAvg ?? null, units),
     humidity: o.humidityAvg           ?? null,
     pressure: convertPressure(o.imperial?.pressureMax ?? null, units),
@@ -446,13 +448,17 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
   let chartData;
   if (range === '24h') {
     const hourlyObs = fixMidnightReset(mergeHourly(historyRecent, units).slice(-24));
-    const lyObs = [
-      ...mergeHourly(history[lyYesterdayKey] ?? [], units),
-      ...mergeHourly(history[lyKey]          ?? [], units),
-    ].slice(-24);
-    chartData = hourlyObs.map((row, i) => ({
+    // The rolling 24h spans yesterday and today, so match each row to the same
+    // day-a-year-ago and the same hour — pairing by array position would offset
+    // the two lines by the current hour.
+    const byHour = obs => Object.fromEntries(mergeHourly(obs ?? [], units).map(r => [r.hour, r]));
+    const lyByDate = {
+      [toISODate(today)]:              byHour(history[lyKey]),
+      [toISODate(addDays(today, -1))]: byHour(history[lyYesterdayKey]),
+    };
+    chartData = hourlyObs.map(row => ({
       ...row,
-      [`ly_${metric}`]: lyObs[i]?.[metric] ?? null,
+      [`ly_${metric}`]: lyByDate[row.date]?.[row.hour]?.[metric] ?? null,
     }));
   } else if (range === '7d') {
     const keys = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(today, -(6 - i))));

@@ -1,6 +1,6 @@
 # Tech Debt — Large Changes Sub-Report
 
-Companion to `TechDebt.md` items 1 and 7 (first written 2026-07-17; item numbers updated 2026-11-17). These two refactors are too large for an opportunistic `/debtpayer` pass — each touches multiple files or moves 150+ lines — so they are broken out here with a concrete plan and risk notes, pending a decision on how to handle them. Line numbers below are from the July scan; see `TechDebt.md` for current ones.
+Companion to `TechDebt.md` item 1 (first written 2026-07-17; item numbers updated 2026-11-17). This refactor is too large for an opportunistic `/debtpayer` pass — it touches multiple files and ~240 lines — so it is broken out here with a concrete plan and risk notes, pending a decision on how to handle it. Line numbers below are from the July scan; see `TechDebt.md` for current ones.
 
 ## A. Extract a shared `useInsight` hook (TechDebt item 1)
 
@@ -28,22 +28,8 @@ useInsight({ lsKey, enabled, buildBody, onError, debounceMs })
 
 **Risk:** medium. Behavior-preserving but touches all three insight surfaces at once; each has subtle timing (debounce, notable-change bypass) that needs the existing `forecastHourlyLayout.test.js`-style unit coverage before the move. Best done on its own branch.
 
-## B. Split ForecastTab.jsx / extract `<SunMoonCard>` (TechDebt item 7)
-
-**Scope:** 1 file (~660 lines) → 2–3 files; ~154 lines move.
-
-`ForecastTab.jsx:499-653` is an inline IIFE with only `lat`/`lon` as closure deps — the same profile `StationForm` had before its extraction. The sun card (514-549) and moon card (598-623) repeat the arc scaffold: `cx=100, cy=84, r=74`, identical track path, baseline line, progress clamp, dot trig.
-
-**Proposed steps:**
-
-1. Extract `src/components/SunMoonCard.jsx` taking `{ lat, lon }` — moves the IIFE, `resolveMoonWindow`, `moonPhaseName`, `MoonPhaseIcon`, `fmtSunTime`/`fmtMoonTime`/`fmtDaylight` helpers with it.
-2. Inside the new file, fold the two cards' shared arc scaffold into one small `<ArcProgress>` (track + progress path + dot slot) — removes the ~30-line duplication.
-3. Optional follow-up: move `buildTrajectory`/`buildPrecipWindow` (pure prompt builders) to `src/utils/`, where they become testable — leaving ForecastTab with layout + data wiring only.
-
-**Risk:** low-to-medium. Step 1 is mechanical (no closure deps besides `lat`/`lon`). Caution: this file has uncommitted hourly-overlap layout work on the current branch (`steve/hourlyoverlap`) — do this extraction only after that lands, to avoid churning the same file in two directions.
-
 ## Handling options
 
 - **Track only** — leave both in `TechDebt.md`, act later via `/debtpayer`.
-- **Do now, own branch** — either item is a candidate for a dedicated branch off `main`.
+- **Do now, own branch** — it is a candidate for a dedicated branch off `main`.
 - **Drop** — remove from tracking if judged not worth the churn.

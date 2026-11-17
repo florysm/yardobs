@@ -99,8 +99,11 @@ function TimeArc({ arcData, bestWindow }) {
               <div style={{
                 width: '100%', height: barH,
                 borderRadius: '2px 2px 0 0',
-                background: isPeak ? color : color + '66',
-                transition: 'height 0.5s ease, background 0.3s',
+                // scoreColor() returns a CSS var, so fade with opacity — appending
+                // a hex alpha ("var(--x)66") is invalid CSS and drops the bar.
+                background: color,
+                opacity: isPeak ? 1 : 0.4,
+                transition: 'height 0.5s ease, background 0.3s, opacity 0.3s',
               }} />
             </div>
           );

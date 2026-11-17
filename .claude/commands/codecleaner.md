@@ -49,7 +49,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 **Duplicated formatting and constants (tracked in TechDebt.md, re-verify until fixed):**
 
 - The `updatedAt` `toLocaleTimeString(...)` line duplicated in `HeroCard.jsx`/`ForecastTab.jsx`/`AlertsSheet.jsx`, plus 7 overlapping hour formatters — tracked as item 12. Once a `fmtUpdatedAt()` lands in `src/utils/format.js`, convert this into a single-definition invariant.
-- The hPa↔inHg constant `0.02953` in `useWeather.js` and `units.js` — tracked as item 16. More generally: grep for repeated numeric literals that form conversion pairs across files.
+- The hPa↔inHg constant is single-sourced as `INHG_PER_HPA` in `units.js` (fixed 2026-11-17) — flag any raw `0.02953`. More generally: grep for repeated numeric literals that form conversion pairs across files.
 - Client cache keys that must match server bucketing (`Math.round(aqi/25)*25`, `score/5`, `temp/2`) are separate literals in components and `api/insight.js` — part of items 1–2. Flag any new client/server pair that must agree but isn't shared.
 
 **Vocabularies and code tables (found 2026-11-17):**
@@ -66,7 +66,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 - Metric tiles go through the shared `MetricCard` component (`src/components/MetricCard.jsx`); flag any new hand-written label/value/unit card JSX in `NowTab.jsx`, `ForecastTab.jsx`, `TrendsTab.jsx` that duplicates it. (Holds narrowly 2026-11-17 — TrendsTab `DeltaCell`/`.y-stat` tiles and HeroCard's stat strip are near-misses.)
 - Shared visual patterns use the `.y-*` utility classes defined in `src/index.css` (`.y-card`, `.y-metric`, `.y-label`, `.y-pill`, `.y-msel`, `.y-stat`, `.y-pref-row`); flag components re-implementing these with inline styles. BROKEN 2026-11-17 — repeated inline objects (mono value ×7, tiny labels ×9, section headers ×3, API-source footer ×3, skeleton ×3, chips ×2) tracked as item 10. When counting, grep the exact style-object text; a recount is the scope update.
 - The AI-insight fetch flow (localStorage TTL read → cancel guard → POST `/api/insight` → persist → set state) is hand-rolled in `HeroCard.jsx`, `ForecastTab.jsx`, and `ActivityScoreCard.jsx` — tracked as TechDebt item 1 (High since 2026-11-17, because the copies' different failure/loading policies are now causing bugs; large change, see `TechDebt-LargeChanges.md`). Server-side twin: the three `api/insight.js` handlers (item 2). Once a `useInsight` hook lands, the invariant becomes: every `/api/insight` call site goes through the hook; flag any component fetching `/api/insight` directly.
-- Large components: TrendsTab (~788 lines, item 6) and ForecastTab (~617 lines, item 7). Re-measure each scan; flag any other component crossing ~500 lines with mixed fetching + rendering (HeroCard is ~500).
+- Large components: TrendsTab (~788 lines, item 6) and HeroCard (~500). ForecastTab dropped to ~400 lines after `SunMoonCard` was extracted (2026-11-17). Re-measure each scan; flag any other component crossing ~500 lines with mixed fetching + rendering.
 
 **Constant arrays:**
 
@@ -86,7 +86,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **Extraction candidates:**
 
-- Grep component files for large (100+ line) self-contained inner components or pure-function blocks defined inline (like `StationForm` once was) — if one has no closure dependencies on the parent, it is an extraction candidate. Tracked 2026-11-17: ForecastTab sun/moon IIFE (155 lines, item 7) and TrendsTab's `dayPhase`/`lyObsAtCurrentHour`/`yoyInsight` block (125 lines, item 6).
+- Grep component files for large (100+ line) self-contained inner components or pure-function blocks defined inline (like `StationForm` once was) — if one has no closure dependencies on the parent, it is an extraction candidate. Tracked 2026-11-17: TrendsTab's `dayPhase`/`lyObsAtCurrentHour`/`yoyInsight` block (125 lines, item 6).
 - API-layer invariants above (single fetch path, `applyCors()` only, bounded insight cache) re-verified 2026-11-17 — all holding.
 
 **Tests and tooling:**

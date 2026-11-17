@@ -16,9 +16,16 @@ export function aqiCategory(aqi) {
   return hit ? hit[1] : AQI_ABOVE_RANGE;
 }
 
+// toFixed without the "-0": -0.3 rounds to "-0", which reads as a sign error
+// ("-0°C" just below freezing). Anything that rounds to zero prints as zero.
+export function fixed(v, digits = 0) {
+  const s = v.toFixed(digits);
+  return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
+}
+
 export function fmt(val, digits = 0) {
   if (val == null || isNaN(val)) return '—';
-  return Number(val).toFixed(digits);
+  return fixed(Number(val), digits);
 }
 
 import { COMPASS_DIRS } from '../../utils/compass.js';

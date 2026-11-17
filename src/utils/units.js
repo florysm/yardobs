@@ -1,4 +1,4 @@
-import { degreesToCompass } from './format.js';
+import { degreesToCompass, fixed } from './format.js';
 
 export const UNITS = { IMPERIAL: 'imperial', METRIC: 'metric' };
 
@@ -65,12 +65,13 @@ export function convertPrecip(valueIn, units) {
   return units === UNITS.METRIC ? valueIn * 25.4 : valueIn;
 }
 
-// inHg is the app's canonical pressure unit (see src/hooks/useWeather.js); this
-// is the inverse of that file's hPa→inHg constant (0.02953), kept consistent
-// rather than introducing a second magic number.
+// inHg is the app's canonical pressure unit. One constant for both directions:
+// useWeather converts Open-Meteo's hPa readings in with it, this converts out.
+export const INHG_PER_HPA = 0.02953;
+
 export function convertPressure(valueInHg, units) {
   if (valueInHg == null) return null;
-  return units === UNITS.METRIC ? valueInHg / 0.02953 : valueInHg;
+  return units === UNITS.METRIC ? valueInHg / INHG_PER_HPA : valueInHg;
 }
 
 export function tempUnitLabel(units) {
@@ -88,32 +89,32 @@ export function pressureUnitLabel(units) {
 export function formatTemp(valueF, units, digits = 0) {
   const v = convertTemp(valueF, units);
   if (v == null || isNaN(v)) return '—';
-  return `${v.toFixed(digits)}${tempUnitLabel(units)}`;
+  return `${fixed(v, digits)}${tempUnitLabel(units)}`;
 }
 
 export function formatTempParts(valueF, units, digits = 0) {
   const v = convertTemp(valueF, units);
   if (v == null || isNaN(v)) return { value: '—', unit: '' };
-  return { value: v.toFixed(digits), unit: tempUnitLabel(units) };
+  return { value: fixed(v, digits), unit: tempUnitLabel(units) };
 }
 
 export function formatWind(valueMph, units, digits = 0) {
   const v = convertWind(valueMph, units);
   if (v == null || isNaN(v)) return '—';
-  return `${v.toFixed(digits)} ${windUnitLabel(units)}`;
+  return `${fixed(v, digits)} ${windUnitLabel(units)}`;
 }
 
 export function formatWindParts(valueMph, units, digits = 0) {
   const v = convertWind(valueMph, units);
   if (v == null || isNaN(v)) return { value: '—', unit: '' };
-  return { value: v.toFixed(digits), unit: ` ${windUnitLabel(units)}` };
+  return { value: fixed(v, digits), unit: ` ${windUnitLabel(units)}` };
 }
 
 export function formatWindWithCompass(valueMph, dirDeg, units) {
   const v = convertWind(valueMph, units);
   if (v == null || isNaN(v)) return '—';
   const dir = degreesToCompass(dirDeg);
-  return `${v.toFixed(0)} ${windUnitLabel(units)}${dir ? ` ${dir}` : ''}`;
+  return `${fixed(v, 0)} ${windUnitLabel(units)}${dir ? ` ${dir}` : ''}`;
 }
 
 // Imperial keeps 2 decimals (existing convention); metric uses 1 — mm is a
@@ -121,21 +122,21 @@ export function formatWindWithCompass(valueMph, dirDeg, units) {
 export function formatPrecipRate(valueIn, units) {
   const v = convertPrecip(valueIn, units);
   if (v == null || isNaN(v)) return '—';
-  return units === UNITS.METRIC ? `${v.toFixed(1)} mm/hr` : `${v.toFixed(2)}"/hr`;
+  return units === UNITS.METRIC ? `${fixed(v, 1)} mm/hr` : `${fixed(v, 2)}"/hr`;
 }
 
 export function formatPrecipRateParts(valueIn, units) {
   const v = convertPrecip(valueIn, units);
   if (v == null || isNaN(v)) return { value: '—', unit: '' };
   return units === UNITS.METRIC
-    ? { value: v.toFixed(1), unit: ' mm/hr' }
-    : { value: v.toFixed(2), unit: '"/hr' };
+    ? { value: fixed(v, 1), unit: ' mm/hr' }
+    : { value: fixed(v, 2), unit: '"/hr' };
 }
 
 export function formatPrecipTotal(valueIn, units) {
   const v = convertPrecip(valueIn, units);
   if (v == null || isNaN(v)) return '—';
-  return units === UNITS.METRIC ? `${v.toFixed(1)} mm` : `${v.toFixed(2)}"`;
+  return units === UNITS.METRIC ? `${fixed(v, 1)} mm` : `${fixed(v, 2)}"`;
 }
 
 // Always renders an explicit inHg/hPa suffix (never a bare `"`, which
@@ -143,5 +144,5 @@ export function formatPrecipTotal(valueIn, units) {
 export function formatPressure(valueInHg, units) {
   const v = convertPressure(valueInHg, units);
   if (v == null || isNaN(v)) return '—';
-  return units === UNITS.METRIC ? `${v.toFixed(0)} hPa` : `${v.toFixed(2)} inHg`;
+  return units === UNITS.METRIC ? `${fixed(v, 0)} hPa` : `${fixed(v, 2)} inHg`;
 }

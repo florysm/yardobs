@@ -31,6 +31,36 @@ function RadarLayer({ frames, frameIndex }) {
   const loadedRef  = useRef({});  // index → bool
   const activeRef  = useRef(null);
   const pendingRef = useRef(null); // { layer, handler } — cancelled on frame change
+  const frameIndexRef = useRef(frameIndex);
+  frameIndexRef.current = frameIndex;
+
+  // Makes frame `i` the visible layer once its tiles have loaded. Called both on
+  // frame changes and after the layers are rebuilt: a refresh rebuilds every
+  // layer invisible but usually leaves frameIndex unchanged, so the frame effect
+  // alone wouldn't re-run and the overlay would stay blank.
+  const showFrame = (i) => {
+    if (pendingRef.current) {
+      pendingRef.current.layer.off('load', pendingRef.current.handler);
+      pendingRef.current = null;
+    }
+
+    const layer = cacheRef.current[i];
+    if (!layer) return;
+    const show = () => {
+      pendingRef.current = null;
+      if (activeRef.current && activeRef.current !== layer) {
+        activeRef.current.setOpacity(0.001);
+      }
+      layer.setOpacity(RADAR_OPACITY);
+      activeRef.current = layer;
+    };
+    if (loadedRef.current[i]) {
+      show();
+    } else {
+      pendingRef.current = { layer, handler: show };
+      layer.once('load', show);
+    }
+  };
 
   useEffect(() => {
     if (!frames.length) return;
@@ -47,7 +77,9 @@ function RadarLayer({ frames, frameIndex }) {
       layer.addTo(map);
       cacheRef.current[i] = layer;
     });
+    showFrame(frameIndexRef.current);
     return () => {
+      if (pendingRef.current) pendingRef.current.layer.off('load', pendingRef.current.handler);
       Object.values(cacheRef.current).forEach(l => { try { map.removeLayer(l); } catch (_) {} });
       cacheRef.current  = {};
       loadedRef.current = {};
@@ -57,31 +89,11 @@ function RadarLayer({ frames, frameIndex }) {
   // cacheRef/loadedRef/activeRef/pendingRef are stable refs — no dep needed
   }, [frames, map]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Cancel any stale load listener before showing the new frame. Without this,
-  // a slow-loading earlier frame can flash briefly after we've already advanced.
+  // showFrame cancels any stale load listener first, so a slow-loading earlier
+  // frame can't flash after we've already advanced.
   useEffect(() => {
-    if (pendingRef.current) {
-      pendingRef.current.layer.off('load', pendingRef.current.handler);
-      pendingRef.current = null;
-    }
-
-    const layer = cacheRef.current[frameIndex];
-    if (!layer) return;
-    const show = () => {
-      pendingRef.current = null;
-      if (activeRef.current && activeRef.current !== layer) {
-        activeRef.current.setOpacity(0.001);
-      }
-      layer.setOpacity(RADAR_OPACITY);
-      activeRef.current = layer;
-    };
-    if (loadedRef.current[frameIndex]) {
-      show();
-    } else {
-      pendingRef.current = { layer, handler: show };
-      layer.once('load', show);
-    }
-  // cacheRef/loadedRef/activeRef/pendingRef are stable refs — no dep needed
+    showFrame(frameIndex);
+  // showFrame only touches stable refs — no dep needed
   }, [frameIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;

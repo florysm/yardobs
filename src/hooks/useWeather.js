@@ -6,6 +6,7 @@ import { calcFeelsLike } from '../utils/weatherCalc';
 import { normalizeAlerts } from '../utils/alerts';
 import { normalizeTwcForecast, normalizeOpenMeteoForecast } from '../utils/forecastNormalize';
 import { wmoToTwc } from '../utils/weatherIcons';
+import { INHG_PER_HPA } from '../utils/units';
 
 const POLL_MS = 5 * 60 * 1000;
 // Forecasts change slowly, but a tab left open all afternoon used to keep
@@ -97,7 +98,7 @@ export function useWeather(profile, credentialsVersion) {
       // supplement TWC's iconCode with Open-Meteo's model-based weather_code so the
       // theme reflects actual conditions rather than TWC's regional inference.
       let resolvedIconCode = obs.iconCode ?? null;
-      if (obs.solarRadiation == null && obs.uv == null && obs.lat && obs.lon) {
+      if (obs.solarRadiation == null && obs.uv == null && obs.lat != null && obs.lon != null) {
         try {
           const omRes = await fetch(
             `${OM_BASE}?latitude=${obs.lat}&longitude=${obs.lon}&current=weather_code&timezone=auto`,
@@ -144,7 +145,7 @@ export function useWeather(profile, credentialsVersion) {
 
   // ── Preview/explore mode: fetch current conditions from Open-Meteo ──────────
   const fetchCurrentPreview = useCallback(async () => {
-    if (!previewLat || !previewLon) { setIsLoading(false); setError('No location set — open Settings to choose a preview location.'); return; }
+    if (previewLat == null || previewLon == null) { setIsLoading(false); setError('No location set — open Settings to choose a preview location.'); return; }
     setError(null);
     try {
       const url = `${OM_BASE}?latitude=${previewLat}&longitude=${previewLon}` +
@@ -172,7 +173,7 @@ export function useWeather(profile, credentialsVersion) {
         windGust:    c.wind_gusts_10m           ?? null,
         windDir:     c.wind_direction_10m       ?? null,
         // Open-Meteo surface_pressure is hPa; convert to inHg
-        pressure:    c.surface_pressure != null ? Math.round(c.surface_pressure * 0.02953 * 100) / 100 : null,
+        pressure:    c.surface_pressure != null ? Math.round(c.surface_pressure * INHG_PER_HPA * 100) / 100 : null,
         dewPoint:    c.dew_point_2m             ?? null,
         // OM_UNITS sets precipitation_unit=inch, so this is already in/hr and
         // matches the imperial-internal convention. Without it the activity

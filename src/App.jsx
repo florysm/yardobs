@@ -274,7 +274,7 @@ export default function App() {
         )}
         {activeTab === 'forecast' && (
           <ErrorBoundary>
-            <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} airQuality={airQuality} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} stationId={stationId} sourceType={current?.sourceType ?? null} currentTemp={current?.temp ?? null} units={units} />
+            <ForecastTab forecast={forecast} isLoading={isLoading} hourlyForecast={hourlyForecast} airQuality={airQuality} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} stationId={stationId} sourceType={current?.sourceType ?? null} currentTemp={current?.temp ?? null} units={units} />
           </ErrorBoundary>
         )}
         {activeTab === 'radar' && (

@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import SunCalc from 'suncalc';
-import { fmtHourIso, fmtSunTime, fmtMoonTime, getLocaleHour12 } from '../utils/format';
+import { fmtHourIso, getLocaleHour12 } from '../utils/format';
 import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
 import { toISODate } from '../utils/dateUtils';
 import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
@@ -8,6 +8,8 @@ import { formatTempParts } from '../utils/units';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildDayOutlook } from '../utils/outlook';
 import { aqiForDay } from '../utils/forecastNormalize';
+import { todayHigh } from '../utils/weatherCalc';
+import SunMoonCard from './SunMoonCard';
 
 function buildHours(hf, lat, lon) {
   const h = hf?.hourly;
@@ -82,59 +84,6 @@ function buildDays(forecast) {
 }
 
 
-function fmtDaylight(riseStr, setStr) {
-  if (!riseStr || !setStr) return null;
-  const mins = Math.round((new Date(setStr) - new Date(riseStr)) / 60000);
-  return `${Math.floor(mins / 60)}h ${mins % 60}m daylight`;
-}
-
-
-function resolveMoonWindow(lat, lon) {
-  if (lat == null || lon == null) return { rise: null, set: null, moonUp: false, alwaysUp: false, alwaysDown: false };
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  const t  = SunCalc.getMoonTimes(today,    lat, lon);
-  const tm = SunCalc.getMoonTimes(tomorrow, lat, lon);
-  const moonUp = SunCalc.getMoonPosition(today, lat, lon).altitude > 0;
-  return {
-    rise:       t.rise  ?? null,
-    set:        t.set   ?? tm.set ?? null,
-    moonUp,
-    alwaysUp:   t.alwaysUp   ?? false,
-    alwaysDown: t.alwaysDown ?? false,
-  };
-}
-
-function moonPhaseName(phase) {
-  if (phase < 0.0625 || phase >= 0.9375) return 'New Moon';
-  if (phase < 0.1875) return 'Waxing Crescent';
-  if (phase < 0.3125) return 'First Quarter';
-  if (phase < 0.4375) return 'Waxing Gibbous';
-  if (phase < 0.5625) return 'Full Moon';
-  if (phase < 0.6875) return 'Waning Gibbous';
-  if (phase < 0.8125) return 'Last Quarter';
-  return 'Waning Crescent';
-}
-
-function MoonPhaseIcon({ phase, cx, cy, r = 9 }) {
-  const offX = r * Math.cos(phase * 2 * Math.PI);
-  const isWaxing = phase < 0.5;
-  const clipX = isWaxing ? cx - r : cx;
-  const id = `moon-clip-${Math.round(phase * 1000)}`;
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={r + 3} fill="rgba(176,196,222,0.15)" />
-      <circle cx={cx} cy={cy} r={r} fill="#dce8f5" />
-      <clipPath id={id}>
-        <rect x={clipX} y={cy - r} width={r} height={r * 2} />
-      </clipPath>
-      <circle cx={cx + offX} cy={cy} r={r} fill="#1e2840" clipPath={`url(#${id})`} />
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(176,196,222,0.35)" strokeWidth="0.5" />
-    </g>
-  );
-}
-
 function HourlyCard({ hr, units }) {
   return (
     <div
@@ -178,11 +127,7 @@ function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh, u
       </div>
       <div style={{ fontSize: 22, margin: '8px 0 4px' }} aria-hidden="true">{day.icon}</div>
       <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-        {formatTempParts(day.isToday
-          ? (currentTemp != null && currentTemp >= (day.tempMax ?? -Infinity)
-              ? Math.max(currentTemp, todayObservedHigh ?? currentTemp)
-              : (day.tempMax ?? todayObservedHigh))
-          : day.tempMax, units).value}°
+        {formatTempParts(day.isToday ? todayHigh(day.tempMax, todayObservedHigh, currentTemp) : day.tempMax, units).value}°
       </div>
       <div style={{ fontSize: 11, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>
         {formatTempParts(day.tempMin, units).value}°
@@ -253,7 +198,7 @@ function ForecastDayInsight({ insight, isLoading }) {
   );
 }
 
-export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, airQuality, lat, lon, todayObservedHigh, stationId, sourceType, currentTemp, units }) {
+export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQuality, lat, lon, todayObservedHigh, stationId, sourceType, currentTemp, units }) {
   const scrollRef = useRef(null);
   const groupRefs = useRef([]);
   const [activeLabel, setActiveLabel] = useState(null);
@@ -452,162 +397,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
 
       <ForecastDayInsight insight={dayInsight} isLoading={dayInsightLoading} />
 
-      {/* Sunrise / Sunset — arc progress; flips to Moon card after dusk */}
-      {lat != null && lon != null && (() => {
-        const sunTimes = SunCalc.getTimes(new Date(), lat, lon);
-        const rise = sunTimes.sunrise.toISOString();
-        const set  = sunTimes.sunset.toISOString();
-        const daylight = fmtDaylight(rise, set);
-
-        const dusk = sunTimes.dusk;
-        const showMoon = dusk instanceof Date && isFinite(dusk) && Date.now() > dusk.getTime();
-
-        // ── SUN CARD ──────────────────────────────────────────────────────────
-        if (!showMoon) {
-          const riseMs = rise ? new Date(rise).getTime() : null;
-          const setMs  = set  ? new Date(set).getTime()  : null;
-          const rawProgress = (riseMs && setMs) ? (Date.now() - riseMs) / (setMs - riseMs) : null;
-          const progress = rawProgress != null ? Math.max(0, Math.min(0.9999, rawProgress)) : null;
-          const cx = 100, cy = 84, r = 74;
-          const dotX = progress != null ? cx + r * Math.cos(Math.PI * (1 - progress)) : null;
-          const dotY = progress != null ? cy - r * Math.sin(Math.PI * (1 - progress)) : null;
-
-          return (
-            <div className="y-card">
-              <div className="y-label">Sun</div>
-
-              <svg viewBox="0 0 200 88" style={{ width: '100%', display: 'block' }}>
-                <path
-                  d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
-                  fill="none" stroke="var(--border)" strokeWidth="2" strokeLinecap="round"
-                />
-                {progress != null && progress > 0 && dotX != null && dotY != null && (
-                  <path
-                    d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${dotX} ${dotY}`}
-                    fill="none" stroke="#f5c518" strokeWidth="2" strokeLinecap="round"
-                  />
-                )}
-                <line x1={cx - r - 8} y1={cy} x2={cx + r + 8} y2={cy} stroke="var(--border)" strokeWidth="1" />
-                {dotX != null && dotY != null && (
-                  <g transform={`translate(${dotX}, ${dotY})`}>
-                    <circle r="11" fill="rgba(245,197,24,0.18)" />
-                    {[0, 45, 90, 135, 180, 225, 270, 315].map(deg => {
-                      const rad = (deg * Math.PI) / 180;
-                      return (
-                        <line key={deg}
-                          x1={Math.cos(rad) * 6} y1={Math.sin(rad) * 6}
-                          x2={Math.cos(rad) * 9} y2={Math.sin(rad) * 9}
-                          stroke="#f5c518" strokeWidth="1.5" strokeLinecap="round"
-                        />
-                      );
-                    })}
-                    <circle r="4" fill="#f5c518" />
-                  </g>
-                )}
-              </svg>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                    {fmtSunTime(rise)}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-                    Sunrise
-                  </div>
-                  {sunTimes && (
-                    <div style={{ fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)', marginTop: 3, opacity: 0.7 }}>
-                      {fmtSunTime(sunTimes.dawn)} first light
-                    </div>
-                  )}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                    {fmtSunTime(set)}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-                    Sunset
-                  </div>
-                  {sunTimes && (
-                    <div style={{ fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)', marginTop: 3, opacity: 0.7 }}>
-                      last light {fmtSunTime(sunTimes.dusk)}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {daylight && (
-                <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', marginTop: 8 }}>
-                  {daylight}
-                </div>
-              )}
-            </div>
-          );
-        }
-
-        // ── MOON CARD ─────────────────────────────────────────────────────────
-        const moonWindow = resolveMoonWindow(lat, lon);
-        const moonIllum  = SunCalc.getMoonIllumination(new Date());
-        const moonRiseMs = moonWindow.rise?.getTime() ?? null;
-        const moonSetMs  = moonWindow.set?.getTime()  ?? null;
-        const moonRaw    = (moonRiseMs && moonSetMs) ? (Date.now() - moonRiseMs) / (moonSetMs - moonRiseMs) : null;
-        const moonProgress = moonRaw != null ? Math.max(0, Math.min(0.9999, moonRaw)) : null;
-
-        const cx = 100, cy = 84, r = 74;
-        const moonDotX = moonProgress != null ? cx + r * Math.cos(Math.PI * (1 - moonProgress)) : null;
-        const moonDotY = moonProgress != null ? cy - r * Math.sin(Math.PI * (1 - moonProgress)) : null;
-        const phaseName = moonPhaseName(moonIllum.phase);
-        const illumPct  = Math.round(moonIllum.fraction * 100);
-
-        return (
-          <div className="y-card">
-            <div className="y-label">Moon</div>
-
-            <svg viewBox="0 0 200 88" style={{ width: '100%', display: 'block' }}>
-              <path
-                d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
-                fill="none" stroke="var(--border)" strokeWidth="2" strokeLinecap="round"
-              />
-              {moonProgress != null && moonProgress > 0 && moonDotX != null && moonDotY != null && (
-                <path
-                  d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${moonDotX} ${moonDotY}`}
-                  fill="none" stroke="#b0c4de" strokeWidth="2" strokeLinecap="round"
-                />
-              )}
-              <line x1={cx - r - 8} y1={cy} x2={cx + r + 8} y2={cy} stroke="var(--border)" strokeWidth="1" />
-              {moonDotX != null && moonDotY != null && (
-                <MoonPhaseIcon phase={moonIllum.phase} cx={moonDotX} cy={moonDotY} r={9} />
-              )}
-            </svg>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                  {moonWindow.alwaysDown ? '--'
-                    : moonWindow.rise ? fmtMoonTime(moonWindow.rise)
-                    : moonWindow.moonUp ? 'Already up' : '--'}
-                </div>
-                <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-                  Moonrise
-                </div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--tp)' }}>{phaseName}</div>
-                <div style={{ fontSize: 9, color: 'var(--tm)', marginTop: 1 }}>{illumPct}% illuminated</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                  {moonWindow.alwaysUp ? 'Always up'
-                    : moonWindow.alwaysDown ? 'Always down'
-                    : fmtMoonTime(moonWindow.set)}
-                </div>
-                <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-                  Moonset
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <SunMoonCard lat={lat} lon={lon} />
 
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', padding: '6px 0 4px', letterSpacing: '0.3px' }}>
         TWC Daily Forecast API

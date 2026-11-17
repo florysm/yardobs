@@ -3,6 +3,7 @@
 Last updated: 2026-11-17
 
 <!-- Run /codecleaner to populate this file. Run /debtpayer to address one item. -->
+<!-- Item numbers are stable: resolved items are removed, not renumbered. -->
 
 ## High Priority
 
@@ -52,10 +53,6 @@ Data helpers, 4 presentational sub-components, a 125-line pure YoY narrative blo
 
 - `src/components/TrendsTab.jsx` overall
 
-**7. ForecastTab.jsx (~617 lines) mixes several jobs; sun and moon cards duplicate the arc scaffold**
-
-Hourly grouping + iOS pixel-width layout, prompt builders, moon-phase math, the sun/moon SVG cards and the day-insight effect share one file. The sun/moon section is a 155-line inline IIFE (`ForecastTab.jsx:456-610`) whose only closure deps are `lat`/`lon` — a clean `<SunMoonCard>` extraction. Within it, `cx=100, cy=84, r=74`, the progress clamp, dot trig, base/filled arcs, horizon line and time+caption pairs are duplicated between sun (`:469-527`) and moon (`:552-603`). `chartColors` is accepted at `:256` but unused. Large change — see `TechDebt-LargeChanges.md`.
-
 **8. Day-part and time-window vocabulary defined in more than one place**
 
 `insightVocab.js` `DAY_PARTS` says it's "the only day-part vocabulary", but TrendsTab's `dayPhase` (`TrendsTab.jsx:236-241`: morning <10, midday <14, afternoon <19) is a second one used in the YoY text. The AQI daytime window is `AQI_DAY_START/END = 8/20` in `forecastNormalize.js:63-64` and hard-coded as "8a–8p" in the prompt at `api/insight.js:394`; the activity arc uses its own `hour < 7 || hour > 18` (`scoring.js:263`). Rain-probability thresholds live in 4 places (`insightVocab.js:103-108`, `scoring.js:232-238`, `scoring.js:69`, `ForecastTab.jsx:31`), and `scoreColor` hard-codes the 65/50 bands instead of calling `scoreBand`.
@@ -70,7 +67,7 @@ Hourly grouping + iOS pixel-width layout, prompt builders, moon-phase math, the 
 
 **10. Repeated inline style objects instead of `.y-*` classes**
 
-Beyond the existing `.y-*` set: the mono value style (`fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)'`) ×7 (`ForecastTab.jsx:153, 511, 524, 584, 598`, `TrendsTab.jsx:765`, `ActivityScoreCard.jsx:35`); tiny uppercase labels ×9 with 4 different letter-spacings; tab section headers ×3 (`ForecastTab.jsx:384, 434`, `TrendsTab.jsx:604`); the "API source" footer ×3 (`NowTab.jsx:68`, `ForecastTab.jsx:612`, `TrendsTab.jsx:783` — ForecastTab's also always says "TWC" even in preview, where the forecast comes from Open-Meteo); pulse skeleton ×3; the selectable chip duplicated in `SettingsDrawer.jsx:265-279, 295-309` though `.y-pill`/`.y-msel` exist. Candidates: `.y-value`, `.y-eyebrow`, `.y-section-title`, `.y-source`, `.y-skeleton`.
+Beyond the existing `.y-*` set: the mono value style (`fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)'`) ×4 (`ForecastTab.jsx` DailyCard, `TrendsTab.jsx:765`, `ActivityScoreCard.jsx:35`, and the `VALUE_STYLE` constant in `SunMoonCard.jsx`); tiny uppercase labels ×9 with 4 different letter-spacings; tab section headers ×3 (two in `ForecastTab.jsx`, `TrendsTab.jsx:604`); the "API source" footer ×3 (`NowTab.jsx:68`, end of `ForecastTab.jsx`, `TrendsTab.jsx:783` — ForecastTab's also always says "TWC" even in preview, where the forecast comes from Open-Meteo); pulse skeleton ×3; the selectable chip duplicated in `SettingsDrawer.jsx:265-279, 295-309` though `.y-pill`/`.y-msel` exist. Candidates: `.y-value`, `.y-eyebrow`, `.y-section-title`, `.y-source`, `.y-skeleton`.
 
 **11. Sky-condition thresholds and partly-cloudy codes duplicated between App and HeroCard**
 
@@ -92,10 +89,6 @@ Beyond the existing `.y-*` set: the mono value style (`fontSize: 14, fontWeight:
 
 `hourly-forecast-twc` (`:91-94`) and `air-quality` (`:106-111`) have no client callers — `useWeather.js:304` calls Open-Meteo AQ directly with a URL hand-kept in step with the proxy's. The 400 message (`:120`) doesn't list `history-recent`. Rate limiting is implemented twice in different styles (fixed window here, sliding log in `api/insight.js:8-29`) with the IP-extraction line duplicated (`insight.js:424`, `weather.js:46`); both share the clock-jump bug in `KnownBugs.md`, so one `api/lib/rateLimit.js` fixes it once.
 
-**16. hPa↔inHg constant `0.02953` as a raw literal in 2 files**
-
-`src/hooks/useWeather.js:175` multiplies by it; `src/utils/units.js:73` divides by it. A single exported `HPA_PER_INHG` removes the risk.
-
 **17. Pure modules with real logic but no tests**
 
-`src/utils/weatherIcons.js` (`wmoToTwc`, 12 branches — the WMO 80/81 bug in `KnownBugs.md` would have been caught), `parseChangelog.js`, `storageKeys.js` (key builders that cache invalidation depends on), `apiFetch.js`, `geocode.js` (the "°N" fallback bug), and `api/weather.js` (no test at all). Also `utils/compass.js` sits alone at the repo root outside `src/`, imported mid-file by `format.js:24`.
+`src/utils/weatherIcons.js` (`wmoToTwc`, 12 branches — the WMO 80/81 bug in `KnownBugs.md` would have been caught), `parseChangelog.js`, `storageKeys.js` (key builders that cache invalidation depends on), `apiFetch.js`, and `api/weather.js` (no test at all). Also `utils/compass.js` sits alone at the repo root outside `src/`, imported mid-file by `format.js:24`.

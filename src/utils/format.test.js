@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import {
-  aqiCategory, fmt, degreesToCompass, getLocaleHour12,
+  aqiCategory, fmt, fixed, degreesToCompass, getLocaleHour12,
   fmtHourShort, fmtHourIso, fmtTimeTick, fmtSunTime,
 } from './format';
 
@@ -65,5 +65,18 @@ describe('time formatters (12h locale, TZ=UTC)', () => {
   it('fmtSunTime', () => {
     expect(fmtSunTime('2026-07-14T13:30:00Z')).toBe('1:30 PM');
     expect(fmtSunTime(null)).toBe('--');
+  });
+});
+
+describe('fixed', () => {
+  it('drops the sign when a negative rounds to zero', () => {
+    expect(fixed(-0.3)).toBe('0');
+    expect(fixed(-0.04, 1)).toBe('0.0');
+    expect(fmt(-0.2)).toBe('0');
+  });
+  it('keeps real negatives and positives', () => {
+    expect(fixed(-0.6)).toBe('-1');
+    expect(fixed(-1.25, 1)).toBe('-1.3');
+    expect(fixed(2.5, 1)).toBe('2.5');
   });
 });

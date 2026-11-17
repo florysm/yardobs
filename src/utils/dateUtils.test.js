@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toDateStr, toISODate, historyCacheUsable, HISTORY_REFRESH_MS } from './dateUtils';
+import { toDateStr, toISODate, historyCacheUsable, HISTORY_REFRESH_MS, addDays, sameDayLastYear, lastYearKey } from './dateUtils';
 
 // TZ=UTC (npm script) means local getters equal the UTC values below.
 const d = (h) => new Date(Date.UTC(2026, 6, 14, h, 30, 0)); // 2026-07-14
@@ -32,5 +32,35 @@ describe('historyCacheUsable', () => {
   it('rejects missing or future timestamps', () => {
     expect(historyCacheUsable('20260714', null, at(14, 9))).toBe(false);
     expect(historyCacheUsable('20260714', at(14, 10), at(14, 9))).toBe(false);
+  });
+});
+
+describe('addDays', () => {
+  it('crosses month and year boundaries', () => {
+    expect(toDateStr(addDays(new Date(Date.UTC(2026, 0, 1, 12)), -1))).toBe('20251231');
+    expect(toDateStr(addDays(new Date(Date.UTC(2024, 1, 28, 12)), 1))).toBe('20240229');
+  });
+  it('does not mutate its input', () => {
+    const base = new Date(Date.UTC(2026, 6, 14, 12));
+    addDays(base, 5);
+    expect(toDateStr(base)).toBe('20260714');
+  });
+});
+
+describe('sameDayLastYear / lastYearKey', () => {
+  it('keeps the calendar day', () => {
+    expect(lastYearKey(new Date(Date.UTC(2026, 10, 17, 12)))).toBe('20251117');
+  });
+  it('maps Feb 29 to Feb 28', () => {
+    expect(lastYearKey(new Date(Date.UTC(2028, 1, 29, 12)))).toBe('20270228');
+  });
+  it('is the same calendar day across a leap year (365 days back would be a day off)', () => {
+    // Mar 1 2024 → Mar 1 2023 spans Feb 29 2024, i.e. 366 days.
+    const mar1 = new Date(Date.UTC(2024, 2, 1, 12));
+    expect(lastYearKey(mar1)).toBe('20230301');
+    expect(toDateStr(addDays(mar1, -365))).toBe('20230302');
+  });
+  it('keeps the time of day', () => {
+    expect(sameDayLastYear(new Date(Date.UTC(2026, 10, 17, 15, 45))).getUTCHours()).toBe(15);
   });
 });

@@ -20,13 +20,6 @@ Open-Meteo hourly data is fetched with `timezone=auto` (location-local, no offse
 - File: `src/utils/outlook.js:100`, `src/utils/scoring.js:244`, `src/utils/scoring.js:257`, `src/utils/forecastNormalize.js:38-43`, `src/components/ForecastTab.jsx:26-50`
 - Impact: user-visible
 
-**TrendsTab range effect refetches on every history update and its loading flag races**
-
-`ensureFetched` depends on the `history` object, so every history write gives it a new identity and re-runs the range effect: `setLoading(true)` again and another uncached `fetchHistoryRecent()` (more with YoY on, all counted against the 30-per-5-min limiter). `fetchHistory` itself is stable since 2026-11-17, so this is now confined to TrendsTab. The effect has no cancel flag, so an earlier run's `.finally(() => setLoading(false))` can clear loading while a later range's fetches are still in flight, rendering a partial chart.
-
-- File: `src/components/TrendsTab.jsx` (`ensureFetched` and the "Range-aware data fetching" effect)
-- Impact: user-visible
-
 **Open-Meteo slight/moderate rain showers shown as heavy rain**
 
 `wmoToTwc` maps all of 80–82 to TWC code 40 (heavy rain), so WMO 80 (slight showers) and 81 show "Heavy Rain"; 56/57 (freezing drizzle) fall into the drizzle bucket instead of freezing. The iOS widget's own mapping calls 80/81 "Rain", so app and widget disagree for the same day.

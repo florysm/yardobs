@@ -5,7 +5,7 @@ import { SOURCE_TYPES } from '../utils/sourceTypes';
 import { insightScope } from '../utils/insightCache';
 import { useInsight } from '../hooks/useInsight';
 import { ICONS, LABELS } from '../utils/weatherIcons';
-import { toDateStr, toISODate } from '../utils/dateUtils';
+import { toISODate, lastYearKey } from '../utils/dateUtils';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildLookahead } from '../utils/outlook';
 import { formatTemp, formatTempParts, formatWindWithCompass, formatPrecipTotal, formatPressure } from '../utils/units';
@@ -269,9 +269,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
       // Forecast-model data (preview, Explore) has no station history to compare.
       let yoyReadings = [];
       if (!isModelData && stationId) {
-        const lastYear = new Date();
-        lastYear.setFullYear(lastYear.getFullYear() - 1);
-        yoyReadings = (await fetchHistoryDaily?.(toDateStr(lastYear))) ?? [];
+        yoyReadings = (await fetchHistoryDaily?.(lastYearKey())) ?? [];
       }
       return {
         type: 'daily', stationId: insightId, placeName: current?.neighborhood ?? null,

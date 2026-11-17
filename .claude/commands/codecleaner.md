@@ -35,8 +35,8 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **Single-definition utilities:**
 
-- `fmt` and `degreesToCompass` are defined only in `src/utils/format.js`; `toDateStr` only in `src/utils/dateUtils.js`; `calcFeelsLike` only in `src/utils/weatherCalc.js` (pure, tested) — **except** `public/widget/yardobs-widget.js`, a standalone Scriptable script that can't import; its copies are expected and tracked as a parity-test gap (TechDebt item 9), not as duplication. Grep for any other second definition. Also flag new pure formulas inline in hooks/components instead of `src/utils/` (still inline as of 2026-11-17: `moonPhaseName`/`fmtDaylight` in ForecastTab, `dayPhase`/`yoyInsight` in TrendsTab, `deriveFromSensors` in HeroCard).
-- Date helpers: `addDays` and a "last year" helper don't exist in `dateUtils.js` yet — tracked as item 5 (three different last-year computations). Once added, every last-year date must go through it.
+- `fmt` and `degreesToCompass` are defined only in `src/utils/format.js`; `toDateStr` only in `src/utils/dateUtils.js`; `calcFeelsLike` only in `src/utils/weatherCalc.js` (pure, tested) — **except** `public/widget/yardobs-widget.js`, a standalone Scriptable script that can't import; its copies are expected and tracked as a parity-test gap (TechDebt item 9), not as duplication. Grep for any other second definition. Also flag new pure formulas inline in hooks/components instead of `src/utils/` (still inline as of 2026-11-17: `deriveFromSensors` in HeroCard; the moon helpers moved to `moon.js`, the YoY note to `yoyInsight.js` and the Trends builders to `trends.js`).
+- Date helpers: `addDays`, `sameDayLastYear` and `lastYearKey` live only in `dateUtils.js` (2026-11-17). Every last-year date goes through them — flag `setFullYear(… - 1)`, `new Date(year - 1, …)`, or `addDays(…, -365/-366)` anywhere else.
 
 **localStorage keys:**
 
@@ -55,7 +55,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 **Vocabularies and code tables (found 2026-11-17):**
 
 - Weather-code mapping: 4 tables disagree (item 4). Once unified, the invariant is one WMO table in `src/utils/weatherIcons.js`; flag any new emoji/label lookup elsewhere.
-- Day parts / time windows: `insightVocab.js` `DAY_PARTS` is meant to be the only vocabulary; TrendsTab `dayPhase`, the AQI 8a–8p window in the prompt text, and 4 rain-probability threshold sets break that (item 8).
+- Day parts / time windows: `insightVocab.js` `DAY_PARTS` is meant to be the only vocabulary; the AQI 8a–8p window in the prompt text, and 4 rain-probability threshold sets break that (item 8).
 - Sky thresholds / partly-cloudy codes duplicated App ↔ HeroCard (item 11).
 - String literals with no constant: profile modes `'station'`/`'preview'`, default activity `'bbq'` (item 13). Source types are single-sourced as `SOURCE_TYPES` in `src/utils/sourceTypes.js` (2026-11-17) — flag any raw `'forecast_model'`/`'pws'` outside it.
 
@@ -66,7 +66,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 - Metric tiles go through the shared `MetricCard` component (`src/components/MetricCard.jsx`); flag any new hand-written label/value/unit card JSX in `NowTab.jsx`, `ForecastTab.jsx`, `TrendsTab.jsx` that duplicates it. (Holds narrowly 2026-11-17 — TrendsTab `DeltaCell`/`.y-stat` tiles and HeroCard's stat strip are near-misses.)
 - Shared visual patterns use the `.y-*` utility classes defined in `src/index.css` (`.y-card`, `.y-metric`, `.y-label`, `.y-pill`, `.y-msel`, `.y-stat`, `.y-pref-row`); flag components re-implementing these with inline styles. BROKEN 2026-11-17 — repeated inline objects (mono value ×7, tiny labels ×9, section headers ×3, API-source footer ×3, skeleton ×3, chips ×2) tracked as item 10. When counting, grep the exact style-object text; a recount is the scope update.
 - The AI-insight flow goes through `useInsight` (`src/hooks/useInsight.js`, 2026-11-17) on the client and `runCachedInsight` in `api/insight.js` on the server. Invariants: no component fetches `/api/insight` or reads/writes insight localStorage directly (use the hook and `readInsightCache`/`writeInsightCache`); no handler calls `callModel` or writes `cache` outside `runCachedInsight`/`cacheSet`; insight keys and the `stationId` sent use `insightScope(current)`.
-- Large components: TrendsTab (~788 lines, item 6) and HeroCard (~470 after `useInsight`). ForecastTab dropped to ~400 lines after `SunMoonCard` was extracted (2026-11-17). Re-measure each scan; flag any other component crossing ~500 lines with mixed fetching + rendering.
+- Large components: HeroCard (~465). TrendsTab dropped from ~800 to ~460 lines (2026-11-17: `useTrendsData`, `utils/trends.js`, `utils/yoyInsight.js`; most of what's left is rendering) and ForecastTab to ~370. Re-measure each scan; flag any other component crossing ~500 lines with mixed fetching + rendering.
 
 **Constant arrays:**
 
@@ -86,7 +86,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **Extraction candidates:**
 
-- Grep component files for large (100+ line) self-contained inner components or pure-function blocks defined inline (like `StationForm` once was) — if one has no closure dependencies on the parent, it is an extraction candidate. Tracked 2026-11-17: TrendsTab's `dayPhase`/`lyObsAtCurrentHour`/`yoyInsight` block (125 lines, item 6).
+- Grep component files for large (100+ line) self-contained inner components or pure-function blocks defined inline (like `StationForm` once was) — if one has no closure dependencies on the parent, it is an extraction candidate. (None open as of 2026-11-17.)
 - API-layer invariants above (single fetch path, `applyCors()` only, bounded insight cache) re-verified 2026-11-17 — all holding.
 
 **Tests and tooling:**

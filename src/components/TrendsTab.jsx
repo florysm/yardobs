@@ -1,10 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { toDateStr, toISODate } from '../utils/dateUtils';
 import { fmtTimeTick } from '../utils/format';
-import { UNITS, convertTemp, convertPressure, convertPrecip, tempUnitLabel, formatPrecipTotal } from '../utils/units';
+import {
+  UNITS, convertTemp, convertPrecip, tempUnitLabel, precipDigits, precipUnitLabel, formatPrecipValue,
+} from '../utils/units';
+import { todayHigh } from '../utils/weatherCalc';
+import { yoyInsight, lyObsAtHour } from '../utils/yoyInsight';
+import {
+  stats, buildHourlyRows, buildDailyRows, dayPrecip, sumPrecip, weeklyGroups, weekdayLabel,
+  todayPrecipFromRecent,
+} from '../utils/trends';
+import { useTrendsData } from '../hooks/useTrendsData';
 
 const RANGES = [
   { id: '24h', label: '24h' },
@@ -21,72 +29,15 @@ const METRICS = [
 
 function metricUnit(id, units) {
   if (id === 'temp')     return tempUnitLabel(units);
-  if (id === 'precip')   return units === UNITS.METRIC ? ' mm' : '"';
+  if (id === 'precip')   return precipUnitLabel(units);
   if (id === 'pressure') return units === UNITS.METRIC ? ' hPa' : ' inHg';
   return '%';
 }
 
 function metricDigits(id, units) {
-  if (id === 'precip')   return units === UNITS.METRIC ? 1 : 2;
+  if (id === 'precip')   return precipDigits(units);
   if (id === 'pressure') return units === UNITS.METRIC ? 0 : 2;
   return 0;
-}
-
-
-function addDays(date, n) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-
-// Hourly history fields: tempAvg/humidityAvg/pressureMax (not temp/humidity/pressure)
-// Converts to display units once here so all downstream chart/stat code (which
-// has no unit concept of its own) just operates on already-correct numbers.
-function mergeHourly(obs = [], units) {
-  return obs.map(o => ({
-    time:     o.obsTimeLocal?.slice(11, 16) ?? '',
-    date:     o.obsTimeLocal?.slice(0, 10) ?? '',  // YYYY-MM-DD, for YoY hour matching
-    hour:     o.obsTimeLocal?.slice(11, 13) ?? '',
-    temp:     convertTemp(o.imperial?.tempAvg ?? null, units),
-    humidity: o.humidityAvg           ?? null,
-    pressure: convertPressure(o.imperial?.pressureMax ?? null, units),
-    precip:   convertPrecip(o.imperial?.precipTotal ?? null, units),
-  }));
-}
-
-// Daily summary — one observation object → one chart row
-function mergeDay(o, units) {
-  if (!o) return null;
-  return {
-    time:     o.obsTimeLocal?.slice(5, 10) ?? '',
-    temp:     convertTemp(o.imperial?.tempAvg ?? null, units),
-    tempHigh: convertTemp(o.imperial?.tempHigh ?? null, units),
-    tempLow:  convertTemp(o.imperial?.tempLow ?? null, units),
-    humidity: o.humidityAvg           ?? null,
-    pressure: convertPressure(o.imperial?.pressureMax ?? null, units),
-    precip:   convertPrecip(o.imperial?.precipTotal ?? null, units),
-  };
-}
-
-function fixMidnightReset(arr) {
-  for (let i = 1; i < arr.length; i++) {
-    if (arr[i].precip != null && arr[i - 1].precip != null && arr[i].precip < arr[i - 1].precip) {
-      const offset = arr[i - 1].precip;
-      return arr.map((row, j) =>
-        j >= i ? { ...row, precip: row.precip != null ? row.precip + offset : null } : row
-      );
-    }
-  }
-  return arr;
-}
-
-function stats(arr) {
-  const vals = arr.filter(v => v != null);
-  if (!vals.length) return { high: null, low: null, avg: null };
-  const high = Math.max(...vals);
-  const low  = Math.min(...vals);
-  const avg  = vals.reduce((a, b) => a + b, 0) / vals.length;
-  return { high, low, avg };
 }
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -112,8 +63,7 @@ function BarChart({ values, labels, lyValues = null, height = 70, units }) {
   const max = Math.max(...allVals, 0.01);
   const barAreaH = height - 30;
   const scaleH = v => Math.max((v / max) * barAreaH, v > 0 ? 4 : 1);
-  const digits = units === UNITS.METRIC ? 1 : 2;
-  const unit   = units === UNITS.METRIC ? 'mm' : '"';
+  const label = v => formatPrecipValue(v, units, { spaced: false });
 
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height, margin: '10px 0 6px' }}>
@@ -127,7 +77,7 @@ function BarChart({ values, labels, lyValues = null, height = 70, units }) {
               {/* Current year */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <div style={{ fontSize: 7, fontFamily: 'var(--font-mono)', lineHeight: 1, color: 'var(--accent)', visibility: v > 0 ? 'visible' : 'hidden' }}>
-                  {v.toFixed(digits)}{unit}
+                  {label(v)}
                 </div>
                 <div style={{
                   width: '100%', height: curH,
@@ -139,7 +89,7 @@ function BarChart({ values, labels, lyValues = null, height = 70, units }) {
               {ly != null && (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                   <div style={{ fontSize: 7, fontFamily: 'var(--font-mono)', lineHeight: 1, color: 'var(--yoy)', visibility: ly > 0 ? 'visible' : 'hidden' }}>
-                    {(ly ?? 0).toFixed(digits)}{unit}
+                    {label(ly ?? 0)}
                   </div>
                   <div style={{
                     width: '100%', height: lyH || 1,
@@ -167,24 +117,22 @@ function RainfallSummaryCard({ range, currentTotal, lyTotal, units }) {
   const title = range === '24h' ? "Today's Rainfall"
               : range === '7d'  ? '7-Day Rainfall'
               :                   '30-Day Rainfall';
-  const digits = units === UNITS.METRIC ? 1 : 2;
-  const unit   = units === UNITS.METRIC ? ' mm' : '"';
   return (
     <div className="y-card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <div className="y-label">{title}</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--tp)', fontWeight: 500 }}>
-            {currentTotal != null ? `${currentTotal.toFixed(digits)}${unit}` : '—'}
+            {formatPrecipValue(currentTotal, units)}
           </span>
           {lyTotal != null && (
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tm)' }}>
-              LY: {lyTotal.toFixed(digits)}{unit}
+              LY: {formatPrecipValue(lyTotal, units)}
             </span>
           )}
           {delta != null && (
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 500, color: deltaColor }}>
-              {sign}{delta.toFixed(digits)}{unit}
+              {sign}{formatPrecipValue(delta, units)}
             </span>
           )}
         </div>
@@ -193,24 +141,12 @@ function RainfallSummaryCard({ range, currentTotal, lyTotal, units }) {
   );
 }
 
-function summarize(obs = []) {
-  if (!obs.length) return null;
-  const highs   = obs.map(o => o.imperial?.tempHigh).filter(v => v != null);
-  const lows    = obs.map(o => o.imperial?.tempLow).filter(v => v != null);
-  const precips = obs.map(o => o.imperial?.precipTotal).filter(v => v != null);
-  return {
-    tempHigh:    highs.length   ? Math.max(...highs)   : null,
-    tempLow:     lows.length    ? Math.min(...lows)     : null,
-    precipTotal: precips.length ? Math.max(...precips)  : null,
-  };
-}
-
 // thisVal/lastVal are always raw imperial (from `current`/summarize()); this
 // component converts to display units itself so callers don't need to.
 function DeltaCell({ label, thisVal, lastVal, kind, units }) {
   const convert = kind === 'precip' ? convertPrecip : convertTemp;
-  const digits  = kind === 'precip' ? (units === UNITS.METRIC ? 1 : 2) : 0;
-  const unit    = kind === 'precip' ? (units === UNITS.METRIC ? ' mm' : '"') : tempUnitLabel(units);
+  const digits  = kind === 'precip' ? precipDigits(units) : 0;
+  const unit    = kind === 'precip' ? precipUnitLabel(units) : tempUnitLabel(units);
   const cThis   = convert(thisVal, units);
   const cLast   = convert(lastVal, units);
   const factor = Math.pow(10, digits);
@@ -235,268 +171,21 @@ function DeltaCell({ label, thisVal, lastVal, kind, units }) {
   );
 }
 
-function dayPhase(hour) {
-  if (hour < 10) return 'morning';
-  if (hour < 14) return 'midday';
-  if (hour < 19) return 'afternoon';
-  return 'evening';
-}
-
-function lyObsAtCurrentHour(lyHourlyObs) {
-  if (!lyHourlyObs?.length) return null;
-  const h = new Date().getHours();
-  return lyHourlyObs.reduce((best, obs) => {
-    const obsHour = parseInt((obs.obsTimeLocal ?? '').split(' ')[1]?.split(':')[0] ?? '-1', 10);
-    const bestHour = parseInt((best.obsTimeLocal ?? '').split(' ')[1]?.split(':')[0] ?? '-1', 10);
-    return Math.abs(obsHour - h) < Math.abs(bestHour - h) ? obs : best;
-  }, lyHourlyObs[0]);
-}
-
-function yoyInsight({ currentTemp, todayPrecip, lyHourlyObs, lyDailyHigh, lyDailyPrecip, forecastHigh, todayHigh, units }) {
-  const hour = new Date().getHours();
-  const phase = dayPhase(hour);
-  const lyObs = lyObsAtCurrentHour(lyHourlyObs);
-  const lyHourPrecip = lyObs?.imperial?.precipTotal ?? null;
-  const dateStr = new Date().toLocaleDateString([], { month: 'long', day: 'numeric' });
-
-  // Temperature: converting each raw-imperial input once up front is safe —
-  // an affine F→C transform preserves ordering and (after independent
-  // rounding) differences, so all the comparison/diff logic below is unchanged.
-  // Precipitation thresholds (0.01"/0.1") are inches-specific and must stay
-  // raw imperial for the comparisons; only display uses formatPrecipTotal().
-  currentTemp  = convertTemp(currentTemp, units);
-  lyDailyHigh  = convertTemp(lyDailyHigh, units);
-  forecastHigh = convertTemp(forecastHigh, units);
-  todayHigh    = convertTemp(todayHigh, units);
-  const lyHourTemp = convertTemp(lyObs?.imperial?.tempAvg ?? lyObs?.imperial?.tempHigh ?? null, units);
-
-  let lead = null;
-  let precipClause = null;
-
-  if (phase === 'morning') {
-    if (currentTemp == null || lyHourTemp == null) return null;
-    const roundedDiff = Math.round(currentTemp) - Math.round(lyHourTemp);
-    if (roundedDiff === 0) {
-      lead = `Temperature is consistent with last ${dateStr} at this hour — ${Math.round(currentTemp)}° now.`;
-    } else {
-      const dir = roundedDiff > 0 ? 'Warmer' : 'Cooler';
-      lead = `${dir} start than last ${dateStr} — ${Math.round(currentTemp)}° now vs ${Math.round(lyHourTemp)}° at this time last year.`;
-    }
-    const todayP = todayPrecip ?? 0;
-    const lyP = lyHourPrecip ?? 0;
-    if (todayP >= 0.01 && lyP >= 0.1) precipClause = `${formatPrecipTotal(todayP, units)} of rain so far vs ${formatPrecipTotal(lyP, units)} last year at this time.`;
-    else if (todayP >= 0.01) precipClause = `${formatPrecipTotal(todayP, units)} of rain already; last year was dry at this hour.`;
-    else if (lyP >= 0.1) precipClause = `Dry so far, but last year had ${formatPrecipTotal(lyP, units)} by this time.`;
-
-  } else if (phase === 'midday') {
-    if (currentTemp == null || lyHourTemp == null) return null;
-    const absDiff = Math.abs(Math.round(currentTemp) - Math.round(lyHourTemp));
-    const dir = currentTemp >= lyHourTemp ? 'above' : 'below';
-    if (absDiff === 0) {
-      if (forecastHigh != null && lyDailyHigh != null) {
-        const fDir = forecastHigh >= lyDailyHigh ? 'top' : 'fall short of';
-        lead = `Temperature is currently consistent with last year, but today's forecast high of ${Math.round(forecastHigh)}° would ${fDir} last year's ${Math.round(lyDailyHigh)}°.`;
-      } else {
-        lead = `Temperature is currently consistent with last year.`;
-      }
-    } else if (forecastHigh != null && lyDailyHigh != null) {
-      const fDir = forecastHigh >= lyDailyHigh ? 'top' : 'fall short of';
-      const sameDirection = (dir === 'above' && forecastHigh >= lyDailyHigh) || (dir === 'below' && forecastHigh < lyDailyHigh);
-      const conj = sameDirection ? 'and' : 'but';
-      lead = `Running ${absDiff}° ${dir} last year right now, ${conj} today's forecast high of ${Math.round(forecastHigh)}° would ${fDir} last year's ${Math.round(lyDailyHigh)}°.`;
-    } else if (lyDailyHigh != null) {
-      lead = `Running ${absDiff}° ${dir} last year at this hour vs a ${Math.round(lyDailyHigh)}° high last ${dateStr}.`;
-    } else {
-      lead = `Running ${absDiff}° ${dir} last year at this hour.`;
-    }
-    const todayP = todayPrecip ?? 0;
-    const lyP = lyHourPrecip ?? 0;
-    if (todayP >= 0.01 && lyP >= 0.1) precipClause = `${formatPrecipTotal(todayP, units)} of rain so far vs ${formatPrecipTotal(lyP, units)} last year by now.`;
-    else if (todayP >= 0.01) precipClause = `${formatPrecipTotal(todayP, units)} of rain already; last year was dry at this point.`;
-    else if (lyP >= 0.1) precipClause = `Dry so far; last year had ${formatPrecipTotal(lyP, units)} by now.`;
-
-  } else if (phase === 'afternoon') {
-    if (currentTemp == null) return null;
-    if (lyDailyHigh != null && currentTemp > lyDailyHigh) {
-      lead = `Already warmer than last year's high of ${Math.round(lyDailyHigh)}° — currently ${Math.round(currentTemp)}° and still climbing.`;
-    } else if (lyHourTemp != null) {
-      const roundedDiff = Math.round(currentTemp) - Math.round(lyHourTemp);
-      if (roundedDiff === 0) {
-        lead = `Temperature is consistent with last ${dateStr} at this hour — ${Math.round(currentTemp)}° now.`;
-      } else {
-        const dir = roundedDiff > 0 ? 'Warmer' : 'Cooler';
-        lead = `${dir} afternoon than last ${dateStr} — ${Math.round(currentTemp)}° now vs ${Math.round(lyHourTemp)}° at this time last year.`;
-      }
-    } else if (lyDailyHigh != null) {
-      const roundedDiff = Math.round(currentTemp) - Math.round(lyDailyHigh);
-      if (roundedDiff === 0) {
-        lead = `Temperature matching last year's high of ${Math.round(lyDailyHigh)}° — currently ${Math.round(currentTemp)}°.`;
-      } else {
-        const dir = roundedDiff > 0 ? 'Warmer' : 'Cooler';
-        lead = `${dir} afternoon than last ${dateStr} — currently ${Math.round(currentTemp)}° vs last year's high of ${Math.round(lyDailyHigh)}°.`;
-      }
-    } else {
-      return null;
-    }
-    const todayP = todayPrecip ?? 0;
-    const lyP = lyHourPrecip ?? lyDailyPrecip ?? 0;
-    if (todayP >= 0.01 && lyP >= 0.1) precipClause = `${formatPrecipTotal(todayP, units)} of rain vs ${formatPrecipTotal(lyP, units)} last year by now.`;
-    else if (todayP >= 0.01) precipClause = `${formatPrecipTotal(todayP, units)} of rain so far; last year was dry at this point.`;
-    else if (lyP >= 0.1) precipClause = `Dry so far; last year had ${formatPrecipTotal(lyP, units)} by now.`;
-
-  } else {
-    const high = todayHigh ?? currentTemp;
-    if (high == null || lyDailyHigh == null) return null;
-    const dir = high >= lyDailyHigh ? 'Warmer' : 'Cooler';
-    lead = `${dir} day than last year: peaked at ${Math.round(high)}° vs ${Math.round(lyDailyHigh)}° last ${dateStr}.`;
-    const todayP = todayPrecip ?? 0;
-    const lyP = lyDailyPrecip ?? 0;
-    if (todayP >= 0.1 || lyP >= 0.1) {
-      const rainDir = todayP >= lyP ? 'wetter' : 'drier';
-      precipClause = `Also ${rainDir} — ${formatPrecipTotal(todayP, units)} vs ${formatPrecipTotal(lyP, units)} last year.`;
-    }
-  }
-
-  if (!lead) return null;
-  return precipClause ? `${lead} ${precipClause}` : lead;
-}
-
 export default function TrendsTab({ stationId, current, forecast, fetchHistory, history, fetchHistoryRecent, historyRecent, fetchHistoryDaily, historyDaily, chartColors, units }) {
   const [range,   setRange]   = useState('24h');
   const [metric,  setMetric]  = useState('temp');
   const [showYoY, setShowYoY] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => { setShowYoY(false); }, [metric, range]);
 
-  const [yoy, setYoy] = useState({ today: null, lastYear: null, lyRaw: [] });
+  const { loading, yoy, keys } = useTrendsData({
+    stationId, range, metric, showYoY, fetchHistory, fetchHistoryRecent, fetchHistoryDaily,
+  });
+  const { today, rangeKeys, lyRangeKeys, last7, lyRainKeys } = keys;
 
-  // fetchHistory is stable per station (and serves today from a 15-min cache),
-  // so this re-runs only when the station or data mode changes.
-  useEffect(() => {
-    if (!stationId) return;
-    let cancelled = false;
-    const todayKey = toDateStr(new Date());
-    const now = new Date();
-    const lyDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-    // Feb 29 in a non-leap year rolls to Mar 1 — clamp back to Feb 28 instead
-    if (lyDate.getMonth() !== now.getMonth()) lyDate.setDate(0);
-    const lyKey = toDateStr(lyDate);
-    Promise.all([fetchHistory(todayKey), fetchHistory(lyKey)])
-      .then(([t, l]) => {
-        if (!cancelled) setYoy({ today: summarize(t), lastYear: summarize(l), lyRaw: l ?? [] });
-      });
-    return () => { cancelled = true; };
-  }, [stationId, fetchHistory]);
-
-  const today          = new Date();
-  const lyKey          = toDateStr(addDays(today, -365));
-  const lyYesterdayKey = toDateStr(addDays(today, -366));
-  const lyDailyKeys    = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(today, -(6 - i) - 365)));
-
-  const lyRainKeys = range === '24h'
-    ? [lyKey]
-    : Array.from(
-        { length: range === '30d' ? 30 : 7 },
-        (_, i) => toDateStr(addDays(today, -((range === '30d' ? 29 : 6) - i) - 365))
-      );
-
-  // Last 7 date keys for the rainfall bar chart (always kept fresh)
-  const last7Keys = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(today, -(6 - i))));
-
-  const ensureFetched = useCallback(async (key) => {
-    if (!history[key]) await fetchHistory(key);
-  }, [history, fetchHistory]);
-
-  // Prefetch last 7 daily summaries on mount for the rainfall bar
-  useEffect(() => {
-    if (!stationId) return;
-    last7Keys.forEach(k => fetchHistoryDaily(k));
-  // fetchHistoryDaily is stable (only depends on stationId via ref cache)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stationId, fetchHistoryDaily]);
-
-  // Range-aware data fetching
-  useEffect(() => {
-    if (!stationId) return;
-    setLoading(true);
-    let tasks;
-    if (range === '24h') {
-      tasks = [fetchHistoryRecent()];
-      if (showYoY) tasks.push(ensureFetched(lyKey), ensureFetched(lyYesterdayKey));
-    } else {
-      const count = range === '30d' ? 30 : 7;
-      const keys = Array.from({ length: count }, (_, i) =>
-        toDateStr(addDays(new Date(), -(count - 1 - i)))
-      );
-      tasks = keys.map(k => fetchHistoryDaily(k));
-      if (showYoY && range === '7d') {
-        tasks.push(...lyDailyKeys.map(k => fetchHistoryDaily(k)));
-      }
-      if (showYoY && range === '30d') {
-        tasks.push(...lyRainKeys.map(k => fetchHistoryDaily(k)));
-      }
-    }
-    Promise.all(tasks).finally(() => setLoading(false));
-  }, [stationId, range, lyKey, lyYesterdayKey, showYoY, ensureFetched, fetchHistoryRecent, fetchHistoryDaily]);
-
-  // Lazily fetch LY daily data for the rainfall comparison card
-  useEffect(() => {
-    if (metric !== 'precip' || !stationId) return;
-    lyRainKeys.forEach(k => fetchHistoryDaily(k));
-  // lyRainKeys omitted: strings are stable day-to-day; fetchHistoryDaily dedupes via ref cache
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stationId, metric, range, fetchHistoryDaily]);
-
-  // Build chart data based on selected range
-  let chartData;
-  if (range === '24h') {
-    const hourlyObs = fixMidnightReset(mergeHourly(historyRecent, units).slice(-24));
-    // The rolling 24h spans yesterday and today, so match each row to the same
-    // day-a-year-ago and the same hour — pairing by array position would offset
-    // the two lines by the current hour.
-    const byHour = obs => Object.fromEntries(mergeHourly(obs ?? [], units).map(r => [r.hour, r]));
-    const lyByDate = {
-      [toISODate(today)]:              byHour(history[lyKey]),
-      [toISODate(addDays(today, -1))]: byHour(history[lyYesterdayKey]),
-    };
-    chartData = hourlyObs.map(row => ({
-      ...row,
-      [`ly_${metric}`]: lyByDate[row.date]?.[row.hour]?.[metric] ?? null,
-    }));
-  } else if (range === '7d') {
-    const keys = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(today, -(6 - i))));
-    chartData = keys.map((key, i) => {
-      const row = mergeDay((historyDaily[key] ?? [])[0], units);
-      if (!row) return null;
-      if (showYoY) {
-        const lyRow = mergeDay((historyDaily[lyDailyKeys[i]] ?? [])[0], units);
-        if (metric === 'temp') {
-          row.ly_tempHigh = lyRow?.tempHigh ?? null;
-          row.ly_tempLow  = lyRow?.tempLow  ?? null;
-        } else {
-          row[`ly_${metric}`] = lyRow?.[metric] ?? null;
-        }
-      }
-      return row;
-    }).filter(Boolean);
-  } else {
-    const keys = Array.from({ length: 30 }, (_, i) => toDateStr(addDays(today, -(29 - i))));
-    chartData = keys.map((key, i) => {
-      const row = mergeDay((historyDaily[key] ?? [])[0], units);
-      if (!row) return null;
-      if (showYoY) {
-        const lyRow = mergeDay((historyDaily[lyRainKeys[i]] ?? [])[0], units);
-        if (metric === 'temp') {
-          row.ly_tempHigh = lyRow?.tempHigh ?? null;
-          row.ly_tempLow  = lyRow?.tempLow  ?? null;
-        } else {
-          row[`ly_${metric}`] = lyRow?.[metric] ?? null;
-        }
-      }
-      return row;
-    }).filter(Boolean);
-  }
+  const chartData = range === '24h'
+    ? buildHourlyRows({ historyRecent, history, metric, units, today })
+    : buildDailyRows({ historyDaily, keys: rangeKeys, lyKeys: lyRangeKeys, metric, showYoY, units });
 
   const metaCurrent = METRICS.find(m => m.id === metric) ?? METRICS[0];
   const { domain } = metaCurrent;
@@ -507,74 +196,43 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
   const showTempBand = metric === 'temp' && range !== '24h';
   const { high, low, avg } = showTempBand
     ? {
-        high: stats(chartData.map(r => r.tempHigh).filter(v => v != null)).high,
-        low:  stats(chartData.map(r => r.tempLow).filter(v => v != null)).low,
+        high: stats(chartData.map(r => r.tempHigh)).high,
+        low:  stats(chartData.map(r => r.tempLow)).low,
         avg:  stats(metricVals).avg,
       }
     : stats(metricVals);
 
-  // Rainfall comparison card — current period total and LY equivalent
-  const currentPrecipTotal = (() => {
-    if (metric !== 'precip') return null;
-    if (range === '24h') {
-      const todayISO = toISODate(today);
-      const todayObs = historyRecent.filter(o => o.obsTimeLocal?.startsWith(todayISO));
-      const raw = todayObs.length ? Math.max(...todayObs.map(o => o.imperial?.precipTotal ?? 0)) : null;
-      return convertPrecip(raw, units);
-    }
-    const count = range === '30d' ? 30 : 7;
-    const keys = Array.from({ length: count }, (_, i) => toDateStr(addDays(today, -(count - 1 - i))));
-    const raw = keys.reduce((sum, k) => sum + ((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0), 0);
-    return convertPrecip(raw, units);
-  })();
-  const lyPrecipLoaded = metric === 'precip' && lyRainKeys.every(k => historyDaily[k] !== undefined);
-  const lyPrecipTotal  = lyPrecipLoaded
-    ? convertPrecip(lyRainKeys.reduce((sum, k) => sum + ((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0), 0), units)
+  // Rainfall: period total and last year's, plus the bar charts (display units).
+  const isPrecip = metric === 'precip';
+  const toDisplay = raw => convertPrecip(raw, units);
+  const currentPrecipTotal = isPrecip
+    ? toDisplay(range === '24h' ? todayPrecipFromRecent(historyRecent, today) : sumPrecip(historyDaily, rangeKeys))
+    : null;
+  const lyPrecipLoaded = isPrecip && lyRainKeys.every(k => historyDaily[k] !== undefined);
+  const lyPrecipTotal  = lyPrecipLoaded ? toDisplay(sumPrecip(historyDaily, lyRainKeys)) : null;
+
+  const rainBars   = last7.map(k => toDisplay(dayPrecip(historyDaily, k) ?? 0));
+  const rainLabels = last7.map(weekdayLabel);
+  const weeks      = range === '30d' ? weeklyGroups(rangeKeys) : [];
+  const weeklyRainBars   = weeks.map(g => toDisplay(sumPrecip(historyDaily, g.keys)));
+  const weeklyRainLabels = weeks.map(g => g.label);
+
+  const showLyBars = showYoY && isPrecip;
+  const lyRainBars = showLyBars && range === '7d' && lyPrecipLoaded
+    ? lyRainKeys.map(k => toDisplay(dayPrecip(historyDaily, k)))
+    : null;
+  const weeklyLyRainBars = showLyBars && range === '30d'
+    ? weeklyGroups(lyRangeKeys).map(g => toDisplay(sumPrecip(historyDaily, g.keys)))
     : null;
 
-  // 30-day weekly bar groups (4 bars with MM/DD–MM/DD date-range labels)
-  const [weeklyRainBars, weeklyRainLabels] = range === '30d' ? (() => {
-    const keys30 = Array.from({ length: 30 }, (_, i) => toDateStr(addDays(today, -(29 - i))));
-    const parseKey = k => new Date(`${k.slice(0,4)}-${k.slice(4,6)}-${k.slice(6,8)}T12:00:00`);
-    const fmtMD = d => `${d.getMonth() + 1}/${d.getDate()}`;
-    const groups = [[0, 7], [7, 14], [14, 21], [21, 30]];
-    return [
-      groups.map(([s, e]) =>
-        convertPrecip(keys30.slice(s, e).reduce((sum, k) =>
-          sum + ((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0), 0), units)
-      ),
-      groups.map(([s, e]) =>
-        `${fmtMD(parseKey(keys30[s]))}–${fmtMD(parseKey(keys30[e - 1]))}`
-      ),
-    ];
-  })() : [null, []];
-
-  // 7-day rainfall bar — real data from historyDaily, day-of-week labels
-  const rainBars   = last7Keys.map(key => convertPrecip((historyDaily[key] ?? [])[0]?.imperial?.precipTotal ?? 0, units));
-  const rainLabels = last7Keys.map(key => {
-    const d = new Date(`${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}T12:00:00`);
-    return ['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()];
-  });
-
-  const lyRainBars = showYoY && metric === 'precip' && range === '7d' && lyPrecipLoaded
-    ? lyRainKeys.map(k => convertPrecip((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? null, units))
-    : null;
-  const weeklyLyRainBars = showYoY && metric === 'precip' && range === '30d' ? (() => {
-    const groups = [[0, 7], [7, 14], [14, 21], [21, 30]];
-    return groups.map(([s, e]) =>
-      convertPrecip(lyRainKeys.slice(s, e).reduce((sum, k) =>
-        sum + ((historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0), 0), units)
-    );
-  })() : null;
-
+  // "Today vs. One Year Ago" card.
+  const now           = new Date();
   const todaySum      = yoy.today;
   const lySum         = yoy.lastYear;
-  const lyCurrentObs  = lyObsAtCurrentHour(yoy.lyRaw);
+  const lyCurrentObs  = lyObsAtHour(yoy.lyRaw, now.getHours());
   const lyCurrentTemp = lyCurrentObs?.imperial?.tempAvg ?? lyCurrentObs?.imperial?.tempHigh ?? null;
-  const forecastHighToday  = forecast?.[0]?.tempMax ?? null;
-  const observedHighToday  = todaySum?.tempHigh ?? null;
-  const highVals           = [observedHighToday, forecastHighToday].filter(v => v != null);
-  const todayDisplayHigh   = highVals.length ? Math.max(...highVals) : null;
+  const forecastHighToday = forecast?.[0]?.tempMax ?? null;
+  const todayDisplayHigh  = todayHigh(forecastHighToday, todaySum?.tempHigh, current?.temp);
   const note = yoyInsight({
     currentTemp:   current?.temp,
     todayPrecip:   current?.precipTotal,
@@ -584,6 +242,7 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
     forecastHigh:  forecastHighToday,
     todayHigh:     todaySum?.tempHigh,
     units,
+    now,
   });
   const hasYoy = todaySum || lySum;
 

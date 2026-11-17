@@ -17,21 +17,9 @@ _None open. Items 1–3 (insight flow, insight handlers, error banner) were fixe
 
 - `src/utils/weatherIcons.js:25-56`, `src/components/ForecastTab.jsx:31-32,79`, `src/components/HeroCard.jsx:346`, `public/widget/yardobs-widget.js:71-83`
 
-**5. "Last year" date computed 3 different ways**
+**8. Time-window and threshold vocabulary defined in more than one place**
 
-`HeroCard.jsx:285-287` uses `setFullYear(getFullYear() - 1)` (Feb 29 → Mar 1); TrendsTab's YoY card (`TrendsTab.jsx:377-381`) uses `new Date(year - 1, …)` with a Feb-29 clamp; TrendsTab's charts and rain comparison (`TrendsTab.jsx:387-389, 395`) use `addDays(today, -365)` / `-366`, which is a day off across a leap year — so the YoY card and the chart on the same screen can compare different dates. `addDays` is local to TrendsTab. Belongs in `src/utils/dateUtils.js` as one `lastYearKey(date)` plus `addDays`.
-
-- `src/components/HeroCard.jsx:285-287`, `src/components/TrendsTab.jsx:36, 377-381, 387-396`
-
-**6. TrendsTab.jsx (788 lines) mixes fetching, chart building and narrative logic**
-
-Data helpers, 4 presentational sub-components, a 125-line pure YoY narrative block (`dayPhase`/`lyObsAtCurrentHour`/`yoyInsight`, `:236-360`, no tests), 4 fetching effects, chart building, rain totals and the render. Internal duplication: the trailing-N-day key array is built 7× (`:389, 393-396, 399, 423-425, 458, 474, 516, 527`); `(historyDaily[k] ?? [])[0]?.imperial?.precipTotal ?? 0` 6× (`:517, 522, 534, 543, 550, 556`); the 7d and 30d `chartData` branches (`:457-488`) are near-identical; `range === '30d' ? 30 : 7` 3×; precip digits/unit re-derived in 4 places instead of `formatPrecipTotal`. Extraction targets: a `useTrendsData` hook (keys + fetching + loading, which also fixes the effect race in `KnownBugs.md`), `yoyInsight` to `src/utils/` with tests, and one chart-row builder.
-
-- `src/components/TrendsTab.jsx` overall
-
-**8. Day-part and time-window vocabulary defined in more than one place**
-
-`insightVocab.js` `DAY_PARTS` says it's "the only day-part vocabulary", but TrendsTab's `dayPhase` (`TrendsTab.jsx:236-241`: morning <10, midday <14, afternoon <19) is a second one used in the YoY text. The AQI daytime window is `AQI_DAY_START/END = 8/20` in `forecastNormalize.js:63-64` and hard-coded as "8a–8p" in the prompt at `api/insight.js:394`; the activity arc uses its own `hour < 7 || hour > 18` (`scoring.js:263`). Rain-probability thresholds live in 4 places (`insightVocab.js:103-108`, `scoring.js:232-238`, `scoring.js:69`, `ForecastTab.jsx:31`), and `scoreColor` hard-codes the 65/50 bands instead of calling `scoreBand`.
+`insightVocab.js` `DAY_PARTS` is the day-part vocabulary (TrendsTab's separate `dayPhase` was folded into it 2026-11-17 — `yoyInsight.js` maps day parts onto its modes). The AQI daytime window is `AQI_DAY_START/END = 8/20` in `forecastNormalize.js:63-64` and hard-coded as "8a–8p" in the prompt at `api/insight.js:394`; the activity arc uses its own `hour < 7 || hour > 18` (`scoring.js:263`). Rain-probability thresholds live in 4 places (`insightVocab.js:103-108`, `scoring.js:232-238`, `scoring.js:69`, `ForecastTab.jsx:31`), and `scoreColor` hard-codes the 65/50 bands instead of calling `scoreBand`.
 
 **9. Widget re-implements app logic with no parity tests**
 
@@ -43,7 +31,7 @@ Data helpers, 4 presentational sub-components, a 125-line pure YoY narrative blo
 
 **10. Repeated inline style objects instead of `.y-*` classes**
 
-Beyond the existing `.y-*` set: the mono value style (`fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)'`) ×4 (`ForecastTab.jsx` DailyCard, `TrendsTab.jsx:765`, `ActivityScoreCard.jsx:35`, and the `VALUE_STYLE` constant in `SunMoonCard.jsx`); tiny uppercase labels ×9 with 4 different letter-spacings; tab section headers ×3 (two in `ForecastTab.jsx`, `TrendsTab.jsx:604`); the "API source" footer ×3 (`NowTab.jsx:68`, end of `ForecastTab.jsx`, `TrendsTab.jsx:783` — ForecastTab's also always says "TWC" even in preview, where the forecast comes from Open-Meteo); pulse skeleton ×3; the selectable chip duplicated in `SettingsDrawer.jsx:265-279, 295-309` though `.y-pill`/`.y-msel` exist. Candidates: `.y-value`, `.y-eyebrow`, `.y-section-title`, `.y-source`, `.y-skeleton`.
+Beyond the existing `.y-*` set: the mono value style (`fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)'`) ×4 (`ForecastTab.jsx` DailyCard, `TrendsTab.jsx` stats row, `ActivityScoreCard.jsx:35`, and the `VALUE_STYLE` constant in `SunMoonCard.jsx`); tiny uppercase labels ×9 with 4 different letter-spacings; tab section headers ×3 (two in `ForecastTab.jsx`, `TrendsTab.jsx:604`); the "API source" footer ×3 (`NowTab.jsx:68`, end of `ForecastTab.jsx`, `TrendsTab.jsx:783` — ForecastTab's also always says "TWC" even in preview, where the forecast comes from Open-Meteo); pulse skeleton ×3; the selectable chip duplicated in `SettingsDrawer.jsx:265-279, 295-309` though `.y-pill`/`.y-msel` exist. Candidates: `.y-value`, `.y-eyebrow`, `.y-section-title`, `.y-source`, `.y-skeleton`.
 
 **11. Sky-condition thresholds and partly-cloudy codes duplicated between App and HeroCard**
 

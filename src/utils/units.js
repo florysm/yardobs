@@ -133,10 +133,25 @@ export function formatPrecipRateParts(valueIn, units) {
     : { value: fixed(v, 2), unit: '"/hr' };
 }
 
-export function formatPrecipTotal(valueIn, units) {
-  const v = convertPrecip(valueIn, units);
+// Digits and unit for a rainfall amount already in display units.
+export function precipDigits(units) {
+  return units === UNITS.METRIC ? 1 : 2;
+}
+
+// `spaced: false` gives "mm" for tight labels; inches are always a bare `"`.
+export function precipUnitLabel(units, { spaced = true } = {}) {
+  if (units !== UNITS.METRIC) return '"';
+  return spaced ? ' mm' : 'mm';
+}
+
+// A rainfall amount that is already in display units (e.g. chart values).
+export function formatPrecipValue(v, units, opts) {
   if (v == null || isNaN(v)) return '—';
-  return units === UNITS.METRIC ? `${fixed(v, 1)} mm` : `${fixed(v, 2)}"`;
+  return `${fixed(v, precipDigits(units))}${precipUnitLabel(units, opts)}`;
+}
+
+export function formatPrecipTotal(valueIn, units) {
+  return formatPrecipValue(convertPrecip(valueIn, units), units);
 }
 
 // Always renders an explicit inHg/hPa suffix (never a bare `"`, which

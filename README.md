@@ -123,12 +123,13 @@ yardobs/
 │   │   └── ErrorBoundary.jsx       # React error boundary (supports reload)
 │   ├── hooks/
 │   │   ├── useInsight.js           # Shared AI-insight fetch + localStorage cache for the three cards
+│   │   ├── useTrendsData.js        # What the Trends tab fetches, and its loading state
 │   │   └── useWeather.js           # Data fetching, polling, caching, alert fetch
 │   ├── utils/
 │   │   ├── activities.js           # Activity definitions and scoring weights
 │   │   ├── alerts.js               # NWS alert normalization + severity helpers
 │   │   ├── apiFetch.js             # HTTP client with error handling
-│   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr)
+│   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr, addDays, lastYearKey)
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
 │   │   ├── format.js               # Display formatting helpers
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
@@ -141,8 +142,10 @@ yardobs/
 │   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
 │   │   ├── sourceTypes.js          # Station vs. forecast-model source type constants
 │   │   ├── storageKeys.js          # localStorage key constants
+│   │   ├── trends.js               # Trends chart rows, date keys, rain totals
 │   │   ├── units.js                # Imperial/metric conversion + locale detection
 │   │   ├── weatherCalc.js          # Feels-like, dew point, and related calculations
+│   │   ├── yoyInsight.js           # Trends "Today vs. One Year Ago" note
 │   │   ├── widgetScript.js         # Fills your settings into the Scriptable widget script
 │   │   └── weatherIcons.js         # WMO code → emoji/label mapping
 │   └── index.css                   # CSS variable theme definitions + component classes

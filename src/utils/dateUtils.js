@@ -31,3 +31,27 @@ export function historyCacheUsable(dateKey, fetchedAtMs, nowMs = Date.now()) {
   const age = nowMs - fetchedAtMs;
   return age >= 0 && age < HISTORY_REFRESH_MS;
 }
+
+// A new Date n local days from `date` (DST-safe: works on the calendar date).
+export function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+// The same calendar day one year earlier, at the same local time. Feb 29 maps
+// to Feb 28 (setFullYear would roll it to Mar 1, and subtracting 365 days is a
+// day off whenever the past year held a Feb 29). The one "last year" rule for
+// every year-over-year comparison.
+export function sameDayLastYear(date = new Date()) {
+  const d = new Date(date);
+  const month = d.getMonth();
+  d.setFullYear(d.getFullYear() - 1);
+  if (d.getMonth() !== month) d.setDate(0); // rolled into March: back to Feb 28
+  return d;
+}
+
+// YYYYMMDD of sameDayLastYear(date) — the TWC history key for "this day last year".
+export function lastYearKey(date = new Date()) {
+  return toDateStr(sameDayLastYear(date));
+}

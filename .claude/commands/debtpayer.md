@@ -48,8 +48,8 @@ A change is **structural** if it involves:
 - Changing how state or errors flow through the component tree
 - Replacing a pattern across multiple pages/components (e.g., adopting a centralized theme constant)
 - Changes to `api/` that alter request/response shapes
-- Connecting a new error source into the existing error-banner pipeline in `App.jsx`, or changing how `componentError` is set/cleared
-- Anything with a breakdown in `TechDebt-LargeChanges.md` (e.g. the `useInsight` hook, the ForecastTab sun/moon extraction)
+- Adding a new app-wide error surface (the bottom banner in `App.jsx` shows only `useWeather`'s `error`; cards show their own failure state — `componentError` was removed 2026-11-17)
+- Anything with a breakdown in `TechDebt-LargeChanges.md` 
 
 **Process:**
 1. Read all affected files (and the item's section in `TechDebt-LargeChanges.md`, if any).

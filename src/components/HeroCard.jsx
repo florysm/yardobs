@@ -1,6 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { fmt, getLocaleHour12 } from '../utils/format';
-import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+import { SOURCE_TYPES } from '../utils/sourceTypes';
+import { insightScope } from '../utils/insightCache';
+import { useInsight } from '../hooks/useInsight';
 import { ICONS, LABELS } from '../utils/weatherIcons';
 import { toDateStr, toISODate } from '../utils/dateUtils';
 import { currentDayPart } from '../utils/insightVocab';
@@ -160,7 +163,7 @@ function InsightView({ insight, isLoading, toggle }) {
           color: 'var(--hero-ts)', fontWeight: 500,
           textShadow: 'var(--hero-text-shadow)',
         }}>
-          {insight?._sourceType === 'forecast_model' ? 'Forecast for your area' : 'Your backyard today'}
+          {insight?._sourceType === SOURCE_TYPES.FORECAST_MODEL ? 'Forecast for your area' : 'Your backyard today'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, color: 'var(--hero-dim)' }}>
           <div className="live-dot" style={{ background: 'var(--hero-dim)' }} />
@@ -226,12 +229,10 @@ function InsightView({ insight, isLoading, toggle }) {
 
 // ── HeroCard ──────────────────────────────────────────────────────────────────
 
-export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, onError, units }) {
+export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, units }) {
   const [showHint,      setShowHint]      = useState(false);
   const [view,          setView]          = useState('conditions');
   const [contentFade,   setContentFade]   = useState(true);
-  const [insight,       setInsight]       = useState(null);
-  const [insightLoading, setInsightLoading] = useState(false);
   const timers = useRef([]);
 
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
@@ -256,74 +257,38 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     }, 200);
   };
 
-  // Fetch AI daily insight when insights view is active
-  useEffect(() => {
-    if (view !== 'insights' || !current || !hourlyForecast) return;
-
-    // Use location label as cache/API key in preview mode
-    const insightId = stationId || current?.neighborhood || 'preview';
-    const today = toISODate();
-    const period = currentDayPart();
-    const lsKey = STORAGE_KEYS.insightKey(insightId, today, period, units);
-
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw) {
-        const { data, ts } = JSON.parse(raw);
-        if (Date.now() - ts < INSIGHT_TTL_MS) {
-          setInsight(data);
-          return;
-        }
-      }
-    } catch {}
-
-    let cancelled = false;
-    setInsightLoading(true);
-    setInsight(null);
-
-    const run = async () => {
-      const lastYear = new Date();
-      lastYear.setFullYear(lastYear.getFullYear() - 1);
-      const yoyDate = toDateStr(lastYear);
-
+  // AI daily insight, fetched only while the insights view is open.
+  const isModelData = current?.sourceType === SOURCE_TYPES.FORECAST_MODEL;
+  const insightId = insightScope(current);
+  const period = currentDayPart();
+  const { data: insight, loading: insightLoading } = useInsight({
+    storageKey: STORAGE_KEYS.insightKey(insightId, toISODate(), period, units),
+    enabled: view === 'insights' && !!current && !!hourlyForecast,
+    deps: [current, stationId, fetchHistoryDaily, hourlyForecast],
+    buildBody: async () => {
+      // Forecast-model data (preview, Explore) has no station history to compare.
       let yoyReadings = [];
-      try { yoyReadings = (await fetchHistoryDaily?.(yoyDate)) ?? []; } catch { onError?.('Could not load historical data'); }
-
-      if (cancelled) return;
-
-      try {
-        const res = await fetch('/api/insight', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'daily', stationId: insightId, date: today, period, current, yoyReadings,
-            // "What's it doing right now?" — only the next few hours, never the
-            // whole day (that's the Forecast card's question).
-            lookahead: buildLookahead(hourlyForecast, units),
-            sourceType: current?.sourceType,
-            units,
-          }),
-        });
-        if (!res.ok) throw new Error(res.status);
-        const json = await res.json();
-        if (cancelled) return;
-        const updatedAt = new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() });
-        const stored = { ...json, updatedAt, _sourceType: current?.sourceType };
-        try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
-        setInsight(stored);
-      } catch {
-        if (!cancelled) {
-          setInsight({ narrative: '', tags: [], updatedAt: '' });
-          onError?.('Could not load daily insight');
-        }
-      } finally {
-        if (!cancelled) setInsightLoading(false);
+      if (!isModelData && stationId) {
+        const lastYear = new Date();
+        lastYear.setFullYear(lastYear.getFullYear() - 1);
+        yoyReadings = (await fetchHistoryDaily?.(toDateStr(lastYear))) ?? [];
       }
-    };
-
-    run();
-    return () => { cancelled = true; };
-  }, [view, current, stationId, fetchHistoryDaily, hourlyForecast, units]); // eslint-disable-line react-hooks/exhaustive-deps
+      return {
+        type: 'daily', stationId: insightId, placeName: current?.neighborhood ?? null,
+        date: toISODate(), period, current, yoyReadings,
+        // "What's it doing right now?" — only the next few hours, never the
+        // whole day (that's the Forecast card's question).
+        lookahead: buildLookahead(hourlyForecast, units),
+        sourceType: current?.sourceType,
+        units,
+      };
+    },
+    accept: json => (json?.narrative ? {
+      ...json,
+      updatedAt: new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() }),
+      _sourceType: current?.sourceType,
+    } : null),
+  });
 
   function deriveFromSensors(obs) {
     const precip = obs.precipRate ?? 0;

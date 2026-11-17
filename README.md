@@ -93,7 +93,7 @@ The frontend is a React SPA. Two Vercel serverless functions act as API proxies:
 yardobs/
 ├── api/
 │   ├── weather.js        # TWC + Open-Meteo + NWS proxy (forwards the caller's own TWC key)
-│   ├── insight.js        # Claude AI insight engine (activity + daily briefings)
+│   ├── insight.js        # Claude AI insight engine (activity, daily and forecast-day; failures return 502/503, never cached)
 │   └── lib/
 │       ├── cors.js       # Origin allowlist + OPTIONS preflight
 │       ├── insightPersona.js  # Shared AI persona and prompt rules
@@ -122,6 +122,7 @@ yardobs/
 │   │   ├── TrendsLockedPlaceholder.jsx  # "Connect a station to unlock trends"
 │   │   └── ErrorBoundary.jsx       # React error boundary (supports reload)
 │   ├── hooks/
+│   │   ├── useInsight.js           # Shared AI-insight fetch + localStorage cache for the three cards
 │   │   └── useWeather.js           # Data fetching, polling, caching, alert fetch
 │   ├── utils/
 │   │   ├── activities.js           # Activity definitions and scoring weights
@@ -137,6 +138,8 @@ yardobs/
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
 │   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
+│   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
+│   │   ├── sourceTypes.js          # Station vs. forecast-model source type constants
 │   │   ├── storageKeys.js          # localStorage key constants
 │   │   ├── units.js                # Imperial/metric conversion + locale detection
 │   │   ├── weatherCalc.js          # Feels-like, dew point, and related calculations

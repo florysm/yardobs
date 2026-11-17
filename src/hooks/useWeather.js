@@ -7,6 +7,7 @@ import { normalizeAlerts } from '../utils/alerts';
 import { normalizeTwcForecast, normalizeOpenMeteoForecast } from '../utils/forecastNormalize';
 import { wmoToTwc } from '../utils/weatherIcons';
 import { INHG_PER_HPA } from '../utils/units';
+import { SOURCE_TYPES } from '../utils/sourceTypes';
 
 const POLL_MS = 5 * 60 * 1000;
 // Forecasts change slowly, but a tab left open all afternoon used to keep
@@ -152,7 +153,7 @@ export function useWeather(profile, credentialsVersion) {
         obsTimeLocal: obs.obsTimeLocal,
         lat: obs.lat,
         lon: obs.lon,
-        sourceType:  'pws',
+        sourceType:  SOURCE_TYPES.PWS,
         sourceLabel: 'Your Station',
       });
     } catch (err) {
@@ -212,7 +213,7 @@ export function useWeather(profile, credentialsVersion) {
         obsTimeLocal: c.time,
         lat: previewLat,
         lon: previewLon,
-        sourceType:  'forecast_model',
+        sourceType:  SOURCE_TYPES.FORECAST_MODEL,
         sourceLabel: 'Weather Forecast',
       });
 

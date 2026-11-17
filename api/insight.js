@@ -18,13 +18,20 @@ function isRateLimited(ip) {
   ipLog.set(ip, recent);
   return false;
 }
+// Age-based freshness. A negative age (the host clock jumped backward) counts as
+// expired; otherwise such an entry would pass the check forever.
+function isFresh(ts, now = Date.now()) {
+  const age = now - ts;
+  return age >= 0 && age < CACHE_TTL_MS;
+}
+
 setInterval(() => {
   const now = Date.now();
   for (const [ip, timestamps] of ipLog) {
     if (!timestamps.some(ts => now - ts < CACHE_TTL_MS)) ipLog.delete(ip);
   }
   for (const [k, v] of cache) {
-    if (now - v.ts >= CACHE_TTL_MS) cache.delete(k);
+    if (!isFresh(v.ts, now)) cache.delete(k);
   }
 }, CACHE_TTL_MS);
 
@@ -33,13 +40,14 @@ function evictOne() {
   let evictKey = null;
   let oldestTs = Infinity;
   for (const [k, v] of cache) {
-    if (now - v.ts >= CACHE_TTL_MS) { evictKey = k; break; }
+    if (!isFresh(v.ts, now)) { evictKey = k; break; }
     if (v.ts < oldestTs) { oldestTs = v.ts; evictKey = k; }
   }
   if (evictKey !== null) cache.delete(evictKey);
 }
 
 import { applyCors } from './lib/cors.js';
+import { SOURCE_TYPES } from '../src/utils/sourceTypes.js';
 import { clampBody } from './lib/sanitize.js';
 import { degreesToCompass } from '../src/utils/format.js';
 import { scoreBand } from '../src/utils/insightVocab.js';
@@ -91,10 +99,24 @@ function isOverloaded(err) {
   return err.status === 529 || err.message?.startsWith('529');
 }
 
+// Rounds a reading to a step so small changes share a cache entry.
+function bucket(v, step, fallback) {
+  return Math.round((v ?? fallback) / step) * step;
+}
+
+// Every key starts with the units and, for forecast-model data, a preview marker.
+function keyPrefix(units, isPreview) {
+  return `${units}|${isPreview ? 'preview|' : ''}`;
+}
+
 function getCacheHit(key) {
   const hit = cache.get(key);
-  if (!hit) return null;
-  return (Date.now() - hit.ts) < CACHE_TTL_MS ? hit : null;
+  return hit && isFresh(hit.ts) ? hit : null;
+}
+
+function cacheSet(key, data) {
+  if (cache.size >= CACHE_MAX_SIZE && !cache.has(key)) evictOne();
+  cache.set(key, { data, ts: Date.now() });
 }
 
 function requireApiKey(res) {
@@ -103,19 +125,47 @@ function requireApiKey(res) {
   return apiKey;
 }
 
-function handleInsightError(res, err, tag, overloadedPayload) {
+// Failures are never 200s: clients cache whatever succeeds, so a "busy" message
+// or a blank narrative sent as a success used to stay on the card for an hour.
+function handleInsightError(res, err, tag) {
   const overloaded = isOverloaded(err);
   console.error(`[insight:${tag}] API error${overloaded ? ' (overloaded)' : ''}:`, err.message);
-  if (overloaded) return res.status(200).json(overloadedPayload);
+  if (overloaded) return res.status(503).json({ error: 'Insight service busy' });
   return res.status(502).json({ error: 'Insight service error' });
+}
+
+// The shared cache → model → respond pipeline. `build()` returns the model call
+// ({ system, prompt, maxTokens, outputConfig }) and runs only on a cache miss.
+// `parse(text)` turns the reply into the response body, or null when there is
+// nothing worth showing (refusal, truncation, bad JSON) — that is a 502 and is
+// not cached, so the next view retries.
+async function runCachedInsight(res, { tag, key, build, parse }) {
+  const hit = getCacheHit(key);
+  if (hit) return res.status(200).json(hit.data);
+
+  const apiKey = requireApiKey(res);
+  if (!apiKey) return;
+
+  try {
+    const msg = await callModel({ apiKey, ...build() });
+    const data = parse(textOf(msg, tag));
+    if (!data) {
+      console.error(`[insight:${tag}] empty result, not cached`);
+      return res.status(502).json({ error: 'Insight unavailable' });
+    }
+    cacheSet(key, data);
+    return res.status(200).json(data);
+  } catch (err) {
+    return handleInsightError(res, err, tag);
+  }
 }
 
 // ── Activity insight ──────────────────────────────────────────────────────────
 
 function activityCacheKey(stationId, actId, score, c, period, outlook, bestWindow) {
-  const t = Math.round((c?.temp ?? 70) / 2) * 2;
-  const w = Math.round((c?.windSpeed ?? 0) / 2) * 2;
-  const s = Math.round(score / 5) * 5;
+  const t = bucket(c?.temp, 2, 70);
+  const w = bucket(c?.windSpeed, 2, 0);
+  const s = bucket(score, 5, 0);
   return `act|${stationId}|${actId}|${s}|${t}|${w}|${period ?? 'daytime'}|${outlook ?? 'none'}|${bestWindow ?? 'none'}`;
 }
 
@@ -140,15 +190,18 @@ async function handleActivityInsight(req, res) {
   const { activity, activityLabel, score, factors, current: c,
           outlook, bestWindow, stationId, sourceType, period } = req.body ?? {};
   const units = resolveUnits(req.body);
-  const isPreview = sourceType === 'forecast_model';
-  const key = `${units}|${isPreview ? 'preview|' : ''}` + activityCacheKey(stationId ?? 'unknown', activity, score, c, period, outlook, bestWindow);
+  const isPreview = sourceType === SOURCE_TYPES.FORECAST_MODEL;
+  const key = keyPrefix(units, isPreview) + activityCacheKey(stationId ?? 'unknown', activity, score, c, period, outlook, bestWindow);
 
-  const hit = getCacheHit(key);
-  if (hit) return res.status(200).json({ insight: hit.text });
+  return runCachedInsight(res, {
+    tag: 'activity',
+    key,
+    build: () => buildActivityCall({ activityLabel, score, factors, c, outlook, bestWindow, period, units, isPreview }),
+    parse: text => (text ? { insight: text } : null),
+  });
+}
 
-  const apiKey = requireApiKey(res);
-  if (!apiKey) return;
-
+function buildActivityCall({ activityLabel, score, factors, c, outlook, bestWindow, period, units, isPreview }) {
   const topFactors = [...(factors ?? [])]
     .sort((a, b) => a.score - b.score)
     .slice(0, 3)
@@ -189,20 +242,9 @@ ${windowLine}`;
 
   const system = buildSystem({ isPreview, job: ACTIVITY_JOB, examples: ACTIVITY_EXAMPLES });
 
-  try {
-    // 160 was tight for two sentences plus a tip, and truncation was silent.
-    // Haiku 5.5's tokenizer counts the same text as ~30% more tokens.
-    const msg = await callModel({ apiKey, system, prompt, maxTokens: 350 });
-    const text = textOf(msg, 'activity');
-    // An empty result (refusal, truncation) isn't cached, so the next view retries.
-    if (text) {
-      if (cache.size >= CACHE_MAX_SIZE) evictOne();
-      cache.set(key, { text, ts: Date.now() });
-    }
-    return res.status(200).json({ insight: text });
-  } catch (err) {
-    return handleInsightError(res, err, 'activity', { insight: 'Insight temporarily unavailable — API is busy. Try again in a moment.' });
-  }
+  // 160 was tight for two sentences plus a tip, and truncation was silent.
+  // Haiku 5.5's tokenizer counts the same text as ~30% more tokens.
+  return { system, prompt, maxTokens: 350 };
 }
 
 // ── Daily backyard insight ────────────────────────────────────────────────────
@@ -254,18 +296,33 @@ const DAILY_EXAMPLES = [
 ];
 
 async function handleDailyInsight(req, res) {
-  const { stationId, date, current: c, yoyReadings, lookahead, sourceType, period } = req.body ?? {};
+  const { stationId, placeName, date, current: c, yoyReadings, lookahead, sourceType, period } = req.body ?? {};
   const units = resolveUnits(req.body);
-  const isPreview = sourceType === 'forecast_model';
-  const tempBucket = Math.round((c?.temp ?? 70) / 2) * 2;
-  const key = `${units}|${isPreview ? 'preview|' : ''}daily|${stationId}|${date}|${tempBucket}|${period ?? 'unknown'}|${lookahead ?? 'steady'}`;
+  const isPreview = sourceType === SOURCE_TYPES.FORECAST_MODEL;
+  const key = keyPrefix(units, isPreview) + `daily|${stationId}|${date}|${bucket(c?.temp, 2, 70)}|${period ?? 'unknown'}|${lookahead ?? 'steady'}`;
 
-  const hit = getCacheHit(key);
-  if (hit) return res.status(200).json(hit.data);
+  return runCachedInsight(res, {
+    tag: 'daily',
+    key,
+    build: () => buildDailyCall({ stationId, placeName, date, c, yoyReadings, lookahead, period, units, isPreview }),
+    parse: parseDaily,
+  });
+}
 
-  const apiKey = requireApiKey(res);
-  if (!apiKey) return;
+// The schema guarantees shape; a truncated response is the one way this can
+// still fail to parse, and textOf logs that case.
+function parseDaily(text) {
+  if (!text) return null;
+  try {
+    const data = JSON.parse(text);
+    return data?.narrative ? data : null;
+  } catch (err) {
+    console.error('[insight:daily] JSON parse error:', err.message);
+    return null;
+  }
+}
 
+function buildDailyCall({ stationId, placeName, date, c, yoyReadings, lookahead, period, units, isPreview }) {
   const dir = degreesToCompass(c?.windDir) || 'variable';
 
   // No year-over-year data in preview mode (no historical data available)
@@ -294,7 +351,8 @@ async function handleDailyInsight(req, res) {
     ? 'No year-over-year data available — omit any comparisons.'
     : (yoyDelta ? 'Reference the year-over-year difference in the final sentence.' : 'No year-over-year data — omit any comparisons.');
 
-  const prompt = `${locationLabel}: ${stationId} — ${date}
+  // Preview and Explore are keyed by coordinates; the model gets the place name.
+  const prompt = `${locationLabel}: ${(isPreview && placeName) || stationId} — ${date}
 Time of day: ${period ?? 'unknown'}
 
 Right now:
@@ -309,29 +367,10 @@ tags: exactly 3-4, each label 2-3 words, each covering a different aspect (e.g. 
   const system = buildSystem({ isPreview, job: isPreview ? DAILY_JOB : `${DAILY_JOB} ${YARD_LINE}`,
     examples: isPreview ? DAILY_EXAMPLES.map(e => e.replace(' in your yard', '')) : DAILY_EXAMPLES });
 
-  try {
-    const msg = await callModel({
-      apiKey, system, prompt, maxTokens: 600,
-      outputConfig: { format: { type: 'json_schema', schema: DAILY_SCHEMA } },
-    });
-
-    // The schema guarantees shape; a truncated response is the one way this can
-    // still fail to parse, and textOf logs that case.
-    let data = { narrative: '', tags: [] };
-    try {
-      data = JSON.parse(textOf(msg, 'daily') || '{}');
-    } catch (parseErr) {
-      console.error('[insight:daily] JSON parse error:', parseErr.message);
-    }
-
-    if (data.narrative) {
-      if (cache.size >= CACHE_MAX_SIZE) evictOne();
-      cache.set(key, { data, ts: Date.now() });
-    }
-    return res.status(200).json(data);
-  } catch (err) {
-    return handleInsightError(res, err, 'daily', { narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.', tags: [] });
-  }
+  return {
+    system, prompt, maxTokens: 600,
+    outputConfig: { format: { type: 'json_schema', schema: DAILY_SCHEMA } },
+  };
 }
 
 // ── Forecast-day insight ──────────────────────────────────────────────────────
@@ -363,24 +402,25 @@ async function handleForecastDayInsight(req, res) {
   const { stationId, date, dayLabel, tempMax, tempMin, pop, conditions,
           outlook, isToday, dayPart, aqi, sourceType } = req.body ?? {};
   const units = resolveUnits(req.body);
-  const isPreview = sourceType === 'forecast_model';
+  const isPreview = sourceType === SOURCE_TYPES.FORECAST_MODEL;
 
   // Today is keyed to the part of the day so it regenerates as each passes;
   // the outlook string carries the forecast itself, so a revision changes it.
-  const hiBucket = Math.round((tempMax ?? 70) / 2) * 2;
-  const loBucket = Math.round((tempMin ?? 50) / 2) * 2;
-  const popBucket = Math.round((pop ?? 0) / 20) * 20;
   // Bucketed at 25 so a crossing between EPA categories always changes the key.
-  const aqiBucket = aqi == null ? 'na' : Math.round(aqi / 25) * 25;
+  const aqiBucket = aqi == null ? 'na' : bucket(aqi, 25);
   const part = isToday ? (dayPart ?? 'today') : 'day';
-  const key = `${units}|${isPreview ? 'preview|' : ''}fcday|${stationId ?? 'preview'}|${date}|${part}|${hiBucket}|${loBucket}|${popBucket}|${aqiBucket}|${outlook ?? 'none'}`;
+  const key = keyPrefix(units, isPreview)
+    + `fcday|${stationId ?? 'preview'}|${date}|${part}|${bucket(tempMax, 2, 70)}|${bucket(tempMin, 2, 50)}|${bucket(pop, 20, 0)}|${aqiBucket}|${outlook ?? 'none'}`;
 
-  const hit = getCacheHit(key);
-  if (hit) return res.status(200).json({ narrative: hit.text });
+  return runCachedInsight(res, {
+    tag: 'forecast-day',
+    key,
+    build: () => buildForecastDayCall({ date, dayLabel, tempMax, tempMin, pop, conditions, outlook, isToday, dayPart, aqi, units, isPreview }),
+    parse: text => (text ? { narrative: text } : null),
+  });
+}
 
-  const apiKey = requireApiKey(res);
-  if (!apiKey) return;
-
+function buildForecastDayCall({ date, dayLabel, tempMax, tempMin, pop, conditions, outlook, isToday, dayPart, aqi, units, isPreview }) {
   // Today's high may already be behind us, and the outlook says what's left.
   const dayLine = isToday && outlook
     ? `Day: Today — the rest of the day, from ${dayPart ?? 'now'}`
@@ -401,18 +441,7 @@ ${aqiLineText}`;
 
   const system = buildSystem({ isPreview, job: forecastJob(!!isToday), examples: FORECAST_EXAMPLES });
 
-  try {
-    const msg = await callModel({ apiKey, system, prompt, maxTokens: 400 });
-    const text = textOf(msg, 'forecast-day');
-    // An empty result (refusal, truncation) isn't cached, so the next view retries.
-    if (text) {
-      if (cache.size >= CACHE_MAX_SIZE) evictOne();
-      cache.set(key, { text, ts: Date.now() });
-    }
-    return res.status(200).json({ narrative: text });
-  } catch (err) {
-    return handleInsightError(res, err, 'forecast-day', { narrative: 'Insight temporarily unavailable — API is busy. Try again in a moment.' });
-  }
+  return { system, prompt, maxTokens: 400 };
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────

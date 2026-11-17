@@ -1,7 +1,10 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { fmtHourShort } from '../utils/format';
 import { ACTIVITIES } from '../utils/activities';
-import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+import { SOURCE_TYPES } from '../utils/sourceTypes';
+import { insightScope } from '../utils/insightCache';
+import { useInsight } from '../hooks/useInsight';
 import { toISODate } from '../utils/dateUtils';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildDayOutlook } from '../utils/outlook';
@@ -133,12 +136,9 @@ function TimeArc({ arcData, bestWindow }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ActivityScoreCard({ current, hourlyForecast, onError, defaultActivity, units }) {
+export default function ActivityScoreCard({ current, hourlyForecast, defaultActivity, units }) {
   const [activeId,       setActiveId]       = useState(defaultActivity ?? 'bbq');
   const [expanded,       setExpanded]       = useState(false);
-  const [insight,        setInsight]        = useState(null);
-  const [insightLoading, setInsightLoading] = useState(false);
-  const iCache = useRef({});
 
   const { rate: forecastRate, maxProb: forecastMaxProb } = useMemo(
     () => getForecastRainThreat(hourlyForecast, new Date().getHours()),
@@ -169,99 +169,44 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
 
   const showPawAlert = activeId === 'dogwalk' && (active.pavementTemp ?? 0) >= 100;
 
-  // Fetch AI insight whenever the active activity or conditions change meaningfully.
-  // Debounced so rapid successive updates (current then hourlyForecast arriving) don't
-  // each trigger a separate API call.
-  useEffect(() => {
-    if (!currentWithThreat) return;
-
-    const period = currentDayPart();
-
-    // Fast in-session path: useRef avoids re-renders when switching activities
-    const iKey = `${activeId}|${period}|${units}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
-    const cached = iCache.current[iKey];
-    if (cached !== undefined && Date.now() - cached.ts < INSIGHT_TTL_MS) {
-      setInsight(cached.text);
-      setInsightLoading(false);
-      return;
-    }
-
-    // Persistent path: localStorage survives page refreshes; only bypass on notable weather change
-    const storageKey = STORAGE_KEYS.activityInsightKey(current?.stationId ?? 'preview', activeId, period, units);
-    try {
-      const stored = JSON.parse(localStorage.getItem(storageKey));
-      if (stored && Date.now() - stored.ts < INSIGHT_TTL_MS) {
-        const currentSnapshot = {
-          temp: currentWithThreat.temp,
-          windSpeed: currentWithThreat.windSpeed,
-          rainThreat: currentWithThreat.rainThreat,
-          score: active.score,
-        };
-        if (!isNotableWeatherChange(stored, currentSnapshot)) {
-          iCache.current[iKey] = { text: stored.insight, ts: Date.now() };
-          setInsight(stored.insight);
-          setInsightLoading(false);
-          return;
-        }
-      }
-    } catch { /* ignore malformed cache entries */ }
-
-    setInsightLoading(true);
-    setInsight(null);
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      fetch('/api/insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          activity: activeId,
-          activityLabel: act?.label,
-          score: active.score,
-          factors: active.factors,
-          stationId: current?.stationId,
-          sourceType: current?.sourceType,
-          period,
-          units,
-          current: {
-            ...currentWithThreat,
-            ...(activeId === 'dogwalk' && active.pavementTemp != null
-              ? { pavementTemp: active.pavementTemp }
-              : {}),
-          },
-          outlook,
-          bestWindow,
-        }),
-      })
-        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then(d => {
-          if (controller.signal.aborted) return;
-          const text = d.insight ?? '';
-          iCache.current[iKey] = { text, ts: Date.now() };
-          try {
-            localStorage.setItem(storageKey, JSON.stringify({
-              insight: text,
-              ts: Date.now(),
-              conditions: {
-                temp: currentWithThreat.temp ?? 70,
-                windSpeed: currentWithThreat.windSpeed ?? 0,
-                rainThreat: currentWithThreat.rainThreat ?? 0,
-                score: active.score,
-              },
-            }));
-          } catch { /* ignore storage quota errors */ }
-          setInsight(text);
-        })
-        .catch(err => {
-          if (err.name === 'AbortError' || controller.signal.aborted) return;
-          iCache.current[iKey] = { text: '', ts: Date.now() };
-          setInsight('');
-          onError?.('Could not load activity insight');
-        })
-        .finally(() => { if (!controller.signal.aborted) setInsightLoading(false); });
-    }, 400);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [activeId, currentWithThreat, units, outlook, bestWindow]);
+  // AI insight for the active activity. Debounced so rapid successive updates
+  // (current then hourlyForecast arriving) send one request. A saved insight is
+  // reused for the hour unless the weather has changed notably since.
+  const snapshot = currentWithThreat ? {
+    temp: currentWithThreat.temp ?? 70,
+    windSpeed: currentWithThreat.windSpeed ?? 0,
+    rainThreat: currentWithThreat.rainThreat ?? 0,
+    score: active.score,
+  } : null;
+  const period = currentDayPart();
+  const insightId = insightScope(current);
+  const { data: insight, loading: insightLoading } = useInsight({
+    storageKey: STORAGE_KEYS.activityInsightKey(insightId, activeId, period, units),
+    enabled: !!currentWithThreat,
+    debounceMs: 400,
+    deps: [currentWithThreat, outlook, bestWindow],
+    meta: () => snapshot,
+    isStale: saved => isNotableWeatherChange({ conditions: saved }, snapshot),
+    buildBody: async () => ({
+      activity: activeId,
+      activityLabel: act?.label,
+      score: active.score,
+      factors: active.factors,
+      stationId: insightId,
+      sourceType: current?.sourceType,
+      period,
+      units,
+      current: {
+        ...currentWithThreat,
+        ...(activeId === 'dogwalk' && active.pavementTemp != null
+          ? { pavementTemp: active.pavementTemp }
+          : {}),
+      },
+      outlook,
+      bestWindow,
+    }),
+    accept: json => json?.insight || null,
+  });
 
   if (!current) {
     return (
@@ -344,7 +289,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
           fontSize: 10, color: 'var(--tm)',
         }}>
           <div className="live-dot" />
-          {current?.sourceType === 'forecast_model'
+          {current?.sourceType === SOURCE_TYPES.FORECAST_MODEL
             ? 'AI insight · forecast data'
             : 'AI insight powered by your live station data'}
         </div>

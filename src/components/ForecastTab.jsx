@@ -3,13 +3,16 @@ import SunCalc from 'suncalc';
 import { fmtHourIso, getLocaleHour12 } from '../utils/format';
 import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
 import { toISODate } from '../utils/dateUtils';
-import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+import { insightScope } from '../utils/insightCache';
+import { useInsight } from '../hooks/useInsight';
 import { formatTempParts } from '../utils/units';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildDayOutlook } from '../utils/outlook';
 import { aqiForDay } from '../utils/forecastNormalize';
 import { todayHigh } from '../utils/weatherCalc';
 import SunMoonCard from './SunMoonCard';
+import { SOURCE_TYPES } from '../utils/sourceTypes';
 
 function buildHours(hf, lat, lon) {
   const h = hf?.hourly;
@@ -203,9 +206,6 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
   const groupRefs = useRef([]);
   const [activeLabel, setActiveLabel] = useState(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [dayInsight, setDayInsight] = useState(null);
-  const [dayInsightLoading, setDayInsightLoading] = useState(false);
-  const dayInsightCancelRef = useRef(null);
 
   const groups = groupByDay(hourlyForecast ? buildHours(hourlyForecast, lat, lon) : []);
 
@@ -215,87 +215,46 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
   // trigger this effect on every render. hourlyForecast is the true signal.
   }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const days = buildDays(forecast);
-    if (!days.length) return;
-    const day = days[selectedDayIndex];
-    if (!day) return;
-
-    const insightId = stationId || 'preview';
-    const dayAqi = aqiForDay(airQuality, day.date);
-    // Same 25-wide bucket the server keys on, so client and server invalidate together.
-    const aqiBucket = dayAqi == null ? 'na' : Math.round(dayAqi / 25) * 25;
-    // Today describes the rest of the day, so it's keyed to the part of the day
-    // we're in and regenerates as each one passes; other days are an overview.
-    const part = day.isToday ? currentDayPart() : 'day';
-    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date, units, aqiBucket, part);
-
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw) {
-        const { data, ts } = JSON.parse(raw);
-        if (Date.now() - ts < INSIGHT_TTL_MS) {
-          setDayInsight(data);
-          setDayInsightLoading(false);
-          return;
-        }
-      }
-    } catch {}
-
-    if (dayInsightCancelRef.current) dayInsightCancelRef.current.cancelled = true;
-    const cancelToken = { cancelled: false };
-    dayInsightCancelRef.current = cancelToken;
-
-    setDayInsightLoading(true);
-    setDayInsight(null);
-
-    (async () => {
-      try {
-        const res = await fetch('/api/insight', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'forecast-day',
-            stationId: insightId,
-            date: day.date,
-            dayLabel: day.isToday ? 'Today' : day.dayOfWeek,
-            tempMax: day.tempMax,
-            tempMin: day.tempMin,
-            pop: day.pop,
-            conditions: day.phrase,
-            isToday: day.isToday,
-            dayPart: day.isToday ? part : null,
-            // By day part, so the model can't misfile a 10pm reading as evening.
-            // Today starts at the current hour: what's left, not what's passed.
-            outlook: buildDayOutlook(hourlyForecast, day.date, units,
-              { fromHour: day.isToday ? new Date().getHours() : 0 }),
-            aqi: dayAqi,
-            sourceType: sourceType ?? 'pws',
-            units,
-          }),
-        });
-        if (!res.ok) throw new Error(res.status);
-        const json = await res.json();
-        if (cancelToken.cancelled) return;
-        const updatedAt = new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() });
-        const stored = { narrative: json.narrative ?? '', updatedAt };
-        // Don't pin an empty narrative (refusal, outage) for the full TTL.
-        if (stored.narrative) {
-          try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
-        }
-        setDayInsight(stored);
-      } catch {
-        if (!cancelToken.cancelled) setDayInsight({ narrative: '', updatedAt: '' });
-      } finally {
-        if (!cancelToken.cancelled) setDayInsightLoading(false);
-      }
-    })();
-
-    return () => { cancelToken.cancelled = true; };
-  // hourlyForecast and airQuality are deps because the trajectory and the AQI
-  // sent to the model are derived from them — both arrive after `forecast`, and
-  // without them the first request for a day goes out missing that detail.
-  }, [selectedDayIndex, forecast, hourlyForecast, airQuality, stationId, sourceType, units]); // eslint-disable-line react-hooks/exhaustive-deps
+  // AI narrative for the selected day.
+  const insightDay = buildDays(forecast)[selectedDayIndex] ?? null;
+  const insightId = insightScope({ stationId, sourceType, lat, lon });
+  const dayAqi = insightDay ? aqiForDay(airQuality, insightDay.date) : null;
+  // Same 25-wide bucket the server keys on, so client and server invalidate together.
+  const aqiBucket = dayAqi == null ? 'na' : Math.round(dayAqi / 25) * 25;
+  // Today describes the rest of the day, so it's keyed to the part of the day
+  // we're in and regenerates as each one passes; other days are an overview.
+  const dayPart = insightDay?.isToday ? currentDayPart() : 'day';
+  const { data: dayInsight, loading: dayInsightLoading } = useInsight({
+    storageKey: insightDay && STORAGE_KEYS.forecastDayInsightKey(insightId, insightDay.date, units, aqiBucket, dayPart),
+    enabled: !!insightDay,
+    // hourlyForecast and airQuality are deps because the trajectory and the AQI
+    // sent to the model are derived from them — both arrive after `forecast`, and
+    // without them the first request for a day goes out missing that detail.
+    deps: [selectedDayIndex, forecast, hourlyForecast, airQuality],
+    buildBody: async () => ({
+      type: 'forecast-day',
+      stationId: insightId,
+      date: insightDay.date,
+      dayLabel: insightDay.isToday ? 'Today' : insightDay.dayOfWeek,
+      tempMax: insightDay.tempMax,
+      tempMin: insightDay.tempMin,
+      pop: insightDay.pop,
+      conditions: insightDay.phrase,
+      isToday: insightDay.isToday,
+      dayPart: insightDay.isToday ? dayPart : null,
+      // By day part, so the model can't misfile a 10pm reading as evening.
+      // Today starts at the current hour: what's left, not what's passed.
+      outlook: buildDayOutlook(hourlyForecast, insightDay.date, units,
+        { fromHour: insightDay.isToday ? new Date().getHours() : 0 }),
+      aqi: dayAqi,
+      sourceType: sourceType ?? SOURCE_TYPES.PWS,
+      units,
+    }),
+    accept: json => (json?.narrative ? {
+      narrative: json.narrative,
+      updatedAt: new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() }),
+    } : null),
+  });
 
   if (isLoading) return <Skeleton />;
 

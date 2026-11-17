@@ -106,7 +106,6 @@ export default function App() {
   const [alertsOpen, setAlertsOpen]             = useState(false);
   const [mode, setMode]                         = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || DISPLAY_MODES.AUTO; } catch { return DISPLAY_MODES.AUTO; } });
   const [previewCondition, setPreviewCondition] = useState(null);
-  const [componentError, setComponentError]     = useState(null);
   const [defaultActivity, setDefaultActivity]   = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.DEFAULT_ACTIVITY) || 'bbq'; } catch { return 'bbq'; } });
   const [units, setUnits]                       = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.UNITS) || detectDefaultUnits(); } catch { return detectDefaultUnits(); } });
   const [credentialsVersion, setCredentialsVersion] = useState(0);
@@ -233,7 +232,6 @@ export default function App() {
         stationId={stationId}
         fetchHistoryDaily={fetchHistoryDaily}
         hourlyForecast={hourlyForecast}
-        onError={setComponentError}
         units={units}
       />
       <NavTabs active={activeTab} onChange={setActiveTab} />
@@ -247,8 +245,7 @@ export default function App() {
               error={error}
               stationId={stationId}
               hourlyForecast={hourlyForecast}
-              onError={setComponentError}
-              defaultActivity={defaultActivity}
+                    defaultActivity={defaultActivity}
               units={units}
             />
           </ErrorBoundary>
@@ -317,13 +314,13 @@ export default function App() {
         <AlertsSheet alerts={alerts} onClose={() => setAlertsOpen(false)} />
       )}
 
-      {((error && !isLoading) || componentError) && (
+      {error && !isLoading && (
         <div style={{
           position: 'fixed', bottom: 16, left: 16, right: 16, maxWidth: 388, margin: '0 auto',
           background: '#dc2626', color: '#fff', fontSize: 12, padding: '8px 14px',
           borderRadius: 12, zIndex: 300,
         }}>
-          {error || componentError}
+          {error}
         </div>
       )}
     </div>

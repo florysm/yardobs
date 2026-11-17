@@ -1,26 +1,36 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Captures what each handler sends the model, so the prompt contract (which
-// facts reach which card) is pinned without spending a real API call.
-const create = vi.fn();
+const { create } = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class { constructor() { this.messages = { create }; } },
 }));
 
+process.env.ANTHROPIC_API_KEY = 'test-key';
 const { default: handler } = await import('./insight.js');
 
+// Prompt contract tests (which facts reach which card) come first; the
+// cache/failure-policy tests follow.
+
+let ip = 0;
+let station = 0;
 function call(body) {
   const res = { status: vi.fn(() => res), json: vi.fn(() => res), setHeader: vi.fn(), end: vi.fn() };
-  const req = { method: 'POST', headers: { 'x-forwarded-for': `10.0.0.${Math.random()}` }, body };
+  // A fresh IP per call keeps the per-IP rate limiter out of the way.
+  const req = { method: 'POST', body, headers: { 'x-forwarded-for': `10.2.0.${++ip}` } };
   return handler(req, res).then(() => res);
 }
 
-const outlook = 'evening (6p–9p) 60→57°, slight chance of rain 25%; night (9p–12a) 55→52°, rain likely 65% from 11p';
+const reply = (text, stop_reason = 'end_turn') => ({ stop_reason, content: [{ type: 'text', text }] });
 
-beforeEach(() => {
-  process.env.ANTHROPIC_API_KEY = 'test';
-  create.mockReset();
-});
+// A unique station per test keeps the module-level cache from leaking between tests.
+const activity  = () => ({ activity: 'run', activityLabel: 'Running', score: 80, factors: [], current: { temp: 60 }, stationId: `T${++station}` });
+const daily     = () => ({ type: 'daily', stationId: `T${++station}`, date: '2026-11-17', current: { temp: 60 } });
+const forecast  = () => ({ type: 'forecast-day', stationId: `T${++station}`, date: '2026-11-18', tempMax: 60, tempMin: 40 });
+
+beforeEach(() => create.mockReset());
+afterEach(() => vi.useRealTimers());
+
+const outlook = 'evening (6p–9p) 60→57°, slight chance of rain 25%; night (9p–12a) 55→52°, rain likely 65% from 11p';
 
 describe('insight handlers', () => {
   it('forecast-day: today covers only the rest of the day, by part', async () => {
@@ -65,11 +75,11 @@ describe('insight handlers', () => {
     expect(res.json).toHaveBeenCalledWith({ narrative: 'narrative' });
   });
 
-  it('a refusal degrades to an empty narrative', async () => {
+  it('a refusal is a 502, never shown as a narrative', async () => {
     create.mockResolvedValue({ stop_reason: 'refusal', stop_details: { category: null },
       content: [{ type: 'text', text: 'partial' }] });
     const res = await call({ type: 'forecast-day', stationId: 'S4', date: '2026-11-08', units: 'imperial' });
-    expect(res.json).toHaveBeenCalledWith({ narrative: '' });
+    expect(res.status).toHaveBeenCalledWith(502);
   });
 
   it('daily: right now plus the next few hours, nothing later', async () => {
@@ -103,5 +113,96 @@ describe('insight handlers', () => {
     expect(create.mock.calls[0][0].system).toContain('"in your yard"');
     await call({ type: 'daily', stationId: 'S6', date: '2026-11-04', current: { temp: 61 }, sourceType: 'forecast_model', units: 'imperial' });
     expect(create.mock.calls[1][0].system).not.toContain('your yard');
+  });
+});
+
+describe('preview and Explore', () => {
+  it('daily: names the place, not the coordinate cache key', async () => {
+    create.mockResolvedValue(reply('{"narrative":"n","tags":[]}'));
+    await call({ type: 'daily', stationId: 'geo48.86,2.35', placeName: 'Paris', sourceType: 'forecast_model',
+      date: '2026-11-17', current: { temp: 50 }, units: 'metric' });
+    const { messages } = create.mock.calls[0][0];
+    expect(messages[0].content).toContain('Location: Paris');
+    expect(messages[0].content).not.toContain('geo48.86');
+  });
+});
+
+describe('cache and failure policy', () => {
+  it('caches a successful reply so the next identical request skips the model', async () => {
+    create.mockResolvedValue(reply('Breezy and mild.'));
+    const body = activity();
+    const first = await call(body);
+    const second = await call(body);
+    expect(first.status).toHaveBeenCalledWith(200);
+    expect(first.json).toHaveBeenCalledWith({ insight: 'Breezy and mild.' });
+    expect(second.json).toHaveBeenCalledWith({ insight: 'Breezy and mild.' });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps each card’s response shape', async () => {
+    create.mockResolvedValue(reply('Dry all day.'));
+    expect((await call(forecast())).json).toHaveBeenCalledWith({ narrative: 'Dry all day.' });
+
+    create.mockResolvedValue(reply('{"narrative":"Calm.","tags":[]}'));
+    expect((await call(daily())).json).toHaveBeenCalledWith({ narrative: 'Calm.', tags: [] });
+  });
+
+  it('returns 503 on overload and does not cache it', async () => {
+    const body = daily();
+    create.mockRejectedValueOnce(Object.assign(new Error('529 overloaded'), { status: 529 }));
+    const busy = await call(body);
+    expect(busy.status).toHaveBeenCalledWith(503);
+    expect(busy.json.mock.calls[0][0]).toHaveProperty('error');
+
+    create.mockResolvedValue(reply('{"narrative":"Calm.","tags":[]}'));
+    const retry = await call(body);
+    expect(retry.status).toHaveBeenCalledWith(200);
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns 502 for an empty, refused or unparseable reply and does not cache it', async () => {
+    const cases = [
+      [activity(), reply('')],
+      [forecast(), { stop_reason: 'refusal', content: [] }],
+      [daily(), reply('{"narrative":"Cut o', 'max_tokens')],
+      [daily(), reply('{"narrative":"","tags":[]}')],
+    ];
+    for (const [body, bad] of cases) {
+      create.mockReset();
+      create.mockResolvedValueOnce(bad).mockResolvedValueOnce(reply(body.type === 'daily' ? '{"narrative":"Ok.","tags":[]}' : 'Ok.'));
+      const res = await call(body);
+      expect(res.status).toHaveBeenCalledWith(502);
+      expect((await call(body)).status).toHaveBeenCalledWith(200);
+      expect(create).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it('returns 502 on other API errors', async () => {
+    create.mockRejectedValueOnce(Object.assign(new Error('bad request'), { status: 400 }));
+    expect((await call(activity())).status).toHaveBeenCalledWith(502);
+  });
+
+  it('treats an entry from the "future" (clock jumped backward) as expired', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-17T12:00:00Z'));
+    create.mockResolvedValue(reply('First.'));
+    const body = activity();
+    await call(body);
+
+    vi.setSystemTime(new Date('2026-11-17T11:00:00Z'));
+    create.mockResolvedValue(reply('Second.'));
+    expect((await call(body)).json).toHaveBeenCalledWith({ insight: 'Second.' });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it('expires entries after the TTL', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-17T12:00:00Z'));
+    create.mockResolvedValue(reply('First.'));
+    const body = activity();
+    await call(body);
+    vi.setSystemTime(new Date('2026-11-17T12:16:00Z'));
+    await call(body);
+    expect(create).toHaveBeenCalledTimes(2);
   });
 });

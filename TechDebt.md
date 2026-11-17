@@ -7,33 +7,9 @@ Last updated: 2026-11-17
 
 ## High Priority
 
-**1. AI-insight fetch + cache flow hand-rolled in 3 components, with 3 different failure policies**
-
-The flow — read localStorage, TTL-gate on `INSIGHT_TTL_MS`, cancel guard, POST `/api/insight`, persist, set state, report failure — is reimplemented in three components (~238 lines total), and the copies have drifted into real bugs (see `KnownBugs.md`: blank/"API busy" results pinned for an hour; HeroCard stuck loading). Differences: cancellation is a closure flag (HeroCard), a token object mirrored in a redundant ref (ForecastTab), or an `AbortController` + 400 ms debounce (ActivityScoreCard — the only one that aborts the request); only ForecastTab and ActivityScoreCard reset loading on a cache hit; HeroCard caches any 200 including `{narrative:''}`, ForecastTab caches only non-empty narratives, ActivityScoreCard caches `''` in its in-memory `iCache` on error; stored shapes differ (`{data, ts}` vs `{insight, ts, conditions}`); `insightId` is derived three ways (`stationId || current?.neighborhood || 'preview'` / `stationId || 'preview'` / `current?.stationId ?? 'preview'`). Client cache keys also hand-copy the server's bucketing (`Math.round(aqi/25)*25`, `Math.round(score/5)*5`, `Math.round(temp/2)*2`). Raised to High because the drift is now producing user-visible bugs. Extraction target: a `useInsight` hook (or `postInsight`/`readCachedInsight` helpers) with one success/failure policy — which also centralizes the `onError` sites from item 3. Large change — see `TechDebt-LargeChanges.md`.
-
-Affected locations (3 files):
-
-- `src/components/HeroCard.jsx:260-326` — daily insight
-- `src/components/ForecastTab.jsx:273-353` — forecast-day insight
-- `src/components/ActivityScoreCard.jsx:172-261` — activity insight
+_None open. Items 1–3 (insight flow, insight handlers, error banner) were fixed 2026-11-17._
 
 ## Medium Priority
-
-**2. api/insight.js handlers repeat the same cache/call/respond pipeline 3 times**
-
-The activity, daily and forecast-day handlers each repeat: `resolveUnits` + `isPreview = sourceType === 'forecast_model'`, a hand-built key with the same `` `${units}|${isPreview ? 'preview|' : ''}` `` prefix and `Math.round(x/2)*2` buckets (5 copies), `getCacheHit` → `requireApiKey` → `callModel` → `textOf` → `if (cache.size >= CACHE_MAX_SIZE) evictOne(); cache.set(...)` → respond → `handleInsightError` with the same "API is busy" text. Hit/response shapes differ per handler (`hit.text`→`{insight}`, `hit.data`→object, `hit.text`→`{narrative}`), which is part of why the client copies (item 1) diverged. A `cacheSet()` helper and a shared `runCachedInsight({ key, build, parse })` would collapse it.
-
-- `api/insight.js:142-205` (activity), `api/insight.js:258-334` (daily), `api/insight.js:365-415` (forecast-day); evict-then-set at `:199`, `:328`, `:409`; busy text at `:204`, `:333`, `:414`
-
-**3. `componentError` banner state is set but never cleared**
-
-Child components report failures through `onError` into one `componentError` state in `App.jsx`, but nothing ever resets it — no dismiss, no timeout, no clear-on-success — so one transient failure leaves the red banner up all session. `useWeather`'s `error` clears on refetch; `componentError` does not. Also: the report at `HeroCard.jsx:290` can never fire (`fetchHistoryDaily` swallows its own errors and returns null), and ForecastTab's insight reports nothing on failure, unlike the other two cards.
-
-Affected locations (4 files, 3 report sites, 0 clear sites):
-
-- `src/App.jsx:109` — state; `src/App.jsx:232,246` — `onError={setComponentError}` to HeroCard and NowTab (→ ActivityScoreCard, `NowTab.jsx:38`); `src/App.jsx:316-322` — banner
-- `src/components/HeroCard.jsx:290,317`
-- `src/components/ActivityScoreCard.jsx:256`
 
 **4. Weather-code → icon/label mapping defined in 4 tables that disagree**
 
@@ -75,11 +51,11 @@ Beyond the existing `.y-*` set: the mono value style (`fontSize: 14, fontWeight:
 
 **12. `updatedAt` / time formatting duplicated, and hour formatters multiplying**
 
-`new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() })` is byte-identical at `HeroCard.jsx:310` and `ForecastTab.jsx:335`, with the same options in `AlertsSheet.jsx:9-11`; `RadarTab.jsx:91` ignores `getLocaleHour12` entirely. More broadly there are 7 hour formatters (`shortHour` '9p', `fmtHourShort` '9P', `fmtHourIso`/`fmtTimeTick` '9pm' with identical bodies, `fmtSunTime`/`fmtMoonTime` identical, `getBestWindow`'s '2 PM'), and the server parses the last one (`api/insight.js:175` `bestWindow.replace('Peak ', '')`).
+`new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() })` is byte-identical at `HeroCard.jsx:288` and `ForecastTab.jsx:255` (each card's `useInsight` `accept`), with the same options in `AlertsSheet.jsx:9-11`; `RadarTab.jsx:91` ignores `getLocaleHour12` entirely. More broadly there are 7 hour formatters (`shortHour` '9p', `fmtHourShort` '9P', `fmtHourIso`/`fmtTimeTick` '9pm' with identical bodies, `fmtSunTime`/`fmtMoonTime` identical, `getBestWindow`'s '2 PM'), and the server parses the last one (`api/insight.js:228` `bestWindow.replace('Peak ', '')`).
 
-**13. Profile mode and source-type string literals with no constants**
+**13. Profile mode and default-activity string literals with no constants**
 
-`'station'`/`'preview'` appear in ~17 places across 6 files, and the `profile?.mode === 'station' && !!profile?.exploring` derivation is copied in `App.jsx:132`, `TopBar.jsx:64` and `useWeather.js:57`. `'forecast_model'`/`'pws'` appear in 8 places client and server. Default activity `'bbq'` is hard-coded at `App.jsx:110` and `ActivityScoreCard.jsx:134` instead of `ACTIVITIES[0].id`.
+`'station'`/`'preview'` appear in ~17 places across 6 files, and the `profile?.mode === 'station' && !!profile?.exploring` derivation is copied in `App.jsx:132`, `TopBar.jsx:64` and `useWeather.js:57`. (Source types are done: `SOURCE_TYPES` in `src/utils/sourceTypes.js`, 2026-11-17.) Default activity `'bbq'` is hard-coded at `App.jsx:110` and `ActivityScoreCard.jsx:134` instead of `ACTIVITIES[0].id`.
 
 **14. Wrapped `localStorage` read idiom copied 9 times**
 
@@ -91,4 +67,4 @@ Rate limiting is implemented twice in different styles (fixed window in `api/wea
 
 **17. Pure modules with real logic but no tests**
 
-`src/utils/weatherIcons.js` (`wmoToTwc`, 12 branches — the WMO 80/81 bug in `KnownBugs.md` would have been caught), `parseChangelog.js`, `storageKeys.js` (key builders that cache invalidation depends on), and `apiFetch.js`. (`api/weather.js` and `geocode.js` got tests 2026-11-17.) Also `utils/compass.js` sits alone at the repo root outside `src/`, imported mid-file by `format.js:24`.
+`src/utils/weatherIcons.js` (`wmoToTwc`, 12 branches — the WMO 80/81 bug in `KnownBugs.md` would have been caught), `parseChangelog.js` and `apiFetch.js`. (`api/weather.js`, `api/insight.js`, `geocode.js` and `storageKeys.js` got tests 2026-11-17.) Also `utils/compass.js` sits alone at the repo root outside `src/`, imported mid-file by `format.js:24`.

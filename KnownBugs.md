@@ -13,20 +13,6 @@ What goes wrong, why, and under what condition.
 - Impact: [user-visible / data loss / silent failure / crash]
 -->
 
-**History caches: today's daily summary frozen, and nothing cleared on station change**
-
-`fetchHistoryDaily` returns `historyDailyRef.current[dateStr]` for any cached date, including today — unlike `fetchHistory`, which refetches today. App fetches today once on load, so `todayObservedHigh` (Forecast card), today's bar/row in 7d/30d charts and rain totals stay at their first-load values all session; after midnight, yesterday's partial row is never refreshed, undercounting rainfall. Separately, `history`, `historyDaily` and `historyDailyRef` are never reset when `dataSourceKey` changes, so after changing station ID in Settings, Trends, HeroCard YoY and the forecast "today high" show the previous station's data (keys are date-only). TrendsTab's `yoyFetched` ref also never resets, so its YoY card keeps the old station's numbers until remount.
-
-- File: `src/hooks/useWeather.js:212`, `src/hooks/useWeather.js:247`, `src/hooks/useWeather.js:327-333` (reset effect skips history), `src/components/TrendsTab.jsx:373-375`
-- Impact: user-visible
-
-**Previous location's forecast, hourly, air quality and alerts stick after switching source**
-
-On `dataSourceKey` change the reset effect nulls forecast/hourly/AQ/alerts but leaves `current` and `locationRef.current` alone. App's effect sees `!forecast && current` (old `current`) and immediately refetches — each fetcher reads the old `locationRef.current` and runs under the new, un-aborted controller, so it stores the old location's data. When the new `current` lands, the slots are non-null and App never refetches, leaving the old forecast/hourly/AQ up until the hourly forecast poll (alerts until the 5-min poll). Related: in `fetchCurrentStation` the inner `catch {}` around the Open-Meteo icon lookup swallows `AbortError`, so an aborted request still continues to `setCurrent` with the old station's reading.
-
-- File: `src/hooks/useWeather.js:327-333`, `src/hooks/useWeather.js:269` / `281` / `296` / `315` (fetchers read `locationRef`), `src/App.jsx:180-185`, `src/hooks/useWeather.js:100-114` (swallowed abort)
-- Impact: user-visible
-
 **Insight cards pin blank or "API busy" results for an hour**
 
 The server no longer caches a blank daily insight, but clients still do. On an Anthropic overload, `handleInsightError` returns the "Insight temporarily unavailable — API is busy" text as a 200, and on a daily parse failure/refusal the handler returns 200 `{ narrative: '', tags: [] }` or `{}`. HeroCard stores `{...json, updatedAt}` in localStorage with no narrative check; ForecastTab and ActivityScoreCard cache any non-empty text. One overload or bad response shows a blank or "busy" card for the full 1-hour client TTL.
@@ -50,24 +36,10 @@ Open-Meteo hourly data is fetched with `timezone=auto` (location-local, no offse
 
 **TrendsTab range effect refetches on every history update and its loading flag races**
 
-`ensureFetched` depends on `history`/`fetchHistory`, and `fetchHistory` depends on `history`, so every `setHistory` re-runs the range effect: `setLoading(true)` again and another uncached `fetchHistoryRecent()` (≈3 history-recent requests on mount, more with YoY, all counted against the 30-per-5-min limiter). The effect has no cancel flag, so an earlier run's `.finally(() => setLoading(false))` can clear loading while a later range's fetches are still in flight, rendering a partial chart.
+`ensureFetched` depends on the `history` object, so every history write gives it a new identity and re-runs the range effect: `setLoading(true)` again and another uncached `fetchHistoryRecent()` (more with YoY on, all counted against the 30-per-5-min limiter). `fetchHistory` itself is stable since 2026-11-17, so this is now confined to TrendsTab. The effect has no cancel flag, so an earlier run's `.finally(() => setLoading(false))` can clear loading while a later range's fetches are still in flight, rendering a partial chart.
 
-- File: `src/components/TrendsTab.jsx:401-403`, `src/components/TrendsTab.jsx:414-435`, `src/hooks/useWeather.js:225`
+- File: `src/components/TrendsTab.jsx` (`ensureFetched` and the "Range-aware data fetching" effect)
 - Impact: user-visible
-
-**Upstream 204 becomes a 502 "Upstream non-JSON response"**
-
-A 204 is `ok`, so the `!upstream.ok` branch is skipped and `JSON.parse('')` throws into the 502 path. `twcErrorMessage`'s 204 → "Station not found" branch is unreachable, so an offline/unknown station shows a generic error.
-
-- File: `api/weather.js:136-143`, `api/weather.js:38`
-- Impact: user-visible
-
-**Air-quality fetch stores an error body as data**
-
-`fetch(url).then(r => r.json())` has no `r.ok` / `data.error` check, so an Open-Meteo 429/5xx JSON body is stored in `airQuality`. It's non-null, so App never retries, and AQI shows empty until the next hourly forecast poll.
-
-- File: `src/hooks/useWeather.js:305-306`
-- Impact: silent failure
 
 **Open-Meteo slight/moderate rain showers shown as heavy rain**
 

@@ -85,10 +85,10 @@ Beyond the existing `.y-*` set: the mono value style (`fontSize: 14, fontWeight:
 
 `try { return localStorage.getItem(K) || d } catch { return d }` appears at `App.jsx:107, 110, 111, 136`, `SettingsDrawer.jsx:62-63`, `StationForm.jsx:11, 13`, `RadarTab.jsx:96` — SettingsDrawer and StationForm repeat the same two reads. A `readStored(key, fallback)` in `storageKeys.js` would replace them. `StationForm.jsx:30-32` also hand-sets the `x-twc-key` header instead of using `apiFetch`.
 
-**15. Dead proxy routes and duplicated rate limiting in `api/weather.js`**
+**15. Duplicated rate limiting in `api/`**
 
-`hourly-forecast-twc` (`:91-94`) and `air-quality` (`:106-111`) have no client callers — `useWeather.js:304` calls Open-Meteo AQ directly with a URL hand-kept in step with the proxy's. The 400 message (`:120`) doesn't list `history-recent`. Rate limiting is implemented twice in different styles (fixed window here, sliding log in `api/insight.js:8-29`) with the IP-extraction line duplicated (`insight.js:424`, `weather.js:46`); both share the clock-jump bug in `KnownBugs.md`, so one `api/lib/rateLimit.js` fixes it once.
+Rate limiting is implemented twice in different styles (fixed window in `api/weather.js:7-29`, sliding log in `api/insight.js:8-29`) with the IP-extraction line duplicated (`insight.js`, `weather.js`); both share the clock-jump bug in `KnownBugs.md`, so one `api/lib/rateLimit.js` fixes it once. (The dead `hourly-forecast-twc`/`air-quality` routes and the stale 400 message were fixed 2026-11-17.)
 
 **17. Pure modules with real logic but no tests**
 
-`src/utils/weatherIcons.js` (`wmoToTwc`, 12 branches — the WMO 80/81 bug in `KnownBugs.md` would have been caught), `parseChangelog.js`, `storageKeys.js` (key builders that cache invalidation depends on), `apiFetch.js`, and `api/weather.js` (no test at all). Also `utils/compass.js` sits alone at the repo root outside `src/`, imported mid-file by `format.js:24`.
+`src/utils/weatherIcons.js` (`wmoToTwc`, 12 branches — the WMO 80/81 bug in `KnownBugs.md` would have been caught), `parseChangelog.js`, `storageKeys.js` (key builders that cache invalidation depends on), and `apiFetch.js`. (`api/weather.js` and `geocode.js` got tests 2026-11-17.) Also `utils/compass.js` sits alone at the repo root outside `src/`, imported mid-file by `format.js:24`.

@@ -228,9 +228,9 @@ Proxies weather data requests. TWC routes require the caller's own key via the `
 | `history-daily` | `stationId`, `date` (YYYYMMDD) | TWC | ✅ | Daily summary (high/low/precip) |
 | `forecast` | `lat`, `lon` | TWC | ✅ | 5-day daily forecast. Station owners only — Preview Mode reads its daily forecast from the `daily` block of `hourly-forecast` instead. |
 | `hourly-forecast` | `lat`, `lon` | Open-Meteo | — | Global hourly forecast (5 days) **plus** a `daily` block (max/min, weather code, precip probability). Works for any location worldwide. |
-| `hourly-forecast-twc` | `lat`, `lon` | TWC | ✅ | TWC hourly forecast (alternate source; no current caller) |
-| `air-quality` | `lat`, `lon` | Open-Meteo | — | Current AQI, PM2.5, PM10, ozone, **plus** an `hourly` block of `us_aqi` covering 5 days (used for per-day air quality on the Forecast tab) |
 | `alerts` | `lat`, `lon` | NWS | — | Active severe-weather alerts (US only; returns empty array outside NWS coverage) |
+
+Air quality isn't proxied: the browser calls Open-Meteo's air-quality API directly (see `fetchAirQuality` in `src/hooks/useWeather.js`). When TWC has no data (HTTP 204), the history routes return `{ "observations": [] }` and `current` returns a 404.
 
 ### `POST /api/insight`
 

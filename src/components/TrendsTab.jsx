@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -369,12 +369,13 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
 
   useEffect(() => { setShowYoY(false); }, [metric, range]);
 
-  const yoyFetched = useRef(false);
   const [yoy, setYoy] = useState({ today: null, lastYear: null, lyRaw: [] });
 
+  // fetchHistory is stable per station (and serves today from a 15-min cache),
+  // so this re-runs only when the station or data mode changes.
   useEffect(() => {
-    if (yoyFetched.current || !stationId) return;
-    yoyFetched.current = true;
+    if (!stationId) return;
+    let cancelled = false;
     const todayKey = toDateStr(new Date());
     const now = new Date();
     const lyDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
@@ -382,7 +383,10 @@ export default function TrendsTab({ stationId, current, forecast, fetchHistory, 
     if (lyDate.getMonth() !== now.getMonth()) lyDate.setDate(0);
     const lyKey = toDateStr(lyDate);
     Promise.all([fetchHistory(todayKey), fetchHistory(lyKey)])
-      .then(([t, l]) => setYoy({ today: summarize(t), lastYear: summarize(l), lyRaw: l ?? [] }));
+      .then(([t, l]) => {
+        if (!cancelled) setYoy({ today: summarize(t), lastYear: summarize(l), lyRaw: l ?? [] });
+      });
+    return () => { cancelled = true; };
   }, [stationId, fetchHistory]);
 
   const today          = new Date();

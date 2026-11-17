@@ -184,10 +184,14 @@ export default function App() {
     if (alerts == null && current) fetchAlerts();
   }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast, airQuality, fetchAirQuality, alerts, fetchAlerts]);
 
-  // Ensure today's recorded high is available for the forecast card even when TrendsTab hasn't been visited
+  // Keep today's recorded high (forecast card) current even when TrendsTab hasn't
+  // been visited. Re-checked on every conditions update (~5 min); the history
+  // cache only actually refetches today once its copy is 15 minutes old, and the
+  // date key rolls over at midnight on its own.
+  const currentObsTime = current?.obsTimeLocal;
   useEffect(() => {
     if (stationId) fetchHistoryDaily(toDateStr(new Date()));
-  }, [stationId, fetchHistoryDaily]);
+  }, [stationId, fetchHistoryDaily, currentObsTime]);
 
   const todayObservedHigh = useMemo(() => {
     const obs = historyDaily[toDateStr(new Date())] ?? [];

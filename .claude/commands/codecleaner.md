@@ -81,7 +81,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 - `api/weather.js` route branches only build URLs; all branches converge on one shared fetch/status-check/parse path. Flag any new branch that adds its own `fetch` + status-check boilerplate.
 - CORS is set only via `applyCors()` in `api/lib/cors.js`; flag any handler setting `Access-Control-*` headers manually.
 - The `api/insight.js` in-memory cache is bounded: `CACHE_MAX_SIZE` enforced via `evictOne()` before every insert, plus a TTL sweep interval. Flag any new insert path that skips the size check, or any new in-memory cache elsewhere in `api/` without size/TTL bounds.
-- Proxy routes must have a caller: `hourly-forecast-twc` and `air-quality` in `api/weather.js` have none (item 15). Grep `type=<route>` in `src/` for each `case`.
+- Proxy routes must have a caller (dead `hourly-forecast-twc`/`air-quality` removed 2026-11-17). Grep `type=<route>` in `src/` for each `case`, and keep `ROUTE_TYPES` in `api/weather.js` in step with the switch.
 - One rate limiter: currently two different implementations (item 15) — once `api/lib/rateLimit.js` exists, flag any handler rolling its own.
 
 **Extraction candidates:**

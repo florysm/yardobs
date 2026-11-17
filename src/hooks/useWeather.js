@@ -27,9 +27,6 @@ function computeIsDay(lat, lon) {
   }
 }
 
-// Converts Open-Meteo WMO weather codes to approximate TWC icon codes so that
-// resolveAutoTheme and ForecastTab's buildDays (which both expect TWC codes) work
-// without modification in preview mode.
 // ── Open-Meteo base URLs ──────────────────────────────────────────────────────
 const OM_BASE = 'https://api.open-meteo.com/v1/forecast';
 const OM_AQ   = 'https://air-quality-api.open-meteo.com/v1/air-quality';

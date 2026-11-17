@@ -55,9 +55,12 @@ export function convertTemp(valueF, units) {
   return units === UNITS.METRIC ? (valueF - 32) * 5 / 9 : valueF;
 }
 
+// Exact (international mile). The iOS widget's copy is checked by widgetParity.test.js.
+export const KMH_PER_MPH = 1.609344;
+
 export function convertWind(valueMph, units) {
   if (valueMph == null) return null;
-  return units === UNITS.METRIC ? valueMph * 1.60934 : valueMph;
+  return units === UNITS.METRIC ? valueMph * KMH_PER_MPH : valueMph;
 }
 
 export function convertPrecip(valueIn, units) {

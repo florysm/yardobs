@@ -4,7 +4,8 @@ import { STORAGE_KEYS } from '../utils/storageKeys';
 import { SOURCE_TYPES } from '../utils/sourceTypes';
 import { insightScope } from '../utils/insightCache';
 import { useInsight } from '../hooks/useInsight';
-import { ICONS, LABELS } from '../utils/weatherIcons';
+import { FALLBACK_ICON } from '../utils/weatherIcons';
+import { heroCondition } from '../utils/sky';
 import { toISODate, lastYearKey } from '../utils/dateUtils';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildLookahead } from '../utils/outlook';
@@ -288,30 +289,9 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     } : null),
   });
 
-  function deriveFromSensors(obs) {
-    const precip = obs.precipRate ?? 0;
-    if (precip > 0.1)  return { icon: '🌧️', label: 'Heavy Rain' };
-    if (precip > 0)    return { icon: '🌦️', label: 'Light Rain' };
-    if (!obs.isDay)    return { icon: '🌙',  label: 'Clear' };
-    if (obs.solar != null && obs.solar < 150)       return { icon: '☁️', label: 'Cloudy' };
-    if (obs.solar != null && obs.solar >= 450)      return { icon: '☀️', label: 'Sunny' };
-    return { icon: '🌤️', label: 'Partly Cloudy' };
-  }
+  const derived = heroCondition(current);
 
-  const PARTLY_CODES = new Set([23, 24, 29, 30]);
-  const derived = current
-    ? (current.iconCode != null
-        ? (() => {
-            if (PARTLY_CODES.has(current.iconCode) && (current.isDay ?? 1)) {
-              if ((current.uv ?? 0) >= 5 || (current.solar ?? 0) >= 450)
-                return { icon: '☀️', label: 'Sunny' };
-            }
-            return { icon: ICONS[current.iconCode] ?? '🌡️', label: LABELS[current.iconCode] ?? 'Clear' };
-          })()
-        : deriveFromSensors(current))
-    : null;
-
-  const icon      = derived?.icon  ?? '🌡️';
+  const icon      = derived?.icon  ?? FALLBACK_ICON;
   const condition = derived?.label ?? 'Loading…';
 
   const windLabel = current

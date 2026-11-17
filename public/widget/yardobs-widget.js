@@ -51,50 +51,64 @@ async function applyUpdateFromClipboard() {
 
 const SETTINGS = effectiveConfig();
 
-// Days until the TWC key's recorded expiration date (local calendar days).
-function keyDaysLeft() {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(SETTINGS.keyExpires || '');
-  if (SETTINGS.mode !== 'station' || !m) return null;
-  const now = new Date();
+// PARITY:BEGIN — pure copies of app logic (this script can't import). The
+// app's src/utils/widgetParity.test.js evaluates this block and checks it
+// against the app on every test run, so keep it free of Scriptable APIs.
+
+// Warn this many days before the TWC key expires (app: KEY_WARN_DAYS).
+const KEY_WARN_DAYS = 14;
+
+// Whole local calendar days until a YYYY-MM-DD expiry date; null if unset.
+function keyDaysLeft(keyExpires, now = new Date()) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(keyExpires || '');
+  if (!m) return null;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - today) / 86400000);
 }
-// Short note shown in the last week before expiry, and after it.
-function keyNote() {
-  const d = keyDaysLeft();
-  if (d == null || d > 7) return null;
-  if (d < 0) return 'Key expired · renew in YardObs';
-  return d === 0 ? 'Key expires today' : `Key expires in ${d}d`;
-}
 
-// ── Conditions: WMO weather code → label, SF Symbol, background ──────────────
-function condition(code, isDay) {
-  const c = code ?? 0;
-  if (c === 0)              return { label: 'Clear',         symbol: isDay ? 'sun.max.fill' : 'moon.stars.fill', sky: 'clear' };
-  if (c <= 2)               return { label: 'Partly Cloudy', symbol: isDay ? 'cloud.sun.fill' : 'cloud.moon.fill', sky: 'clear' };
-  if (c === 3)              return { label: 'Cloudy',        symbol: 'cloud.fill', sky: 'cloudy' };
-  if (c === 45 || c === 48) return { label: 'Fog',           symbol: 'cloud.fog.fill', sky: 'cloudy' };
-  if (c >= 51 && c <= 57)   return { label: 'Drizzle',       symbol: 'cloud.drizzle.fill', sky: 'rain' };
-  if (c === 65 || c === 82) return { label: 'Heavy Rain',    symbol: 'cloud.heavyrain.fill', sky: 'rain' };
-  if ((c >= 61 && c <= 67) || (c >= 80 && c <= 81)) return { label: 'Rain', symbol: 'cloud.rain.fill', sky: 'rain' };
-  if ((c >= 71 && c <= 77) || c === 85 || c === 86) return { label: 'Snow', symbol: 'cloud.snow.fill', sky: 'snow' };
-  if (c >= 95)              return { label: 'Thunderstorm',  symbol: 'cloud.bolt.rain.fill', sky: 'storm' };
-  return { label: '—', symbol: 'cloud.fill', sky: 'cloudy' };
-}
-
-const SKY_GRADIENTS = {
-  clear:  ['#4a90d9', '#2b6cb0'],
-  cloudy: ['#7b8794', '#52606d'],
-  rain:   ['#4a5568', '#2d3748'],
-  snow:   ['#90a4b8', '#5f7387'],
-  storm:  ['#44337a', '#1a202c'],
-  night:  ['#1e2a4a', '#0b1020'],
+// WMO weather code → label (day, night), SF Symbol, background. Labels match
+// the app's (src/utils/weatherIcons.js WMO_TO_TWC → LABELS).
+const CONDITIONS = {
+  0:  { label: ['Sunny', 'Clear'],     symbol: ['sun.max.fill', 'moon.stars.fill'], sky: 'clear' },
+  1:  { label: 'Fair',                 symbol: ['sun.max.fill', 'moon.stars.fill'], sky: 'clear' },
+  2:  { label: 'Partly Cloudy',        symbol: ['cloud.sun.fill', 'cloud.moon.fill'], sky: 'clear' },
+  3:  { label: 'Cloudy',               symbol: 'cloud.fill',            sky: 'cloudy' },
+  45: { label: 'Foggy',                symbol: 'cloud.fog.fill',        sky: 'cloudy' },
+  48: { label: 'Foggy',                symbol: 'cloud.fog.fill',        sky: 'cloudy' },
+  51: { label: 'Drizzle',              symbol: 'cloud.drizzle.fill',    sky: 'rain' },
+  53: { label: 'Drizzle',              symbol: 'cloud.drizzle.fill',    sky: 'rain' },
+  55: { label: 'Drizzle',              symbol: 'cloud.drizzle.fill',    sky: 'rain' },
+  56: { label: 'Freezing Drizzle',     symbol: 'cloud.sleet.fill',      sky: 'rain' },
+  57: { label: 'Freezing Drizzle',     symbol: 'cloud.sleet.fill',      sky: 'rain' },
+  61: { label: 'Rain',                 symbol: 'cloud.rain.fill',       sky: 'rain' },
+  63: { label: 'Rain',                 symbol: 'cloud.rain.fill',       sky: 'rain' },
+  65: { label: 'Heavy Rain',           symbol: 'cloud.heavyrain.fill',  sky: 'rain' },
+  66: { label: 'Freezing Rain',        symbol: 'cloud.sleet.fill',      sky: 'rain' },
+  67: { label: 'Freezing Rain',        symbol: 'cloud.sleet.fill',      sky: 'rain' },
+  71: { label: 'Flurries',             symbol: 'cloud.snow.fill',       sky: 'snow' },
+  73: { label: 'Snow',                 symbol: 'cloud.snow.fill',       sky: 'snow' },
+  75: { label: 'Heavy Snow',           symbol: 'cloud.snow.fill',       sky: 'snow' },
+  77: { label: 'Flurries',             symbol: 'cloud.snow.fill',       sky: 'snow' },
+  80: { label: 'Scattered Showers',    symbol: 'cloud.sun.rain.fill',   sky: 'rain' },
+  81: { label: 'Showers',              symbol: 'cloud.rain.fill',       sky: 'rain' },
+  82: { label: 'Heavy Rain',           symbol: 'cloud.heavyrain.fill',  sky: 'rain' },
+  85: { label: 'Scattered Snow',       symbol: 'cloud.snow.fill',       sky: 'snow' },
+  86: { label: 'Heavy Snow',           symbol: 'cloud.snow.fill',       sky: 'snow' },
+  95: { label: 'Thunderstorms',        symbol: 'cloud.bolt.rain.fill',  sky: 'storm' },
+  96: { label: 'Severe T-Storms',      symbol: 'cloud.bolt.rain.fill',  sky: 'storm' },
+  99: { label: 'Severe T-Storms',      symbol: 'cloud.bolt.rain.fill',  sky: 'storm' },
 };
+const UNKNOWN_CONDITION = { label: 'Cloudy', symbol: 'cloud.fill', sky: 'cloudy' };
 
-// ── Units — everything is fetched imperial and converted for display ─────────
-const metric = SETTINGS.units === 'metric';
-const fmtTemp = (f) => f == null ? '—' : `${Math.round(metric ? (f - 32) * 5 / 9 : f)}°`;
-const fmtWind = (mph) => mph == null ? '—' : `${Math.round(metric ? mph * 1.609344 : mph)} ${metric ? 'km/h' : 'mph'}`;
+function condition(code, isDay) {
+  const c = CONDITIONS[code ?? 0] ?? UNKNOWN_CONDITION;
+  const pick = v => (Array.isArray(v) ? v[isDay ? 0 : 1] : v);
+  return { label: pick(c.label), symbol: pick(c.symbol), sky: c.sky };
+}
+
+const KMH_PER_MPH = 1.609344;
+const toC   = (f) => (f - 32) * 5 / 9;
+const toKmh = (mph) => mph * KMH_PER_MPH;
 
 // NWS heat index / wind chill (°F) — same formula as src/utils/weatherCalc.js
 function calcFeelsLike(T, RH, V) {
@@ -110,6 +124,32 @@ function calcFeelsLike(T, RH, V) {
   }
   return Math.round(T);
 }
+// PARITY:END
+
+// Days left on this widget's TWC key (station mode only).
+const settingsKeyDays = () => (SETTINGS.mode === 'station' ? keyDaysLeft(SETTINGS.keyExpires) : null);
+
+// Short note shown once the key is within KEY_WARN_DAYS of expiring, and after.
+function keyNote() {
+  const d = settingsKeyDays();
+  if (d == null || d > KEY_WARN_DAYS) return null;
+  if (d < 0) return 'Key expired · renew in YardObs';
+  return d === 0 ? 'Key expires today' : `Key expires in ${d}d`;
+}
+
+const SKY_GRADIENTS = {
+  clear:  ['#4a90d9', '#2b6cb0'],
+  cloudy: ['#7b8794', '#52606d'],
+  rain:   ['#4a5568', '#2d3748'],
+  snow:   ['#90a4b8', '#5f7387'],
+  storm:  ['#44337a', '#1a202c'],
+  night:  ['#1e2a4a', '#0b1020'],
+};
+
+// ── Units — everything is fetched imperial and converted for display ─────────
+const metric = SETTINGS.units === 'metric';
+const fmtTemp = (f) => f == null ? '—' : `${Math.round(metric ? toC(f) : f)}°`;
+const fmtWind = (mph) => mph == null ? '—' : `${Math.round(metric ? toKmh(mph) : mph)} ${metric ? 'km/h' : 'mph'}`;
 
 // ── Fetching ──────────────────────────────────────────────────────────────────
 async function getJSON(url) {
@@ -211,7 +251,7 @@ function addText(stack, text, font, opacity = 1) {
 // data is stale); otherwise offline status, then an upcoming-expiry note.
 function statusNote(data, stale, fallback) {
   const note = keyNote();
-  if (note && (keyDaysLeft() < 0 || !stale)) return note;
+  if (note && (settingsKeyDays() < 0 || !stale)) return note;
   if (stale) return `Offline · ${timeLabel(data.fetchedAt)}`;
   return fallback;
 }
@@ -400,7 +440,7 @@ if (args.queryParameters?.update) {
     widget = buildWidget(data);
   } catch (err) {
     const cached = readCache();
-    widget = buildWidget(cached, { stale: !!cached, error: keyDaysLeft() < 0 ? 'TWC key expired — renew it, then tap Update installed widget in YardObs.' : err.message });
+    widget = buildWidget(cached, { stale: !!cached, error: settingsKeyDays() < 0 ? 'TWC key expired — renew it, then tap Update installed widget in YardObs.' : err.message });
   }
 
   if (config.runsInWidget) {

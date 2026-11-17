@@ -16,6 +16,7 @@ import { CHART_COLORS, META_COLORS, THEME_IDS, DISPLAY_MODES } from './themes.js
 import { STORAGE_KEYS } from './utils/storageKeys';
 import { toDateStr } from './utils/dateUtils';
 import { detectDefaultUnits } from './utils/units';
+import { resolveAutoTheme } from './utils/sky';
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 const TrendsLockedPlaceholder = lazy(() => import('./components/TrendsLockedPlaceholder'));
@@ -23,62 +24,6 @@ const RadarTab  = lazy(() => import('./components/RadarTab'));
 
 function LazyTabFallback() {
   return <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>Loading…</div>;
-}
-
-const ICON_STORMY = [0, 1, 2, 3, 4, 17, 37, 38, 47];
-const ICON_RAINY  = [5, 6, 8, 9, 10, 11, 12, 35, 39, 40, 45];
-const ICON_CLOUDY = [7, 13, 14, 15, 16, 18, 19, 20, 21, 22, 25, 26, 27, 28, 41, 42, 43, 46];
-const ICON_PARTLY = [23, 24, 29, 30];
-
-// Resolves current conditions → one of the 6 theme names using a sensor-aware
-// cascade. Prefers the station's own measurements and only leans on the model
-// iconCode when local sensors can't answer, so a regional-model storm can't
-// override a backyard that's measurably dry. Day/night comes from current.isDay,
-// which useWeather derives via SunCalc (the TWC observation omits it).
-function resolveAutoTheme(current) {
-  if (!current) return THEME_IDS.light;
-
-  const isDay      = (current.isDay ?? 1) === 1;
-  const iconCode   = current.iconCode ?? null;
-  const precipRate = current.precipRate;   // null → station has no rain sensor
-  const uv         = current.uv;           // null → no UV sensor
-  const solar      = current.solar;        // null → no solar sensor
-
-  const hasRainSensor = precipRate != null;
-
-  const modelStormy = iconCode != null && ICON_STORMY.includes(iconCode);
-  const modelRainy  = iconCode != null && ICON_RAINY.includes(iconCode);
-  const modelCloudy = iconCode != null && ICON_CLOUDY.includes(iconCode);
-  const modelPartly = iconCode != null && ICON_PARTLY.includes(iconCode);
-
-  // 1. Wetness. A local rain gauge is ground truth: a dry reading (0) vetoes the
-  //    model's precipitation; the model's wetness is trusted only when the
-  //    station has no gauge of its own (e.g. preview mode, which has no sensors).
-  const isWet = hasRainSensor ? precipRate > 0 : (modelStormy || modelRainy);
-  if (isWet) {
-    const severe = modelStormy || (hasRainSensor && precipRate > 0.1);
-    return severe ? THEME_IDS.stormy : THEME_IDS.rainy;
-  }
-
-  // 2. Dry night → dark.
-  if (!isDay) return THEME_IDS.dark;
-
-  // 3. Dry day → decide sunny / partly / cloudy, using the strongest signal
-  //    available. Measured sunlight is only ever a positive "sunny" signal or,
-  //    via solar radiation, a positive "overcast" signal — a low UV reading
-  //    alone is ambiguous, so it never forces cloudy. When sensors are silent
-  //    (preview mode, or a station without solar/UV) we defer to the model
-  //    iconCode for the cloud state, which is the only clarity signal we have.
-  if ((uv ?? 0) >= 5 || (solar ?? 0) >= 450) return THEME_IDS.sunny;  // strong sun
-  if (solar != null && solar < 150)          return THEME_IDS.cloudy; // measured overcast
-  // A storm/rain code reaching here was vetoed by a dry gauge, so treat it as
-  // merely cloudy rather than a phantom storm.
-  if (modelCloudy || modelStormy || modelRainy) return THEME_IDS.cloudy;
-  if (modelPartly) return THEME_IDS.light;
-  if (iconCode != null) return THEME_IDS.sunny;   // model reports clear sky
-  // No strong sun reading and no model info: a silent solar sensor implies a
-  // hazy/indeterminate day (light); nothing at all defaults to sunny daytime.
-  return solar != null ? THEME_IDS.light : THEME_IDS.sunny;
 }
 
 function initProfile() {

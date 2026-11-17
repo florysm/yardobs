@@ -20,37 +20,68 @@ export const LABELS = {
   44:'N/A',45:'Scattered Showers',46:'Scattered Snow',47:'Scattered T-Storms',
 };
 
-// ICONS and ICON_EMOJI are identical — ICON_EMOJI is an alias kept for
-// ForecastTab readability where emoji-only lookup is the intent.
-export const ICON_EMOJI = ICONS;
+export const FALLBACK_ICON = '🌡️';
 
-export const WMO_EMOJI = {
-  0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
-  45:'🌫️', 48:'🌫️',
-  51:'🌦️', 53:'🌧️', 55:'🌧️', 56:'🌧️', 57:'🌧️',
-  61:'🌦️', 63:'🌧️', 65:'🌧️', 66:'🌧️', 67:'🌧️',
-  71:'🌨️', 73:'🌨️', 75:'❄️', 77:'❄️',
-  80:'🌦️', 81:'🌧️', 82:'🌧️', 85:'🌨️', 86:'❄️',
-  95:'⛈️', 96:'⛈️', 99:'⛈️',
+// Emoji / label for a TWC iconCode, with one fallback for unknown codes.
+export function iconFor(twcCode) {
+  return ICONS[twcCode] ?? FALLBACK_ICON;
+}
+export function labelFor(twcCode, fallback = null) {
+  return LABELS[twcCode] ?? fallback;
+}
+
+// The one WMO table. Open-Meteo speaks WMO codes; the rest of the app (icons,
+// labels, theme, insights) is keyed on TWC iconCodes, so every WMO code is
+// translated here and takes its emoji and label from ICONS / LABELS above.
+// [day, night] where the sky looks different after dark; otherwise one code.
+// The iOS widget keeps a copy of the labels (it can't import); a parity test
+// (widgetParity.test.js) keeps the two in step.
+export const WMO_TO_TWC = {
+  0:  [32, 31],  // clear sky              → Sunny / Clear
+  1:  [34, 33],  // mainly clear           → Fair
+  2:  [30, 29],  // partly cloudy          → Partly Cloudy
+  3:  26,        // overcast               → Cloudy
+  45: 20,        // fog                    → Foggy
+  48: 20,        // depositing rime fog    → Foggy
+  51: 9,         // drizzle: light         → Drizzle
+  53: 9,         //          moderate
+  55: 9,         //          dense
+  56: 8,         // freezing drizzle       → Freezing Drizzle
+  57: 8,
+  61: 12,        // rain: slight           → Rain
+  63: 12,        //       moderate
+  65: 40,        //       heavy            → Heavy Rain
+  66: 10,        // freezing rain          → Freezing Rain
+  67: 10,
+  71: 13,        // snow: slight           → Flurries
+  73: 16,        //       moderate         → Snow
+  75: 42,        //       heavy            → Heavy Snow
+  77: 13,        // snow grains            → Flurries
+  80: 39,        // rain showers: slight   → Scattered Showers
+  81: 11,        //               moderate → Showers
+  82: 40,        //               violent  → Heavy Rain
+  85: 41,        // snow showers: slight   → Scattered Snow
+  86: 42,        //               heavy    → Heavy Snow
+  95: 4,         // thunderstorm           → Thunderstorms
+  96: 3,         // thunderstorm with hail → Severe T-Storms
+  99: 3,
 };
 
-export const NIGHT_ICON = { 0: '🌙', 1: '🌙', 2: '☁️' };
-
-// Open-Meteo speaks WMO codes; the rest of the app is keyed on TWC iconCodes
-// (ICONS / LABELS above). Lives here rather than in useWeather so the forecast
-// normalizer can reach it too.
+// Unlisted codes fall back to Cloudy, a neutral default.
 export function wmoToTwc(code, isDay = 1) {
   if (code == null) return null;
-  if (code === 0) return isDay ? 32 : 31;   // Clear sky → Sunny (day) / Clear (night)
-  if (code <= 2) return isDay ? 34 : 33;    // Mainly/partly clear → Fair (day/night)
-  if (code === 3) return 26;     // Overcast → cloudy
-  if (code <= 48) return 20;     // Fog/rime fog → haze
-  if (code <= 55) return 9;      // Drizzle → light rain
-  if (code <= 65) return 12;     // Rain → rain
-  if (code <= 67) return 10;     // Freezing rain
-  if (code <= 77) return 16;     // Snow / snow grains
-  if (code <= 82) return 40;     // Rain showers → heavy showers
-  if (code <= 86) return 46;     // Snow showers
-  if (code >= 95) return 4;      // Thunderstorm (95/96/99)
-  return 26;                      // Unmapped code → cloudy (neutral default)
+  const entry = WMO_TO_TWC[code] ?? 26;
+  return Array.isArray(entry) ? entry[isDay ? 0 : 1] : entry;
+}
+
+// The hourly strip hides precipitation the model gives little chance of: a
+// wet code under HOURLY_MIN_POP_WET shows as overcast, and a thunderstorm under
+// HOURLY_MIN_POP_STORM as slight showers.
+export const HOURLY_MIN_POP_WET = 30;
+export const HOURLY_MIN_POP_STORM = 40;
+
+export function hourlyDisplayCode(code, pop = 0) {
+  if (code === 95 && pop < HOURLY_MIN_POP_STORM) return pop < HOURLY_MIN_POP_WET ? 3 : 80;
+  if (code >= 51 && pop < HOURLY_MIN_POP_WET) return 3;
+  return code;
 }

@@ -28,7 +28,7 @@ export function fmt(val, digits = 0) {
   return fixed(Number(val), digits);
 }
 
-import { COMPASS_DIRS } from '../../utils/compass.js';
+const COMPASS_DIRS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 
 export function degreesToCompass(deg) {
   if (deg == null) return '';

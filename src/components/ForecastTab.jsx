@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import SunCalc from 'suncalc';
 import { fmtHourIso, getLocaleHour12 } from '../utils/format';
-import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
+import { iconFor, wmoToTwc, hourlyDisplayCode } from '../utils/weatherIcons';
 import { toISODate } from '../utils/dateUtils';
 import { STORAGE_KEYS } from '../utils/storageKeys';
 import { insightScope } from '../utils/insightCache';
@@ -33,8 +33,8 @@ function buildHours(hf, lat, lon) {
       const isNight = sun ? (ms < sun.riseMs || ms > sun.setMs) : false;
       const code = h.weathercode?.[i];
       const pop  = h.precipitation_probability?.[i] ?? 0;
-      const displayCode = (code >= 51 && pop < 30) ? 3 : (code === 95 && pop < 40) ? 80 : code;
-      const icon = (isNight && displayCode in NIGHT_ICON) ? NIGHT_ICON[displayCode] : (WMO_EMOJI[displayCode] ?? '🌡️');
+      // Same WMO table as the daily cards and current conditions.
+      const icon = iconFor(wmoToTwc(hourlyDisplayCode(code, pop), isNight ? 0 : 1));
       return { time: t, ms, icon, temp: h.temperature_2m?.[i], pop };
     })
     .filter(hr => hr.ms >= now - 30 * 60 * 1000)
@@ -81,7 +81,7 @@ function buildDays(forecast) {
   const todayStr = toISODate(new Date());
   return forecast.map(day => ({
     ...day,
-    icon:    ICON_EMOJI[day.iconCode] ?? '🌡️',
+    icon:    iconFor(day.iconCode),
     isToday: day.date === todayStr,
   }));
 }

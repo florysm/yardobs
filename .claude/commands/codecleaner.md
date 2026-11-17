@@ -35,7 +35,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **Single-definition utilities:**
 
-- `fmt` and `degreesToCompass` are defined only in `src/utils/format.js`; `toDateStr` only in `src/utils/dateUtils.js`; `calcFeelsLike` only in `src/utils/weatherCalc.js` (pure, tested) — **except** `public/widget/yardobs-widget.js`, a standalone Scriptable script that can't import; its copies are expected and tracked as a parity-test gap (TechDebt item 9), not as duplication. Grep for any other second definition. Also flag new pure formulas inline in hooks/components instead of `src/utils/` (still inline as of 2026-11-17: `deriveFromSensors` in HeroCard; the moon helpers moved to `moon.js`, the YoY note to `yoyInsight.js` and the Trends builders to `trends.js`).
+- `fmt` and `degreesToCompass` are defined only in `src/utils/format.js`; `toDateStr` only in `src/utils/dateUtils.js`; `calcFeelsLike` only in `src/utils/weatherCalc.js` (pure, tested) — **except** `public/widget/yardobs-widget.js`, a standalone Scriptable script that can't import; its copies are expected and live in its `// PARITY:BEGIN … END` block, which `src/utils/widgetParity.test.js` evaluates against the app (WMO labels, `KEY_WARN_DAYS`, key-days math, `KMH_PER_MPH`, F→C, `calcFeelsLike`) — not duplication. Flag widget logic that copies app behavior OUTSIDE that block, or a new copy the parity test doesn't cover. Grep for any other second definition. Also flag new pure formulas inline in hooks/components instead of `src/utils/` (still inline as of 2026-11-17: `deriveFromSensors` in HeroCard; the moon helpers moved to `moon.js`, the YoY note to `yoyInsight.js` and the Trends builders to `trends.js`).
 - Date helpers: `addDays`, `sameDayLastYear` and `lastYearKey` live only in `dateUtils.js` (2026-11-17). Every last-year date goes through them — flag `setFullYear(… - 1)`, `new Date(year - 1, …)`, or `addDays(…, -365/-366)` anywhere else.
 
 **localStorage keys:**
@@ -54,9 +54,9 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **Vocabularies and code tables (found 2026-11-17):**
 
-- Weather-code mapping: 4 tables disagree (item 4). Once unified, the invariant is one WMO table in `src/utils/weatherIcons.js`; flag any new emoji/label lookup elsewhere.
+- Weather codes: one table, `WMO_TO_TWC` in `src/utils/weatherIcons.js` (2026-11-17); emoji and labels come from `ICONS`/`LABELS` via `iconFor`/`labelFor`, and the hourly low-chance rule is `hourlyDisplayCode`. Flag any other WMO→emoji/label lookup, a raw `'🌡️'` fallback, or a direct `ICONS[...] ??` outside weatherIcons.
 - Day parts / time windows: `insightVocab.js` `DAY_PARTS` is meant to be the only vocabulary; the AQI 8a–8p window in the prompt text, and 4 rain-probability threshold sets break that (item 8).
-- Sky thresholds / partly-cloudy codes duplicated App ↔ HeroCard (item 11).
+- Sky rules: TWC code groups (`ICON_STORMY/RAINY/CLOUDY/PARTLY`), sensor thresholds (`SKY`), `resolveAutoTheme`, `deriveFromSensors` and `heroCondition` live only in `src/utils/sky.js` (2026-11-17, tested). Flag a solar/UV/rain-rate threshold or code set defined anywhere else.
 - String literals with no constant: profile modes `'station'`/`'preview'`, default activity `'bbq'` (item 13). Source types are single-sourced as `SOURCE_TYPES` in `src/utils/sourceTypes.js` (2026-11-17) — flag any raw `'forecast_model'`/`'pws'` outside it.
 
 ## Search targets — components and infrastructure
@@ -70,7 +70,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **Constant arrays:**
 
-- Activity lists live in `src/utils/activities.js` (`ACTIVITIES`); icon-code classification arrays (`ICON_STORMY`/`ICON_RAINY`/`ICON_CLOUDY`/`ICON_PARTLY`) live in `src/App.jsx`. Grep for array literals in component files that duplicate these or appear in 2+ places — they belong in `src/utils/` or a `src/constants.js`. (Test-local fixture arrays don't count.) `PARTLY_CODES` in `HeroCard.jsx` duplicates `ICON_PARTLY`, together with the sky thresholds — tracked as item 11; STORMY/RAINY/CLOUDY remain single-sourced.
+- Activity lists live in `src/utils/activities.js` (`ACTIVITIES`); icon-code classification sets (`ICON_STORMY`/`ICON_RAINY`/`ICON_CLOUDY`/`ICON_PARTLY`) live in `src/utils/sky.js`. Grep for array literals in component files that duplicate these or appear in 2+ places — they belong in `src/utils/` or a `src/constants.js`. (Test-local fixture arrays don't count.) (Holds 2026-11-17: HeroCard's `PARTLY_CODES` copy was removed.)
 
 **Error handling (known weak spot — tracked in TechDebt.md):**
 
@@ -91,7 +91,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **Tests and tooling:**
 
-- Pure helpers in `src/utils/` and `api/lib/` are expected to have a sibling `*.test.js` (Vitest). Flag a non-trivial pure module (date math, scoring, parsing, prompt building) that has none — tracked 2026-11-17 as item 17: `weatherIcons.js`, `parseChangelog.js` and `apiFetch.js` (`geocode.js`, `storageKeys.js`, `insightCache.js`, `api/weather.js` and `api/insight.js` tested since). All of `api/lib` is tested. Record only where real logic is untested, not plain data tables (`activities.js`, `utils/compass.js`).
+- Pure helpers in `src/utils/` and `api/lib/` are expected to have a sibling `*.test.js` (Vitest). Flag a non-trivial pure module (date math, scoring, parsing, prompt building) that has none — (holds 2026-11-17: every module with logic in `src/utils/` and `api/` has tests). Record only where real logic is untested, not plain data tables (`activities.js`, `themes.js`). Hooks and components have no test environment yet (Node, no DOM) — keep their logic in pure utils.
 - Dependency drift: a library pinned to a major that no longer matches its peers (e.g. Recharts 2 + `react-is@18` under React 19 — see `/bugtracker`'s library-compat targets). Record as debt if the mismatch needs a workaround convention in the code.
 
 **AI insight layer (added after 2026-07-17):**

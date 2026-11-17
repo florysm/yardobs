@@ -140,6 +140,7 @@ yardobs/
 │   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
+│   │   ├── sky.js                  # Theme + hero condition rules (code groups, sensor thresholds)
 │   │   ├── sourceTypes.js          # Station vs. forecast-model source type constants
 │   │   ├── storageKeys.js          # localStorage key constants
 │   │   ├── trends.js               # Trends chart rows, date keys, rain totals
@@ -147,7 +148,7 @@ yardobs/
 │   │   ├── weatherCalc.js          # Feels-like, dew point, and related calculations
 │   │   ├── yoyInsight.js           # Trends "Today vs. One Year Ago" note
 │   │   ├── widgetScript.js         # Fills your settings into the Scriptable widget script
-│   │   └── weatherIcons.js         # WMO code → emoji/label mapping
+│   │   └── weatherIcons.js         # TWC icons/labels + the one WMO → TWC code table
 │   └── index.css                   # CSS variable theme definitions + component classes
 ├── public/
 │   └── widget/

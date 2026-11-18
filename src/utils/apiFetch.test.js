@@ -44,3 +44,17 @@ describe('apiFetch', () => {
     expect(fetch.mock.calls[0][1].signal).toBe(signal);
   });
 });
+
+describe('apiFetch key and status', () => {
+  it("keeps a caller's own key header over the saved one", async () => {
+    stored[STORAGE_KEYS.TWC_API_KEY] = 'saved';
+    respond(200, {});
+    await apiFetch('/x', { headers: { 'x-twc-key': 'new' } });
+    expect(fetch.mock.calls[0][1].headers).toEqual({ 'x-twc-key': 'new' });
+  });
+
+  it('sets status on errors the server answered', async () => {
+    respond(401, { error: 'Key rejected' });
+    await expect(apiFetch('/x')).rejects.toMatchObject({ message: 'Key rejected', status: 401 });
+  });
+});

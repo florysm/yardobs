@@ -13,7 +13,9 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LocationSetup from './components/LocationSetup';
 import { useWeather } from './hooks/useWeather';
 import { CHART_COLORS, META_COLORS, THEME_IDS, DISPLAY_MODES } from './themes.js';
-import { STORAGE_KEYS } from './utils/storageKeys';
+import { STORAGE_KEYS, readStored, writeStored } from './utils/storageKeys';
+import { PROFILE_MODES, isStationProfile, isPreviewProfile, isExploring } from './utils/profile';
+import { DEFAULT_ACTIVITY_ID } from './utils/activities';
 import { toDateStr } from './utils/dateUtils';
 import { detectDefaultUnits } from './utils/units';
 import { resolveAutoTheme } from './utils/sky';
@@ -28,13 +30,13 @@ function LazyTabFallback() {
 
 function initProfile() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
+    const raw = readStored(STORAGE_KEYS.PROFILE);
     if (raw) return JSON.parse(raw);
     // Migration: existing station user has STATION_ID but no PROFILE yet
-    const sid = localStorage.getItem(STORAGE_KEYS.STATION_ID);
+    const sid = readStored(STORAGE_KEYS.STATION_ID);
     if (sid) {
-      const p = { mode: 'station', stationId: sid };
-      localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(p));
+      const p = { mode: PROFILE_MODES.STATION, stationId: sid };
+      writeStored(STORAGE_KEYS.PROFILE, JSON.stringify(p));
       return p;
     }
     return null;
@@ -49,19 +51,19 @@ export default function App() {
   const [activeTab, setActiveTab]               = useState('now');
   const [settingsOpen, setSettingsOpen]         = useState(false);
   const [alertsOpen, setAlertsOpen]             = useState(false);
-  const [mode, setMode]                         = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || DISPLAY_MODES.AUTO; } catch { return DISPLAY_MODES.AUTO; } });
+  const [mode, setMode]                         = useState(() => readStored(STORAGE_KEYS.MODE, DISPLAY_MODES.AUTO));
   const [previewCondition, setPreviewCondition] = useState(null);
-  const [defaultActivity, setDefaultActivity]   = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.DEFAULT_ACTIVITY) || 'bbq'; } catch { return 'bbq'; } });
-  const [units, setUnits]                       = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.UNITS) || detectDefaultUnits(); } catch { return detectDefaultUnits(); } });
+  const [defaultActivity, setDefaultActivity]   = useState(() => readStored(STORAGE_KEYS.DEFAULT_ACTIVITY, DEFAULT_ACTIVITY_ID));
+  const [units, setUnits]                       = useState(() => readStored(STORAGE_KEYS.UNITS) || detectDefaultUnits());
   const [credentialsVersion, setCredentialsVersion] = useState(0);
 
   const saveProfile = (p) => {
     setProfile(p);
-    try { localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(p)); } catch {}
+    writeStored(STORAGE_KEYS.PROFILE, JSON.stringify(p));
     // Station ID may be unchanged (e.g. only the TWC key was added/updated), which
     // wouldn't otherwise invalidate useWeather's memoized fetch callback. Bumping this
     // forces useWeather's effect to re-run with the freshly saved credentials.
-    if (p.mode === 'station') setCredentialsVersion(v => v + 1);
+    if (isStationProfile(p)) setCredentialsVersion(v => v + 1);
   };
 
   const handleSetExplore = (lat, lon, label) => saveProfile({ ...profile, exploring: { lat, lon, label } });
@@ -73,12 +75,10 @@ export default function App() {
 
   // Alias for components that still reference stationId directly
   const stationId = profile?.stationId ?? null;
-  const isExploring = profile?.mode === 'station' && !!profile?.exploring;
+  const exploring = isExploring(profile);
 
   // Re-read after each credential save (StationForm writes it alongside the key).
-  const keyExpires = useMemo(() => {
-    try { return localStorage.getItem(STORAGE_KEYS.TWC_KEY_EXPIRES); } catch { return null; }
-  }, [credentialsVersion]);
+  const keyExpires = useMemo(() => readStored(STORAGE_KEYS.TWC_KEY_EXPIRES), [credentialsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, alerts, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality, fetchAlerts } = useWeather(profile, credentialsVersion);
 
@@ -103,17 +103,17 @@ export default function App() {
   const handleSetMode = (m) => {
     setMode(m);
     setPreviewCondition(null);
-    try { if (m === DISPLAY_MODES.AUTO) localStorage.removeItem(STORAGE_KEYS.MODE); else localStorage.setItem(STORAGE_KEYS.MODE, m); } catch {}
+    writeStored(STORAGE_KEYS.MODE, m === DISPLAY_MODES.AUTO ? null : m);
   };
 
   const saveDefaultActivity = (id) => {
     setDefaultActivity(id);
-    try { localStorage.setItem(STORAGE_KEYS.DEFAULT_ACTIVITY, id); } catch {}
+    writeStored(STORAGE_KEYS.DEFAULT_ACTIVITY, id);
   };
 
   const saveUnits = (u) => {
     setUnits(u);
-    try { localStorage.setItem(STORAGE_KEYS.UNITS, u); } catch {}
+    writeStored(STORAGE_KEYS.UNITS, u);
   };
 
   const handleCloseSettings = () => {
@@ -147,12 +147,12 @@ export default function App() {
   if (!profile) {
     return (
       <LocationSetup
-        onResolved={(lat, lon, label) => saveProfile({ mode: 'preview', lat, lon, label })}
+        onResolved={(lat, lon, label) => saveProfile({ mode: PROFILE_MODES.PREVIEW, lat, lon, label })}
       />
     );
   }
 
-  const isPreview = profile.mode === 'preview';
+  const isPreview = isPreviewProfile(profile);
 
   return (
     <>
@@ -167,7 +167,7 @@ export default function App() {
         onUpdatePreviewLocation={handleUpdatePreviewLocation}
       />
       <AlertBar alerts={alerts} onOpen={() => setAlertsOpen(true)} />
-      {profile.mode === 'station' && (
+      {isStationProfile(profile) && (
         <KeyExpiryBanner keyExpires={keyExpires} onOpenSettings={() => setSettingsOpen(true)} />
       )}
       <HeroCard
@@ -198,7 +198,7 @@ export default function App() {
         {activeTab === 'trends' && (
           <ErrorBoundary>
             <Suspense fallback={<LazyTabFallback />}>
-              {(isPreview || isExploring || !stationId) ? (
+              {(isPreview || exploring || !stationId) ? (
                 <TrendsLockedPlaceholder onOpenSettings={() => setSettingsOpen(true)} />
               ) : (
                 <TrendsTab
@@ -250,7 +250,7 @@ export default function App() {
           onSetDefaultActivity={saveDefaultActivity}
           units={units}
           onSetUnits={saveUnits}
-          isExploring={isExploring}
+          isExploring={exploring}
           onClearExplore={handleClearExplore}
         />
       )}

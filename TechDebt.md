@@ -24,15 +24,3 @@ Beyond the existing `.y-*` set: the mono value style (`fontSize: 14, fontWeight:
 **12. Hour formatters multiplying**
 
 Partly done 2026-11-17: `fmtClockTime(date, timeZone)` in `format.js` replaced the identical `fmtSunTime`/`fmtMoonTime` and the `updatedAt` line copied in `HeroCard.jsx`/`ForecastTab.jsx`. Still open: `RadarTab.jsx` frame times ignore `getLocaleHour12` (could use `fmtClockTime`); `AlertsSheet.jsx` `fmtAlertTime` (weekday + time) stays separate. Hour formatters still overlap: `shortHour` '9p', `fmtHourShort` '9P', `fmtHourIso`/`fmtTimeTick` '9pm' with identical bodies, `getBestWindow`'s '2 PM' — and the server parses the last one (`api/insight.js` `bestWindow.replace('Peak ', '')`).
-
-**13. Profile mode and default-activity string literals with no constants**
-
-`'station'`/`'preview'` appear in ~17 places across 6 files, and the `profile?.mode === 'station' && !!profile?.exploring` derivation is copied in `App.jsx:132`, `TopBar.jsx:64` and `useWeather.js:57`. (Source types are done: `SOURCE_TYPES` in `src/utils/sourceTypes.js`, 2026-11-17.) Default activity `'bbq'` is hard-coded at `App.jsx:110` and `ActivityScoreCard.jsx:134` instead of `ACTIVITIES[0].id`.
-
-**14. Wrapped `localStorage` read idiom copied 9 times**
-
-`try { return localStorage.getItem(K) || d } catch { return d }` appears at `App.jsx:107, 110, 111, 136`, `SettingsDrawer.jsx:62-63`, `StationForm.jsx:11, 13`, `RadarTab.jsx:96` — SettingsDrawer and StationForm repeat the same two reads. A `readStored(key, fallback)` in `storageKeys.js` would replace them. `StationForm.jsx:30-32` also hand-sets the `x-twc-key` header instead of using `apiFetch`.
-
-**15. Duplicated rate limiting in `api/`**
-
-Rate limiting is implemented twice in different styles (fixed window in `api/weather.js:7-29`, sliding log in `api/insight.js:8-29`) with the IP-extraction line duplicated (`insight.js`, `weather.js`); both share the clock-jump bug in `KnownBugs.md`, so one `api/lib/rateLimit.js` fixes it once. (The dead `hourly-forecast-twc`/`air-quality` routes and the stale 400 message were fixed 2026-11-17.)

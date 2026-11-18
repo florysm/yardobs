@@ -6,7 +6,7 @@ const slug = s => String(s).replace(/\s+/g, '-');
 export const STORAGE_KEYS = {
   PROFILE:          'yardobs-profile',
   MODE:             'yardobs-mode',
-STATION_ID:       'yardobs-station-id',
+  STATION_ID:       'yardobs-station-id',
   TWC_API_KEY:      'yardobs-twc-key',
   TWC_KEY_EXPIRES:  'yardobs-twc-key-expires',
   DEFAULT_ACTIVITY: 'yardobs-default-activity',
@@ -24,3 +24,24 @@ STATION_ID:       'yardobs-station-id',
   forecastDayInsightKey: (stationId, date, units, aqiBucket = 'na', part = 'day') =>
     `yardobs-fcday-insight-${stationId}-${date}-${units}-aq${aqiBucket}-${slug(part)}`,
 };
+
+// localStorage can throw (private browsing, blocked site data) and returns null
+// for a missing key. Every read and write goes through these two so a storage
+// failure only ever means "not saved".
+
+// The stored string for `key`, or `fallback` when it is missing, empty or unreadable.
+export function readStored(key, fallback = null) {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// Saves `value` under `key`; null, undefined or '' removes the key instead.
+export function writeStored(key, value) {
+  try {
+    if (value == null || value === '') localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch { /* storage full or unavailable: the setting just isn't saved */ }
+}

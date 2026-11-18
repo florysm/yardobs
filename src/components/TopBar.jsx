@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import LocationSearchInput from './LocationSearchInput';
+import { isPreviewProfile, isExploring } from '../utils/profile';
 
 function timeAgo(date) {
   if (!date) return null;
@@ -60,8 +61,8 @@ export default function TopBar({
     setSearchOpen(false);
   }, [profile?.exploring, profile?.lat, profile?.lon]);
 
-  const isPreview   = profile?.mode === 'preview';
-  const isExploring = profile?.mode === 'station' && !!profile?.exploring;
+  const isPreview   = isPreviewProfile(profile);
+  const exploring   = isExploring(profile);
   const stationId   = profile?.stationId ?? null;
 
   const handleLocationSelect = (lat, lon, label) => {
@@ -129,7 +130,7 @@ export default function TopBar({
               Connect →
             </button>
           </div>
-        ) : isExploring ? (
+        ) : exploring ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{
               fontSize: 11, color: 'var(--tm)',

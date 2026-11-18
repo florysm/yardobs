@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { fmtHourShort } from '../utils/format';
-import { ACTIVITIES } from '../utils/activities';
+import { ACTIVITIES, DEFAULT_ACTIVITY_ID } from '../utils/activities';
 import { STORAGE_KEYS } from '../utils/storageKeys';
 import { SOURCE_TYPES } from '../utils/sourceTypes';
 import { insightScope } from '../utils/insightCache';
@@ -137,7 +137,7 @@ function TimeArc({ arcData, bestWindow }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ActivityScoreCard({ current, hourlyForecast, defaultActivity, units }) {
-  const [activeId,       setActiveId]       = useState(defaultActivity ?? 'bbq');
+  const [activeId,       setActiveId]       = useState(defaultActivity ?? DEFAULT_ACTIVITY_ID);
   const [expanded,       setExpanded]       = useState(false);
 
   // The forecast's place clock, not the device's: exploring another time zone,

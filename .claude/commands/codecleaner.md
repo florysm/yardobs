@@ -40,7 +40,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **localStorage keys:**
 
-- All keys live in `src/utils/storageKeys.js` (`STORAGE_KEYS` object plus the `insightKey`/`activityInsightKey`/`forecastDayInsightKey` builders). Grep `localStorage.getItem` / `setItem` / `removeItem` across all files — any call site passing a raw string literal instead of a `STORAGE_KEYS.*` constant or key builder is debt. (Holds 2026-11-17: 30 call sites, all via constants. The wrapped-read idiom is copied 9× — tracked as item 14.)
+- All keys live in `src/utils/storageKeys.js` (`STORAGE_KEYS` object plus the `insightKey`/`activityInsightKey`/`forecastDayInsightKey` builders). Grep `localStorage.getItem` / `setItem` / `removeItem` across all files — any call site passing a raw string literal instead of a `STORAGE_KEYS.*` constant or key builder is debt. (Holds 2026-11-17: all reads/writes go through `readStored`/`writeStored` in `storageKeys.js`, the only direct `localStorage` calls — flag any other.)
 
 **Theme name literals:**
 
@@ -57,7 +57,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 - Weather codes: one table, `WMO_TO_TWC` in `src/utils/weatherIcons.js` (2026-11-17); emoji and labels come from `ICONS`/`LABELS` via `iconFor`/`labelFor`, and the hourly low-chance rule is `hourlyDisplayCode`. Flag any other WMO→emoji/label lookup, a raw `'🌡️'` fallback, or a direct `ICONS[...] ??` outside weatherIcons.
 - Day parts / time windows: `insightVocab.js` `DAY_PARTS` is the only day-part vocabulary; the AQI window is `AQI_DAY_START/END`/`AQI_WINDOW_LABEL` there and the activity arc is `ARC_START_HOUR/END_HOUR` in `scoring.js` (2026-11-17) — flag new hour literals for either. The 4 rain-probability threshold sets are still item 8.
 - Sky rules: TWC code groups (`ICON_STORMY/RAINY/CLOUDY/PARTLY`), sensor thresholds (`SKY`), `resolveAutoTheme`, `deriveFromSensors` and `heroCondition` live only in `src/utils/sky.js` (2026-11-17, tested). Flag a solar/UV/rain-rate threshold or code set defined anywhere else.
-- String literals with no constant: profile modes `'station'`/`'preview'`, default activity `'bbq'` (item 13). Source types are single-sourced as `SOURCE_TYPES` in `src/utils/sourceTypes.js` (2026-11-17) — flag any raw `'forecast_model'`/`'pws'` outside it.
+- Profile modes are `PROFILE_MODES` with `isStationProfile`/`isPreviewProfile`/`isExploring` in `src/utils/profile.js`, and the default activity is `DEFAULT_ACTIVITY_ID` in `activities.js` (2026-11-17) — flag a raw `'station'`/`'preview'` mode literal, a hand-written `mode === …`/exploring check, or `'bbq'` as a default. Source types are single-sourced as `SOURCE_TYPES` in `src/utils/sourceTypes.js` (2026-11-17) — flag any raw `'forecast_model'`/`'pws'` outside it.
 
 ## Search targets — components and infrastructure
 
@@ -82,7 +82,7 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 - CORS is set only via `applyCors()` in `api/lib/cors.js`; flag any handler setting `Access-Control-*` headers manually.
 - The `api/insight.js` in-memory cache is bounded: `CACHE_MAX_SIZE` enforced via `evictOne()` before every insert, plus a TTL sweep interval. Flag any new insert path that skips the size check, or any new in-memory cache elsewhere in `api/` without size/TTL bounds.
 - Proxy routes must have a caller (dead `hourly-forecast-twc`/`air-quality` removed 2026-11-17). Grep `type=<route>` in `src/` for each `case`, and keep `ROUTE_TYPES` in `api/weather.js` in step with the switch.
-- One rate limiter: currently two different implementations (item 15) — once `api/lib/rateLimit.js` exists, flag any handler rolling its own.
+- One rate limiter: `createRateLimiter` + `clientIp` in `api/lib/rateLimit.js` (2026-11-17) — flag any handler rolling its own limiter or reading `x-forwarded-for` itself.
 
 **Extraction candidates:**
 

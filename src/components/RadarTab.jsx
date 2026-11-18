@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { buildRadarFrames, hasRadarCoverage, RADAR_RANGES, DEFAULT_RADAR_RANGE } from '../utils/radarFrames.js';
-import { STORAGE_KEYS } from '../utils/storageKeys.js';
+import { STORAGE_KEYS, readStored, writeStored } from '../utils/storageKeys.js';
 
 // Stadia authorizes localhost without a key, so the key is optional in dev.
 const STADIA_KEY = import.meta.env.VITE_STADIA_API_KEY;
@@ -104,10 +104,8 @@ function formatTime(unixSec) {
 }
 
 function readStoredRange() {
-  try {
-    const v = localStorage.getItem(STORAGE_KEYS.RADAR_RANGE);
-    return v in RADAR_RANGES ? v : DEFAULT_RADAR_RANGE;
-  } catch { return DEFAULT_RADAR_RANGE; }
+  const v = readStored(STORAGE_KEYS.RADAR_RANGE);
+  return v in RADAR_RANGES ? v : DEFAULT_RADAR_RANGE;
 }
 
 export default function RadarTab({ lat, lon, isLoading }) {
@@ -138,7 +136,7 @@ export default function RadarTab({ lat, lon, isLoading }) {
     setRange(key);
     setPlan(next);
     setFrameIndex(next.pastCount - 1);
-    try { localStorage.setItem(STORAGE_KEYS.RADAR_RANGE, key); } catch { /* storage unavailable */ }
+    writeStored(STORAGE_KEYS.RADAR_RANGE, key);
   };
 
   useEffect(() => {

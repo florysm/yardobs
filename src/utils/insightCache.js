@@ -1,4 +1,4 @@
-import { INSIGHT_TTL_MS } from './storageKeys';
+import { INSIGHT_TTL_MS, readStored, writeStored } from './storageKeys';
 import { SOURCE_TYPES } from './sourceTypes';
 
 // Entries are { v, data, ts, meta }. Bump the version when the stored shape or
@@ -11,7 +11,7 @@ const CACHE_VERSION = 2;
 // build, it has expired, or it is from the "future" (the clock moved backward).
 export function readInsightCache(key, now = Date.now()) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = readStored(key);
     if (!raw) return null;
     const entry = JSON.parse(raw);
     if (entry?.v !== CACHE_VERSION || typeof entry.ts !== 'number' || entry.data == null) return null;
@@ -23,9 +23,7 @@ export function readInsightCache(key, now = Date.now()) {
 }
 
 export function writeInsightCache(key, data, meta, now = Date.now()) {
-  try {
-    localStorage.setItem(key, JSON.stringify({ v: CACHE_VERSION, data, ts: now, ...(meta != null ? { meta } : {}) }));
-  } catch { /* storage full or unavailable: the insight just isn't saved */ }
+  writeStored(key, JSON.stringify({ v: CACHE_VERSION, data, ts: now, ...(meta != null ? { meta } : {}) }));
 }
 
 // Which place an insight is about, for cache keys and the server's `stationId`.

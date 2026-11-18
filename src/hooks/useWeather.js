@@ -8,6 +8,7 @@ import { normalizeTwcForecast, normalizeOpenMeteoForecast } from '../utils/forec
 import { wmoToTwc } from '../utils/weatherIcons';
 import { INHG_PER_HPA } from '../utils/units';
 import { SOURCE_TYPES } from '../utils/sourceTypes';
+import { isPreviewProfile, isExploring } from '../utils/profile';
 
 const POLL_MS = 5 * 60 * 1000;
 // Forecasts change slowly, but a tab left open all afternoon used to keep
@@ -62,15 +63,14 @@ export function useWeather(profile, credentialsVersion) {
   // rather than reading `current`, which would rebuild fetchForecast every poll.
   const currentIconRef = useRef(null);
 
-  const isPreview   = profile?.mode === 'preview';
-  const isExploring = profile?.mode === 'station' && !!profile?.exploring;
-  const isPreviewMode = isPreview || isExploring;
+  const exploring     = isExploring(profile);
+  const isPreviewMode = isPreviewProfile(profile) || exploring;
   const stationId   = profile?.stationId ?? null;
 
   // Effective coordinates for the preview/explore data path
-  const previewLat   = isExploring ? profile.exploring.lat   : profile?.lat;
-  const previewLon   = isExploring ? profile.exploring.lon   : profile?.lon;
-  const previewLabel = isExploring ? profile.exploring.label : profile?.label;
+  const previewLat   = exploring ? profile.exploring.lat   : profile?.lat;
+  const previewLon   = exploring ? profile.exploring.lon   : profile?.lon;
+  const previewLabel = exploring ? profile.exploring.label : profile?.label;
 
   // Identifies the active data source (station id, or preview/explore coords).
   const dataSourceKey = isPreviewMode

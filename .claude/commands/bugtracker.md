@@ -27,7 +27,7 @@ Scan the codebase for bugs and update `KnownBugs.md`.
 
 A concrete, verifiable defect — wrong behavior, a fetch that leaves state dangling, a date that renders wrong, a cache that returns corrupt data, or a silent failure. Not a style issue or a missing feature. Only record findings you have confirmed by reading the source file.
 
-Scope note: this app has no auth or server-side settings layer. There is no Supabase, no `useAuth`/`useUserSettings` hook, no `AuthGate`, no `api/settings.js`, and no `api/lib/supabase.js`. The TWC API key lives in client `localStorage` and is sent via the `x-twc-key` header (`src/utils/apiFetch.js`). The only serverless files are `api/weather.js`, `api/insight.js`, and `api/lib/{cors,sanitize,validate,insightPersona}.js`. Do not scan for auth-layer patterns.
+Scope note: this app has no auth or server-side settings layer. There is no Supabase, no `useAuth`/`useUserSettings` hook, no `AuthGate`, no `api/settings.js`, and no `api/lib/supabase.js`. The TWC API key lives in client `localStorage` and is sent via the `x-twc-key` header (`src/utils/apiFetch.js`). The only serverless files are `api/weather.js`, `api/insight.js`, and `api/lib/{cors,sanitize,validate,insightPersona,rateLimit}.js`. Do not scan for auth-layer patterns.
 
 Stack: React 19, Recharts 2.15, react-leaflet 5, Vite 6, Vitest (`npm test`; tests live beside sources as `*.test.js`). A bug that a pure function in `src/utils/` or `api/lib/` already has a passing test for is usually a false positive — read the test before recording.
 
@@ -48,10 +48,10 @@ Stack: React 19, Recharts 2.15, react-leaflet 5, Vite 6, Vitest (`npm test`; tes
 **`api/insight.js` / `api/weather.js`:**
 
 - `catch` blocks that swallow exceptions silently — no `console.error` and no error payload returned to the client. (Verified clean 2026-11-17: `handleInsightError` logs and returns 503 on overload / 502 otherwise; `weather.js` returns structured 502s — check regressions only.)
-- In-memory TTL logic (insight cache, per-IP rate limiter) that computes elapsed time as `Date.now() - ts` (or compares `now` against a stored future deadline like `resetAt`) — a backward clock jump makes elapsed negative / leaves the deadline in the future, which never expires the entry. (Insight cache fixed 2026-11-17 via `isFresh()` — `age >= 0 && age < TTL` — in `getCacheHit`, the sweep and `evictOne`; client-side `readInsightCache` does the same. The rate limiters — insight `isRateLimited`/`ipLog` and weather `checkRateLimit` — are tracked in `KnownBugs.md`. Flag only new absolute-time comparisons.)
+- In-memory TTL logic (insight cache, per-IP rate limiter) that computes elapsed time as `Date.now() - ts` (or compares `now` against a stored future deadline like `resetAt`) — a backward clock jump makes elapsed negative / leaves the deadline in the future, which never expires the entry. (Insight cache fixed 2026-11-17 via `isFresh()` — `age >= 0 && age < TTL` — in `getCacheHit`, the sweep and `evictOne`; client-side `readInsightCache` does the same. Both routes' rate limiting is `createRateLimiter` in `api/lib/rateLimit.js` (2026-11-17), whose `inWindow` uses the same `age >= 0` rule and sweeps idle IPs itself. Flag only new absolute-time comparisons.)
 - Handlers that cache or persist a failure result as success. Fixed end-to-end 2026-11-17: every handler goes through `runCachedInsight`, whose `parse()` returns null for nothing-to-show (→ 502, not cached), overload is a 503, and on the client `useInsight` saves only what `accept()` returns non-null (entries carry a version, so pre-fix entries read as misses). Invariant: a failure is never a 200, and nothing reaches `writeInsightCache` without passing `accept`. Covered by `api/insight.test.js` and `src/utils/insightCache.test.js`.
 - Query-param validation: a missing or malformed `stationId`, `type`, `date`, `lat`, or `lon` must return a 400, not a 500 or silent empty response. (`weather.js` validates via `validCoords`/`validStationId`/`validDate` around lines 52–54 plus per-route required-param checks — verify any newly added route or param goes through the same validators.)
-- Insight cache boundedness: `CACHE_MAX_SIZE` + `evictOne()` + the interval sweep keep the map capped — verify a new cache write path still evicts, and that the `ipLog` rate-limiter map is also swept. (Verified sound 2026-11-17: the single insert path is `cacheSet()`, which evicts; both maps swept in the interval; per-handler key prefixes `act|`/`daily|`/`fcday|` prevent collisions — check regressions only.)
+- Insight cache boundedness: `CACHE_MAX_SIZE` + `evictOne()` + the interval sweep keep the map capped — verify a new cache write path still evicts. (Verified sound 2026-11-17: the single insert path is `cacheSet()`, which evicts; the cache is swept in the interval, and the rate limiter sweeps itself; per-handler key prefixes `act|`/`daily|`/`fcday|` prevent collisions — check regressions only.)
 - Note: query params arrive as strings, so `!lat || !lon` on `req.query` values does NOT reject the string `"0"` — the falsy-zero coordinate bug is client-side only. Do not flag server-side query-param truthiness checks for that reason.
 
 ## Search targets — components and app shell
@@ -70,7 +70,7 @@ Stack: React 19, Recharts 2.15, react-leaflet 5, Vite 6, Vitest (`npm test`; tes
 **`src/App.jsx`:**
 
 - `document.body.className` must have a single canonical setter — currently one effect keyed on `activeTheme` (~line 147). Flag any second code path that writes it.
-- `localStorage.getItem(...)` without a `try/catch` and `null` handling — corrupted or missing data throws or silently returns `null`. All current reads (`initProfile`, the `useState` initializers) are wrapped — flag new unwrapped reads.
+- `localStorage` access outside `readStored`/`writeStored` (`src/utils/storageKeys.js`, 2026-11-17) — a raw `getItem`/`setItem` can throw in private browsing or with blocked storage. Those two helpers are the only direct calls; flag any other.
 
 **`src/themes.js` / `src/index.css`:**
 

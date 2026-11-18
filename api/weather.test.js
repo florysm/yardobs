@@ -75,3 +75,18 @@ describe('/api/weather', () => {
     expect(ROUTE_TYPES).toContain('history-recent');
   });
 });
+
+describe('rate limiting', () => {
+  it('refuses the 31st call from one IP within 5 minutes', async () => {
+    const res = () => ({ status: vi.fn(function () { return this; }), json: vi.fn(function () { return this; }), setHeader: vi.fn(), end: vi.fn() });
+    const req = { method: 'GET', query: { type: 'nope' }, headers: { 'x-forwarded-for': '10.9.9.9' } };
+    for (let i = 0; i < 30; i++) {
+      const r = res();
+      await handler(req, r);
+      expect(r.status).not.toHaveBeenCalledWith(429); // refused later (no key), never upstream
+    }
+    const blocked = res();
+    await handler(req, blocked);
+    expect(blocked.status).toHaveBeenCalledWith(429);
+  });
+});

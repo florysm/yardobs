@@ -206,3 +206,16 @@ describe('cache and failure policy', () => {
     expect(create).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('rate limiting', () => {
+  it('refuses the 21st call from one IP within the window', async () => {
+    create.mockResolvedValue(reply('Fine.'));
+    const body = activity();
+    const send = () => {
+      const res = { status: vi.fn(() => res), json: vi.fn(() => res), setHeader: vi.fn(), end: vi.fn() };
+      return handler({ method: 'POST', body, headers: { 'x-forwarded-for': '10.9.9.9' } }, res).then(() => res);
+    };
+    for (let i = 0; i < 20; i++) expect((await send()).status).toHaveBeenCalledWith(200);
+    expect((await send()).status).toHaveBeenCalledWith(429);
+  });
+});

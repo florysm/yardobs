@@ -97,6 +97,7 @@ yardobs/
 │   └── lib/
 │       ├── cors.js       # Origin allowlist + OPTIONS preflight
 │       ├── insightPersona.js  # Shared AI persona and prompt rules
+│       ├── rateLimit.js  # Per-IP sliding-window rate limiter + client IP (clock-jump safe)
 │       ├── sanitize.js   # Request body size clamping (prevents token inflation)
 │       └── validate.js   # Pure validators for coords, station IDs, dates
 ├── src/
@@ -128,7 +129,7 @@ yardobs/
 │   ├── utils/
 │   │   ├── activities.js           # Activity definitions and scoring weights
 │   │   ├── alerts.js               # NWS alert normalization + severity helpers
-│   │   ├── apiFetch.js             # HTTP client with error handling
+│   │   ├── apiFetch.js             # HTTP client: attaches the saved TWC key, throws errors with status
 │   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr, addDays, lastYearKey)
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
 │   │   ├── forecastView.js         # Forecast tab hourly strip + daily cards (on the place's clock)
@@ -138,13 +139,14 @@ yardobs/
 │   │   ├── insightVocab.js         # Shared score/AQI/time-of-day wording for prompts and UI
 │   │   ├── outlook.js              # Hourly forecast grouped by part of day, for the AI prompts
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
+│   │   ├── profile.js              # Profile modes (station/preview) + isExploring
 │   │   ├── placeTime.js            # The shown place's clock (Explore across time zones)
 │   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
 │   │   ├── sky.js                  # Theme + hero condition rules (code groups, sensor thresholds)
 │   │   ├── sourceTypes.js          # Station vs. forecast-model source type constants
-│   │   ├── storageKeys.js          # localStorage key constants
+│   │   ├── storageKeys.js          # localStorage key constants + readStored/writeStored
 │   │   ├── trends.js               # Trends chart rows, date keys, rain totals
 │   │   ├── units.js                # Imperial/metric conversion + locale detection
 │   │   ├── weatherCalc.js          # Feels-like, dew point, and related calculations

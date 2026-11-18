@@ -4,20 +4,9 @@ const cache = new Map();
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const CACHE_MAX_SIZE = 500;
 
-// Per-IP rate limiter — max 20 calls per TTL window per IP
-const ipLog = new Map();
-function isRateLimited(ip) {
-  const now = Date.now();
-  const window = ipLog.get(ip) ?? [];
-  const recent = window.filter(ts => now - ts < CACHE_TTL_MS);
-  if (recent.length >= 20) {
-    ipLog.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  ipLog.set(ip, recent);
-  return false;
-}
+// Per IP: 20 calls per cache TTL (15 min). See api/lib/rateLimit.js.
+const rateLimiter = createRateLimiter({ limit: 20, windowMs: CACHE_TTL_MS });
+
 // Age-based freshness. A negative age (the host clock jumped backward) counts as
 // expired; otherwise such an entry would pass the check forever.
 function isFresh(ts, now = Date.now()) {
@@ -27,9 +16,6 @@ function isFresh(ts, now = Date.now()) {
 
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, timestamps] of ipLog) {
-    if (!timestamps.some(ts => now - ts < CACHE_TTL_MS)) ipLog.delete(ip);
-  }
   for (const [k, v] of cache) {
     if (!isFresh(v.ts, now)) cache.delete(k);
   }
@@ -47,6 +33,7 @@ function evictOne() {
 }
 
 import { applyCors } from './lib/cors.js';
+import { clientIp, createRateLimiter } from './lib/rateLimit.js';
 import { SOURCE_TYPES } from '../src/utils/sourceTypes.js';
 import { clampBody } from './lib/sanitize.js';
 import { degreesToCompass } from '../src/utils/format.js';
@@ -450,8 +437,7 @@ export default async function handler(req, res) {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? 'unknown';
-  if (isRateLimited(ip)) return res.status(429).json({ error: 'Rate limit exceeded. Try again shortly.' });
+  if (rateLimiter.hit(clientIp(req))) return res.status(429).json({ error: 'Rate limit exceeded. Try again shortly.' });
 
   req.body = clampBody(req.body);
 

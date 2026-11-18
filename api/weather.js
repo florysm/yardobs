@@ -1,4 +1,5 @@
 import { applyCors } from './lib/cors.js';
+import { clientIp, createRateLimiter } from './lib/rateLimit.js';
 import { validCoords, validStationId, validDate } from './lib/validate.js';
 
 const TWC_BASE = 'https://api.weather.com';
@@ -6,30 +7,8 @@ const TWC_BASE = 'https://api.weather.com';
 // Every `type` the switch below handles — kept here so the 400 message can't drift.
 export const ROUTE_TYPES = ['current', 'history', 'history-recent', 'history-daily', 'forecast', 'hourly-forecast', 'alerts'];
 
-// ── Per-IP rate limiter: 30 requests per 5 minutes ────────────────────────────
-const RATE_WINDOW_MS = 5 * 60 * 1000;
-const RATE_LIMIT     = 30;
-const rateLimiter    = new Map();
-
-function checkRateLimit(ip) {
-  const now  = Date.now();
-  const entry = rateLimiter.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimiter.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return false;
-  }
-  if (entry.count >= RATE_LIMIT) return true;
-  entry.count++;
-  return false;
-}
-
-// Periodic cleanup so the map doesn't grow unbounded in long-lived instances
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of rateLimiter) {
-    if (now > entry.resetAt) rateLimiter.delete(ip);
-  }
-}, RATE_WINDOW_MS);
+// ── Per-IP rate limiter: 30 requests in any 5 minutes (api/lib/rateLimit.js) ─
+const rateLimiter = createRateLimiter({ limit: 30, windowMs: 5 * 60 * 1000 });
 
 // ── Friendly error messages for common TWC status codes ───────────────────────
 function twcErrorMessage(status) {
@@ -46,8 +25,7 @@ function twcErrorMessage(status) {
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
-  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() ?? req.socket?.remoteAddress ?? 'unknown';
-  if (checkRateLimit(ip)) {
+  if (rateLimiter.hit(clientIp(req))) {
     return res.status(429).json({ error: 'Too many requests — slow down and try again' });
   }
 

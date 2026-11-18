@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { buildRadarFrames, hasRadarCoverage, RADAR_RANGES, DEFAULT_RADAR_RANGE } from '../utils/radarFrames.js';
+import { buildRadarFrames, hasRadarCoverage, filterRadarPixels, RADAR_RANGES, DEFAULT_RADAR_RANGE } from '../utils/radarFrames.js';
 import { STORAGE_KEYS, readStored, writeStored } from '../utils/storageKeys.js';
 
 // Stadia authorizes localhost without a key, so the key is optional in dev.
@@ -21,6 +21,34 @@ const LEGEND = [
   { color: '#f08a24', label: 'Very Heavy' },
   { color: '#e0301e', label: 'Extreme' },
 ];
+
+// A tile layer that drops low-reflectivity clutter (filterRadarPixels) before
+// a tile is shown. Each tile is fetched CORS-enabled, drawn to a canvas and
+// filtered once; Leaflet then scales the canvas past maxNativeZoom as it would
+// an <img>. If the pixels can't be read, the tile shows unfiltered.
+const FilteredRadarLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const tile = L.DomUtil.create('canvas', 'leaflet-tile');
+    const size = this.getTileSize();
+    tile.width = size.x;
+    tile.height = size.y;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const ctx = tile.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, size.x, size.y);
+      try {
+        const pixels = ctx.getImageData(0, 0, size.x, size.y);
+        filterRadarPixels(pixels.data);
+        ctx.putImageData(pixels, 0, 0);
+      } catch (_) { /* unreadable (tainted) canvas: leave it unfiltered */ }
+      done(null, tile);
+    };
+    img.onerror = () => done(new Error('radar tile failed'), tile);
+    img.src = L.Util.template(this.options.url, coords);
+    return tile;
+  },
+});
 
 // Preloads every frame as an invisible tile layer on mount so tiles enter the
 // browser cache before animation starts. Frame transitions swap opacity instead
@@ -66,7 +94,8 @@ function RadarLayer({ frames, frameIndex }) {
     if (!frames.length) return;
     frames.forEach((frame, i) => {
       if (cacheRef.current[i]) return;
-      const layer = L.tileLayer(frame.url, {
+      const layer = new FilteredRadarLayer({
+        url: frame.url,
         tileSize: 256,
         opacity: 0.001,
         maxNativeZoom: 8,

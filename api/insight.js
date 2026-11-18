@@ -272,6 +272,8 @@ const DAILY_SCHEMA = {
 // It looks ahead only a few hours; the rest of the day is the Forecast card's.
 const DAILY_JOB = 'Your job on this card is to answer "what\'s it doing right now?" — what the reader would feel stepping outside. '
   + 'Lead with the most notable current condition. Mention the next few hours only if the data shows a change in them, and never describe later in the day. '
+  + 'When nothing is falling and the next few hours are dry, leave rain out entirely. '
+  + 'Use "but" or "though" only between facts that pull against each other; never set the absence of rain against an unrelated change such as warming. '
   + 'Use type=caution on a tag only when a value is genuinely limiting or hazardous. Each tag covers a distinct aspect of conditions — never repeat a theme across tags.';
 
 // Only a real station can speak for the reader's yard; preview data is city-level.
@@ -280,6 +282,7 @@ const YARD_LINE = 'If you place the conditions, say "in your yard" or "at your p
 const DAILY_EXAMPLES = [
   'It\'s a raw 47° with a north wind that makes it feel closer to 41. Skies are dry for now, but rain is likely within the next couple of hours.',
   'A calm, comfortable 68° in your yard with clean air and barely a breeze. Nothing much changes over the next few hours.',
+  'A crisp 41° under clear skies, with a light west breeze. It warms into the upper 40s over the next few hours.',
 ];
 
 async function handleDailyInsight(req, res) {
@@ -326,10 +329,16 @@ function buildDailyCall({ stationId, placeName, date, c, yoyReadings, lookahead,
       : '\nSame date last year was nearly identical in temperature.';
   })();
 
-  // Preview mode has a measured rain rate but no daily accumulation.
-  const rainLine = isPreview
-    ? `\n- Raining now: ${formatPrecipRate(c?.precipRate ?? 0, units)}`
-    : `\n- Raining now: ${formatPrecipRate(c?.precipRate ?? 0, units)}, ${formatPrecipTotal(c?.precipTotal ?? 0, units)} total today`;
+  // Rain is only in the prompt when there is some. A standing "Raining now:
+  // 0.00 in/hr" line got answered — "nothing is falling right now, but…" —
+  // even on a dry day. Preview has a rain rate but no daily accumulation.
+  const rate = c?.precipRate ?? 0;
+  const total = isPreview ? 0 : (c?.precipTotal ?? 0);
+  const rainLine = rate > 0
+    ? `\n- Raining now: ${formatPrecipRate(rate, units)}${isPreview ? '' : `, ${formatPrecipTotal(total, units)} total today`}`
+    : total > 0
+      ? `\n- Not raining now; ${formatPrecipTotal(total, units)} fell earlier today`
+      : '';
 
   const lookaheadLine = `\n\nNext 3 hours: ${lookahead ?? 'no notable change'}`;
 

@@ -5,7 +5,8 @@ import { SOURCE_TYPES } from './sourceTypes';
 // what counts as a cacheable result changes: older entries then read as misses.
 // v2 (2026-11-17): only real results are written; earlier builds could store a
 // blank or "API is busy" insight.
-const CACHE_VERSION = 2;
+// v3 (2026-11-18): Backyard prompt no longer invents a rain contrast on dry days.
+const CACHE_VERSION = 3;
 
 // The saved insight for `key`, or null when there is none, it is from an older
 // build, it has expired, or it is from the "future" (the clock moved backward).

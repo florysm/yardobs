@@ -92,7 +92,10 @@ const LOOKAHEAD_WIND_DELTA_MPH = 8;
 /**
  * What changes over the next few hours, for the "what's it doing right now"
  * card, e.g. "61→55°, rain likely 70% from 9p, wind picking up to 18 mph".
- * Null when nothing notable changes — the card should then stay on the present.
+ * A dry stretch says so ("45→52°, dry"): left unsaid, the model filled the gap
+ * by setting "nothing falling right now" against the warming, as if a rise in
+ * temperature were a threat. "no notable change, dry" when nothing moves;
+ * null only without hourly data for now.
  */
 export function buildLookahead(hf, units, now = new Date(), hours = 3) {
   const h = hf?.hourly;
@@ -129,5 +132,7 @@ export function buildLookahead(hf, units, now = new Date(), hours = 3) {
     facts.push(`wind picking up to ${formatWind(wPeak, units)}`);
   }
 
-  return facts.length ? facts.join(', ') : null;
+  const changes = facts.length ? facts : ['no notable change'];
+  if (rain === 'dry') changes.push('dry');
+  return changes.join(', ');
 }

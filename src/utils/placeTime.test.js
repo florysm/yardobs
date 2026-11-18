@@ -74,7 +74,7 @@ describe('forecast lookups on the place clock (exploring LA from elsewhere)', ()
   const clock = placeClock(placeTimeZone(laForecast), NOW);
 
   it('next few hours start at LA 11pm', () => {
-    expect(buildLookahead(laForecast, 'imperial', clock.wall)).toBe('23→26°');
+    expect(buildLookahead(laForecast, 'imperial', clock.wall)).toBe('23→26°, dry');
     // On the device clock it would have described LA 7am–10am the next day.
     expect(buildLookahead(laForecast, 'imperial', NOW)).toMatch(/^31→34°/);
   });
@@ -83,6 +83,8 @@ describe('forecast lookups on the place clock (exploring LA from elsewhere)', ()
     const arc = getArcData(laForecast, 'bbq', {}, clock.date);
     expect(arc.map(a => a.hour)).toEqual(
       Array.from({ length: ARC_END_HOUR - ARC_START_HOUR + 1 }, (_, i) => ARC_START_HOUR + i));
+    // LA's sunrise 06:34, sunset 16:51 on the 16th: 6a and 5p onward are dark.
+    expect(arc.filter(a => a.dark).map(a => a.hour)).toEqual([6, 17, 18, 19, 20, 21]);
     // 70% at 8pm on the 16th is behind us at 11pm; 90% on the 17th isn't today.
     expect(getForecastRainThreat(laForecast, clock.hour, clock.date).maxProb).toBe(0);
     expect(getForecastRainThreat(laForecast, 0, clock.date).maxProb).toBe(70);

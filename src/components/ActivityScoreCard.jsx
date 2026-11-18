@@ -11,7 +11,7 @@ import { buildDayOutlook } from '../utils/outlook';
 import { formatTemp } from '../utils/units';
 import {
   isNotableWeatherChange, computeAllScores, getForecastRainThreat,
-  getArcData, getBestWindow, firstSentence, restOfInsight, scoreColor, scoreVerdict,
+  getArcData, getBestWindow, getBestWindowRange, firstSentence, restOfInsight, scoreColor, scoreVerdict,
 } from '../utils/scoring';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -68,7 +68,11 @@ function FactorBars({ factors }) {
   );
 }
 
-function TimeArc({ arcData, bestWindow }) {
+// Bars for 6a–9p. The highlight is the same window as the "Best window" label
+// (hours still ahead), so the two can't disagree. Hours outside sunrise–sunset
+// are dimmed further, but the score still rates their weather.
+// Every other hour is labeled; 16 labels don't fit a phone-width card.
+function TimeArc({ arcData, bestRange, bestWindow }) {
   if (!arcData.length) {
     return (
       <div style={{ fontSize: 11, color: 'var(--tm)', textAlign: 'center', padding: '8px 0' }}>
@@ -77,35 +81,28 @@ function TimeArc({ arcData, bestWindow }) {
     );
   }
 
-  // Find peak window start index for highlight
-  let peakIdx = 0, peakAvg = 0;
-  for (let i = 0; i <= arcData.length - 3; i++) {
-    const avg = (arcData[i].score + arcData[i + 1].score + arcData[i + 2].score) / 3;
-    if (avg > peakAvg) { peakAvg = avg; peakIdx = i; }
-  }
-  const peakHours = new Set(
-    arcData.slice(peakIdx, peakIdx + 3).map(d => d.hour)
-  );
+  const inBest = hour => bestRange != null && hour >= bestRange.start && hour < bestRange.end;
+  const labelEvery = arcData.length > 12 ? 2 : 1;
 
   return (
     <div role="img" aria-label="Hourly activity score timeline">
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 44 }}>
-        {arcData.map(({ hour, score }) => {
-          const isPeak = peakHours.has(hour);
+        {arcData.map(({ hour, score, dark }) => {
           const color  = scoreColor(score);
           const barH   = Math.max(3, Math.round(score * 0.44));
+          // scoreColor() returns a CSS var, so fade with opacity — appending
+          // a hex alpha ("var(--x)66") is invalid CSS and drops the bar.
+          const opacity = inBest(hour) ? 1 : dark ? 0.15 : 0.4;
           return (
-            <div key={hour} style={{
+            <div key={hour} title={dark ? 'After dark' : undefined} style={{
               flex: 1, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'flex-end', height: '100%',
             }}>
               <div style={{
                 width: '100%', height: barH,
                 borderRadius: '2px 2px 0 0',
-                // scoreColor() returns a CSS var, so fade with opacity — appending
-                // a hex alpha ("var(--x)66") is invalid CSS and drops the bar.
                 background: color,
-                opacity: isPeak ? 1 : 0.4,
+                opacity,
                 transition: 'height 0.5s ease, background 0.3s, opacity 0.3s',
               }} />
             </div>
@@ -113,12 +110,13 @@ function TimeArc({ arcData, bestWindow }) {
         })}
       </div>
       <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>
-        {arcData.map(({ hour }) => (
+        {arcData.map(({ hour, dark }, i) => (
           <div key={hour} style={{
-            flex: 1, textAlign: 'center',
+            flex: 1, textAlign: 'center', whiteSpace: 'nowrap',
             fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)',
+            opacity: dark ? 0.5 : 1,
           }}>
-            {fmtHourShort(hour)}
+            {i % labelEvery === 0 ? fmtHourShort(hour) : '·'}
           </div>
         ))}
       </div>
@@ -171,6 +169,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, defaultActi
     () => getArcData(hourlyForecast, activeId, current, clock.date),
     [hourlyForecast, activeId, current, clock.date]
   );
+  const bestRange  = useMemo(() => getBestWindowRange(arcData, clock.hour), [arcData, clock.hour]);
   const bestWindow = useMemo(() => getBestWindow(arcData, clock.hour), [arcData, clock.hour]);
   const act = ACTIVITIES.find(a => a.id === activeId);
 
@@ -337,7 +336,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, defaultActi
           {/* Time-of-day arc */}
           <div style={{ marginTop: 14 }}>
             <div className="y-label">Conditions through the day</div>
-            <TimeArc arcData={arcData} bestWindow={bestWindow} />
+            <TimeArc arcData={arcData} bestRange={bestRange} bestWindow={bestWindow} />
           </div>
         </div>
       )}

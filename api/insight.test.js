@@ -92,6 +92,23 @@ describe('insight handlers', () => {
     expect(messages[0].content).toContain('Time of day: evening');
   });
 
+  it('daily: no rain line on a dry day, and the model is told to leave rain out', async () => {
+    create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"narrative":"n","tags":[]}' }] });
+    await call({ type: 'daily', stationId: 'S1', date: '2026-11-04', period: 'morning',
+      current: { temp: 41, precipRate: 0, precipTotal: 0 }, lookahead: '41→48°, dry', units: 'imperial' });
+    const { system, messages } = create.mock.calls[0][0];
+    expect(messages[0].content).not.toMatch(/rain/i);
+    expect(messages[0].content).toContain('Next 3 hours: 41→48°, dry');
+    expect(system).toContain('leave rain out entirely');
+  });
+
+  it('daily: rain earlier today is reported as earlier, not as now', async () => {
+    create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"narrative":"n","tags":[]}' }] });
+    await call({ type: 'daily', stationId: 'S1', date: '2026-11-04', period: 'afternoon',
+      current: { temp: 50, precipRate: 0, precipTotal: 0.3 }, units: 'imperial' });
+    expect(create.mock.calls[0][0].messages[0].content).toContain('Not raining now; 0.30" fell earlier today');
+  });
+
   it('activity: gets the outlook and the same best window the card shows', async () => {
     create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] });
     await call({ activity: 'run', activityLabel: 'Running', score: 55, factors: [{ name: 'Wind', score: 30 }],

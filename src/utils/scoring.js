@@ -1,4 +1,5 @@
 import { toISODate } from './dateUtils';
+import { sunWindows, isNightHour } from './forecastView';
 import { formatTemp, formatWind, formatPrecipRate } from './units';
 import { ACTIVITIES } from './activities';
 import { scoreBand } from './insightVocab';
@@ -252,13 +253,16 @@ export function getForecastRainThreat(hf, fromHour = 0, today = toISODate()) {
   return { rate: precipProbToRate(maxProb), maxProb };
 }
 
-// The daylight hours the activity arc scores, inclusive (7a–6p).
-export const ARC_START_HOUR = 7;
-export const ARC_END_HOUR = 18;
+// The hours the activity arc scores, inclusive (6a–9p). The ends can be dark
+// (winter mornings and evenings); those bars are flagged `dark` and dimmed, but
+// still scored — the score rates the weather, not the light.
+export const ARC_START_HOUR = 6;
+export const ARC_END_HOUR = 21;
 
 // `today` is the place's date (placeClock), as for getForecastRainThreat.
 export function getArcData(hf, actId, current, today = toISODate()) {
   if (!hf?.hourly?.time) return [];
+  const sun = sunWindows(hf.daily);
   const result = [];
   hf.hourly.time.forEach((t, i) => {
     const [date, timeStr] = t.split('T');
@@ -276,7 +280,7 @@ export function getArcData(hf, actId, current, today = toISODate()) {
       aqi:        current?.aqi                           ?? null,
     };
     const { score } = computeScore(actId, cHour);
-    result.push({ hour, score });
+    result.push({ hour, score, dark: isNightHour(sun, t) });
   });
   return result;
 }
@@ -284,7 +288,8 @@ export function getArcData(hf, actId, current, today = toISODate()) {
 // Only hours still ahead are eligible — a "Peak 9–12 AM" shown at 4pm is no
 // help, and the Activity narrative is handed this same window, so the card and
 // the advice can't point at different times.
-export function getBestWindow(arcData, fromHour = 0) {
+// The arc highlights this same range, so the bars and the label always agree.
+export function getBestWindowRange(arcData, fromHour = 0) {
   arcData = arcData.filter(a => a.hour >= fromHour);
   if (arcData.length < 3) return null;
   let bi = 0, best = 0;
@@ -292,8 +297,14 @@ export function getBestWindow(arcData, fromHour = 0) {
     const avg = (arcData[i].score + arcData[i + 1].score + arcData[i + 2].score) / 3;
     if (avg > best) { best = avg; bi = i; }
   }
-  const s = arcData[bi].hour;
-  const e = arcData[Math.min(bi + 2, arcData.length - 1)].hour + 1;
+  // `end` is exclusive: a 2, 3, 4 PM run is "2–5 PM".
+  return { start: arcData[bi].hour, end: arcData[bi + 2].hour + 1 };
+}
+
+export function getBestWindow(arcData, fromHour = 0) {
+  const range = getBestWindowRange(arcData, fromHour);
+  if (!range) return null;
+  const { start: s, end: e } = range;
   // Format: "Peak 2–5 PM"
   function label(h) {
     const p = h >= 12 ? 'PM' : 'AM';

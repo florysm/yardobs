@@ -7,7 +7,7 @@ import { iconFor, wmoToTwc, hourlyDisplayCode } from './weatherIcons';
 
 // { 'YYYY-MM-DD': { rise, set } } from Open-Meteo's daily block, whose
 // sunrise/sunset are wall-clock strings in the same zone as the hourly times.
-function sunWindows(daily) {
+export function sunWindows(daily) {
   const out = {};
   (daily?.time ?? []).forEach((date, i) => {
     const rise = daily.sunrise?.[i];
@@ -15,6 +15,13 @@ function sunWindows(daily) {
     if (rise && set) out[date] = { rise, set };
   });
   return out;
+}
+
+// An hour that starts before sunrise or after sunset is night. Shared by the
+// hourly strip's icons and the activity arc's dimmed bars. False without data.
+export function isNightHour(sun, t) {
+  const s = sun[t.slice(0, 10)];
+  return s ? (t < s.rise || t > s.set) : false;
 }
 
 /**
@@ -33,8 +40,7 @@ export function buildHours(hf, clock) {
   const sun = sunWindows(hf.daily);
   return h.time.slice(start, start + 24).map((t, k) => {
     const i = start + k;
-    const s = sun[t.slice(0, 10)];
-    const isNight = s ? (t < s.rise || t > s.set) : false;
+    const isNight = isNightHour(sun, t);
     const pop = h.precipitation_probability?.[i] ?? 0;
     // Same WMO table as the daily cards and current conditions.
     const icon = iconFor(wmoToTwc(hourlyDisplayCode(h.weathercode?.[i], pop), isNight ? 0 : 1));

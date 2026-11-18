@@ -86,9 +86,14 @@ describe('buildLookahead', () => {
     );
   });
 
-  it('null when nothing notable changes', () => {
+  it('says so when nothing notable changes', () => {
     // 1am → 4am: 47→45°, dry, calm.
-    expect(buildLookahead(hf, 'imperial', at(1))).toBeNull();
+    expect(buildLookahead(hf, 'imperial', at(1))).toBe('no notable change, dry');
+  });
+
+  it('a dry stretch is stated, not left for the model to guess', () => {
+    const warm = { hourly: { ...hf.hourly, temperature_2m: hf.hourly.temperature_2m.map((t, i) => (i >= 1 && i <= 4 ? 40 + (i - 1) * 3 : t)) } };
+    expect(buildLookahead(warm, 'imperial', at(1))).toBe('40→49°, dry');
   });
 
   it('null without hourly data for now', () => {

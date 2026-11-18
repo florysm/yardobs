@@ -1,14 +1,17 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { fmtHourShort } from '../utils/format';
-import { ACTIVITIES } from '../utils/activities';
-import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
-import { toISODate } from '../utils/dateUtils';
+import { ACTIVITIES, DEFAULT_ACTIVITY_ID } from '../utils/activities';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+import { SOURCE_TYPES } from '../utils/sourceTypes';
+import { insightScope } from '../utils/insightCache';
+import { useInsight } from '../hooks/useInsight';
+import { placeClock, placeTimeZone } from '../utils/placeTime';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildDayOutlook } from '../utils/outlook';
 import { formatTemp } from '../utils/units';
 import {
   isNotableWeatherChange, computeAllScores, getForecastRainThreat,
-  getArcData, getBestWindow, firstSentence, restOfInsight, scoreColor, scoreVerdict,
+  getArcData, getBestWindow, getBestWindowRange, firstSentence, restOfInsight, scoreColor, scoreVerdict,
 } from '../utils/scoring';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -65,7 +68,11 @@ function FactorBars({ factors }) {
   );
 }
 
-function TimeArc({ arcData, bestWindow }) {
+// Bars for 6a–9p. The highlight is the same window as the "Best window" label
+// (hours still ahead), so the two can't disagree. Hours outside sunrise–sunset
+// are dimmed further, but the score still rates their weather.
+// Every other hour is labeled; 16 labels don't fit a phone-width card.
+function TimeArc({ arcData, bestRange, bestWindow }) {
   if (!arcData.length) {
     return (
       <div style={{ fontSize: 11, color: 'var(--tm)', textAlign: 'center', padding: '8px 0' }}>
@@ -74,45 +81,42 @@ function TimeArc({ arcData, bestWindow }) {
     );
   }
 
-  // Find peak window start index for highlight
-  let peakIdx = 0, peakAvg = 0;
-  for (let i = 0; i <= arcData.length - 3; i++) {
-    const avg = (arcData[i].score + arcData[i + 1].score + arcData[i + 2].score) / 3;
-    if (avg > peakAvg) { peakAvg = avg; peakIdx = i; }
-  }
-  const peakHours = new Set(
-    arcData.slice(peakIdx, peakIdx + 3).map(d => d.hour)
-  );
+  const inBest = hour => bestRange != null && hour >= bestRange.start && hour < bestRange.end;
+  const labelEvery = arcData.length > 12 ? 2 : 1;
 
   return (
     <div role="img" aria-label="Hourly activity score timeline">
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 44 }}>
-        {arcData.map(({ hour, score }) => {
-          const isPeak = peakHours.has(hour);
+        {arcData.map(({ hour, score, dark }) => {
           const color  = scoreColor(score);
           const barH   = Math.max(3, Math.round(score * 0.44));
+          // scoreColor() returns a CSS var, so fade with opacity — appending
+          // a hex alpha ("var(--x)66") is invalid CSS and drops the bar.
+          const opacity = inBest(hour) ? 1 : dark ? 0.15 : 0.4;
           return (
-            <div key={hour} style={{
+            <div key={hour} title={dark ? 'After dark' : undefined} style={{
               flex: 1, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'flex-end', height: '100%',
             }}>
               <div style={{
                 width: '100%', height: barH,
                 borderRadius: '2px 2px 0 0',
-                background: isPeak ? color : color + '66',
-                transition: 'height 0.5s ease, background 0.3s',
+                background: color,
+                opacity,
+                transition: 'height 0.5s ease, background 0.3s, opacity 0.3s',
               }} />
             </div>
           );
         })}
       </div>
       <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>
-        {arcData.map(({ hour }) => (
+        {arcData.map(({ hour, dark }, i) => (
           <div key={hour} style={{
-            flex: 1, textAlign: 'center',
+            flex: 1, textAlign: 'center', whiteSpace: 'nowrap',
             fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)',
+            opacity: dark ? 0.5 : 1,
           }}>
-            {fmtHourShort(hour)}
+            {i % labelEvery === 0 ? fmtHourShort(hour) : '·'}
           </div>
         ))}
       </div>
@@ -130,23 +134,24 @@ function TimeArc({ arcData, bestWindow }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ActivityScoreCard({ current, hourlyForecast, onError, defaultActivity, units }) {
-  const [activeId,       setActiveId]       = useState(defaultActivity ?? 'bbq');
+export default function ActivityScoreCard({ current, hourlyForecast, defaultActivity, units }) {
+  const [activeId,       setActiveId]       = useState(defaultActivity ?? DEFAULT_ACTIVITY_ID);
   const [expanded,       setExpanded]       = useState(false);
-  const [insight,        setInsight]        = useState(null);
-  const [insightLoading, setInsightLoading] = useState(false);
-  const iCache = useRef({});
 
+  // The forecast's place clock, not the device's: exploring another time zone,
+  // "today" and "hours still ahead" are that place's. Read every render so the
+  // memos below move on as the hour turns, not only when the forecast refreshes.
+  const clock = placeClock(placeTimeZone(hourlyForecast));
   const { rate: forecastRate, maxProb: forecastMaxProb } = useMemo(
-    () => getForecastRainThreat(hourlyForecast, new Date().getHours()),
-    [hourlyForecast]
+    () => getForecastRainThreat(hourlyForecast, clock.hour, clock.date),
+    [hourlyForecast, clock.hour, clock.date]
   );
   // Rest of today by day part — the Activity card is the one that answers
   // "when should I go", so it's the one that gets the timing detail. Recomputed
   // whenever the hourly forecast refreshes (hourly, see useWeather).
   const outlook = useMemo(
-    () => buildDayOutlook(hourlyForecast, toISODate(), units, { fromHour: new Date().getHours() }),
-    [hourlyForecast, units]
+    () => buildDayOutlook(hourlyForecast, clock.date, units, { fromHour: clock.hour }),
+    [hourlyForecast, units, clock.date, clock.hour]
   );
   // rainThreat combines measured rain with forecast risk. Scoring deliberately
   // ignores it (computeScore keys off measured precipRate, so a dry morning with
@@ -160,105 +165,54 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
 
   const allScores = useMemo(() => computeAllScores(currentWithThreat, units), [currentWithThreat, units]);
   const active    = allScores[activeId];
-  const arcData   = useMemo(() => getArcData(hourlyForecast, activeId, current), [hourlyForecast, activeId, current]);
-  const bestWindow = useMemo(() => getBestWindow(arcData, new Date().getHours()), [arcData]);
+  const arcData   = useMemo(
+    () => getArcData(hourlyForecast, activeId, current, clock.date),
+    [hourlyForecast, activeId, current, clock.date]
+  );
+  const bestRange  = useMemo(() => getBestWindowRange(arcData, clock.hour), [arcData, clock.hour]);
+  const bestWindow = useMemo(() => getBestWindow(arcData, clock.hour), [arcData, clock.hour]);
   const act = ACTIVITIES.find(a => a.id === activeId);
 
   const showPawAlert = activeId === 'dogwalk' && (active.pavementTemp ?? 0) >= 100;
 
-  // Fetch AI insight whenever the active activity or conditions change meaningfully.
-  // Debounced so rapid successive updates (current then hourlyForecast arriving) don't
-  // each trigger a separate API call.
-  useEffect(() => {
-    if (!currentWithThreat) return;
-
-    const period = currentDayPart();
-
-    // Fast in-session path: useRef avoids re-renders when switching activities
-    const iKey = `${activeId}|${period}|${units}|${Math.round(active.score / 5) * 5}|${Math.round((currentWithThreat.temp ?? 70) / 2) * 2}`;
-    const cached = iCache.current[iKey];
-    if (cached !== undefined && Date.now() - cached.ts < INSIGHT_TTL_MS) {
-      setInsight(cached.text);
-      setInsightLoading(false);
-      return;
-    }
-
-    // Persistent path: localStorage survives page refreshes; only bypass on notable weather change
-    const storageKey = STORAGE_KEYS.activityInsightKey(current?.stationId ?? 'preview', activeId, period, units);
-    try {
-      const stored = JSON.parse(localStorage.getItem(storageKey));
-      if (stored && Date.now() - stored.ts < INSIGHT_TTL_MS) {
-        const currentSnapshot = {
-          temp: currentWithThreat.temp,
-          windSpeed: currentWithThreat.windSpeed,
-          rainThreat: currentWithThreat.rainThreat,
-          score: active.score,
-        };
-        if (!isNotableWeatherChange(stored, currentSnapshot)) {
-          iCache.current[iKey] = { text: stored.insight, ts: Date.now() };
-          setInsight(stored.insight);
-          setInsightLoading(false);
-          return;
-        }
-      }
-    } catch { /* ignore malformed cache entries */ }
-
-    setInsightLoading(true);
-    setInsight(null);
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      fetch('/api/insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          activity: activeId,
-          activityLabel: act?.label,
-          score: active.score,
-          factors: active.factors,
-          stationId: current?.stationId,
-          sourceType: current?.sourceType,
-          period,
-          units,
-          current: {
-            ...currentWithThreat,
-            ...(activeId === 'dogwalk' && active.pavementTemp != null
-              ? { pavementTemp: active.pavementTemp }
-              : {}),
-          },
-          outlook,
-          bestWindow,
-        }),
-      })
-        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then(d => {
-          if (controller.signal.aborted) return;
-          const text = d.insight ?? '';
-          iCache.current[iKey] = { text, ts: Date.now() };
-          try {
-            localStorage.setItem(storageKey, JSON.stringify({
-              insight: text,
-              ts: Date.now(),
-              conditions: {
-                temp: currentWithThreat.temp ?? 70,
-                windSpeed: currentWithThreat.windSpeed ?? 0,
-                rainThreat: currentWithThreat.rainThreat ?? 0,
-                score: active.score,
-              },
-            }));
-          } catch { /* ignore storage quota errors */ }
-          setInsight(text);
-        })
-        .catch(err => {
-          if (err.name === 'AbortError' || controller.signal.aborted) return;
-          iCache.current[iKey] = { text: '', ts: Date.now() };
-          setInsight('');
-          onError?.('Could not load activity insight');
-        })
-        .finally(() => { if (!controller.signal.aborted) setInsightLoading(false); });
-    }, 400);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [activeId, currentWithThreat, units, outlook, bestWindow]);
+  // AI insight for the active activity. Debounced so rapid successive updates
+  // (current then hourlyForecast arriving) send one request. A saved insight is
+  // reused for the hour unless the weather has changed notably since.
+  const snapshot = currentWithThreat ? {
+    temp: currentWithThreat.temp ?? 70,
+    windSpeed: currentWithThreat.windSpeed ?? 0,
+    rainThreat: currentWithThreat.rainThreat ?? 0,
+    score: active.score,
+  } : null;
+  const period = currentDayPart(clock.wall);
+  const insightId = insightScope(current);
+  const { data: insight, loading: insightLoading } = useInsight({
+    storageKey: STORAGE_KEYS.activityInsightKey(insightId, activeId, period, units),
+    enabled: !!currentWithThreat,
+    debounceMs: 400,
+    deps: [currentWithThreat, outlook, bestWindow],
+    meta: () => snapshot,
+    isStale: saved => isNotableWeatherChange({ conditions: saved }, snapshot),
+    buildBody: async () => ({
+      activity: activeId,
+      activityLabel: act?.label,
+      score: active.score,
+      factors: active.factors,
+      stationId: insightId,
+      sourceType: current?.sourceType,
+      period,
+      units,
+      current: {
+        ...currentWithThreat,
+        ...(activeId === 'dogwalk' && active.pavementTemp != null
+          ? { pavementTemp: active.pavementTemp }
+          : {}),
+      },
+      outlook,
+      bestWindow,
+    }),
+    accept: json => json?.insight || null,
+  });
 
   if (!current) {
     return (
@@ -341,7 +295,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
           fontSize: 10, color: 'var(--tm)',
         }}>
           <div className="live-dot" />
-          {current?.sourceType === 'forecast_model'
+          {current?.sourceType === SOURCE_TYPES.FORECAST_MODEL
             ? 'AI insight · forecast data'
             : 'AI insight powered by your live station data'}
         </div>
@@ -382,7 +336,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, onError, de
           {/* Time-of-day arc */}
           <div style={{ marginTop: 14 }}>
             <div className="y-label">Conditions through the day</div>
-            <TimeArc arcData={arcData} bestWindow={bestWindow} />
+            <TimeArc arcData={arcData} bestRange={bestRange} bestWindow={bestWindow} />
           </div>
         </div>
       )}

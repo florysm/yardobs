@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRadarFrames, hasRadarCoverage, RADAR_RANGES } from './radarFrames.js';
+import { buildRadarFrames, hasRadarCoverage, RADAR_RANGES, n0qDbz, filterRadarPixels } from './radarFrames.js';
 
 // 2026-10-15 15:48:04 UTC
 const NOW = Date.UTC(2026, 9, 15, 15, 48, 4);
@@ -105,5 +105,31 @@ describe('hasRadarCoverage', () => {
 
   it('treats latitude/longitude 0 as a real value, not missing', () => {
     expect(hasRadarCoverage(0, 0)).toBe(false);
+  });
+});
+
+describe('radar clutter filter', () => {
+  const px = (...rgbs) => new Uint8ClampedArray(rgbs.flatMap(hex =>
+    [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16), 255]));
+
+  it('reads dBZ from the n0q palette', () => {
+    expect(n0qDbz(0x85, 0x71, 0x8f)).toBe(-32);   // entry 1
+    expect(n0qDbz(0x41, 0x5b, 0x9e)).toBe(9);     // the blue speckle
+    expect(n0qDbz(0x6f, 0xd6, 0xe8)).toBe(17.5);
+    expect(n0qDbz(0x0d, 0x9e, 0x11)).toBe(27.5);  // last listed entry
+    expect(n0qDbz(0xff, 0xd8, 0x00)).toBeNull();  // 40.5 dBZ, above the low end
+  });
+
+  it('clears clutter below the threshold and keeps rain', () => {
+    // 9 dBZ blue, 17.5 cyan, 18.5 teal, 21.5 green, 40.5 yellow
+    const data = px('415b9e', '6fd6e8', '59d6b3', '11d518', 'ffd800');
+    expect(filterRadarPixels(data)).toBe(2);
+    expect([3, 7, 11, 15, 19].map(i => data[i])).toEqual([0, 0, 255, 255, 255]);
+  });
+
+  it('leaves transparent and unknown pixels alone', () => {
+    const data = new Uint8ClampedArray([0x41, 0x5b, 0x9e, 0, 1, 2, 3, 255]);
+    expect(filterRadarPixels(data)).toBe(0);
+    expect(data[7]).toBe(255);
   });
 });

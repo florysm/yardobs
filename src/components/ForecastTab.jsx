@@ -1,41 +1,17 @@
 import { useRef, useState, useEffect } from 'react';
-import SunCalc from 'suncalc';
-import { fmtHourIso, fmtSunTime, fmtMoonTime, getLocaleHour12 } from '../utils/format';
-import { ICON_EMOJI, WMO_EMOJI, NIGHT_ICON } from '../utils/weatherIcons';
-import { toISODate } from '../utils/dateUtils';
-import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
+import { fmtHourIso, fmtClockTime } from '../utils/format';
+import { buildHours, groupByDay, buildDays } from '../utils/forecastView';
+import { placeClock, placeTimeZone } from '../utils/placeTime';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+import { insightScope } from '../utils/insightCache';
+import { useInsight } from '../hooks/useInsight';
 import { formatTempParts } from '../utils/units';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildDayOutlook } from '../utils/outlook';
 import { aqiForDay } from '../utils/forecastNormalize';
-
-function buildHours(hf, lat, lon) {
-  const h = hf?.hourly;
-  if (!h?.time?.length) return [];
-  const now = Date.now();
-
-  const sunMap = {};
-  [...new Set(h.time.map(t => t.slice(0, 10)))].forEach(dateStr => {
-    if (lat == null || lon == null) return;
-    const { sunrise, sunset } = SunCalc.getTimes(new Date(dateStr + 'T12:00'), lat, lon);
-    sunMap[dateStr] = { riseMs: sunrise.getTime(), setMs: sunset.getTime() };
-  });
-
-  return h.time
-    .map((t, i) => {
-      const ms = new Date(t).getTime();
-      const sun = sunMap[t.slice(0, 10)];
-      const isNight = sun ? (ms < sun.riseMs || ms > sun.setMs) : false;
-      const code = h.weathercode?.[i];
-      const pop  = h.precipitation_probability?.[i] ?? 0;
-      const displayCode = (code >= 51 && pop < 30) ? 3 : (code === 95 && pop < 40) ? 80 : code;
-      const icon = (isNight && displayCode in NIGHT_ICON) ? NIGHT_ICON[displayCode] : (WMO_EMOJI[displayCode] ?? '🌡️');
-      return { time: t, ms, icon, temp: h.temperature_2m?.[i], pop };
-    })
-    .filter(hr => hr.ms >= now - 30 * 60 * 1000)
-    .slice(0, 24)
-    .map((hr, i) => ({ ...hr, isNow: i === 0 }));
-}
+import { todayHigh } from '../utils/weatherCalc';
+import SunMoonCard from './SunMoonCard';
+import { SOURCE_TYPES } from '../utils/sourceTypes';
 
 // Matches HourlyCard's `flex: '0 0 56px'` and .fc-hourly-group's `gap: 8`.
 const HOUR_CARD_W = 56;
@@ -44,95 +20,6 @@ const HOUR_GROUP_MARGIN = 16; // marginLeft applied to every group after the fir
 
 function groupWidthPx(hourCount) {
   return hourCount * HOUR_CARD_W + Math.max(0, hourCount - 1) * HOUR_CARD_GAP;
-}
-
-function groupByDay(hours) {
-  const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
-  const groups = [];
-  let current = null;
-  for (const hr of hours) {
-    const date = hr.time.slice(0, 10);
-    if (!current || current.date !== date) {
-      const d = new Date(date + 'T12:00:00');
-      current = {
-        date,
-        label: date === todayStr
-          ? 'Today'
-          : `${d.toLocaleDateString(navigator.language, { weekday: 'long' })} ${d.getDate()}`,
-        hours: [],
-      };
-      groups.push(current);
-    }
-    current.hours.push(hr);
-  }
-  return groups;
-}
-
-// `forecast` arrives already normalized from useWeather (see forecastNormalize.js),
-// so this only adds presentation: the emoji and the isToday flag. Vendor quirks —
-// TWC's day/night interleaved dayparts, Open-Meteo's WMO codes — are handled there.
-function buildDays(forecast) {
-  if (!forecast?.length) return [];
-  const todayStr = toISODate(new Date());
-  return forecast.map(day => ({
-    ...day,
-    icon:    ICON_EMOJI[day.iconCode] ?? '🌡️',
-    isToday: day.date === todayStr,
-  }));
-}
-
-
-function fmtDaylight(riseStr, setStr) {
-  if (!riseStr || !setStr) return null;
-  const mins = Math.round((new Date(setStr) - new Date(riseStr)) / 60000);
-  return `${Math.floor(mins / 60)}h ${mins % 60}m daylight`;
-}
-
-
-function resolveMoonWindow(lat, lon) {
-  if (lat == null || lon == null) return { rise: null, set: null, moonUp: false, alwaysUp: false, alwaysDown: false };
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  const t  = SunCalc.getMoonTimes(today,    lat, lon);
-  const tm = SunCalc.getMoonTimes(tomorrow, lat, lon);
-  const moonUp = SunCalc.getMoonPosition(today, lat, lon).altitude > 0;
-  return {
-    rise:       t.rise  ?? null,
-    set:        t.set   ?? tm.set ?? null,
-    moonUp,
-    alwaysUp:   t.alwaysUp   ?? false,
-    alwaysDown: t.alwaysDown ?? false,
-  };
-}
-
-function moonPhaseName(phase) {
-  if (phase < 0.0625 || phase >= 0.9375) return 'New Moon';
-  if (phase < 0.1875) return 'Waxing Crescent';
-  if (phase < 0.3125) return 'First Quarter';
-  if (phase < 0.4375) return 'Waxing Gibbous';
-  if (phase < 0.5625) return 'Full Moon';
-  if (phase < 0.6875) return 'Waning Gibbous';
-  if (phase < 0.8125) return 'Last Quarter';
-  return 'Waning Crescent';
-}
-
-function MoonPhaseIcon({ phase, cx, cy, r = 9 }) {
-  const offX = r * Math.cos(phase * 2 * Math.PI);
-  const isWaxing = phase < 0.5;
-  const clipX = isWaxing ? cx - r : cx;
-  const id = `moon-clip-${Math.round(phase * 1000)}`;
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={r + 3} fill="rgba(176,196,222,0.15)" />
-      <circle cx={cx} cy={cy} r={r} fill="#dce8f5" />
-      <clipPath id={id}>
-        <rect x={clipX} y={cy - r} width={r} height={r * 2} />
-      </clipPath>
-      <circle cx={cx + offX} cy={cy} r={r} fill="#1e2840" clipPath={`url(#${id})`} />
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(176,196,222,0.35)" strokeWidth="0.5" />
-    </g>
-  );
 }
 
 function HourlyCard({ hr, units }) {
@@ -178,11 +65,7 @@ function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh, u
       </div>
       <div style={{ fontSize: 22, margin: '8px 0 4px' }} aria-hidden="true">{day.icon}</div>
       <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-        {formatTempParts(day.isToday
-          ? (currentTemp != null && currentTemp >= (day.tempMax ?? -Infinity)
-              ? Math.max(currentTemp, todayObservedHigh ?? currentTemp)
-              : (day.tempMax ?? todayObservedHigh))
-          : day.tempMax, units).value}°
+        {formatTempParts(day.isToday ? todayHigh(day.tempMax, todayObservedHigh, currentTemp) : day.tempMax, units).value}°
       </div>
       <div style={{ fontSize: 11, color: 'var(--tm)', fontFamily: 'var(--font-mono)' }}>
         {formatTempParts(day.tempMin, units).value}°
@@ -253,16 +136,17 @@ function ForecastDayInsight({ insight, isLoading }) {
   );
 }
 
-export default function ForecastTab({ forecast, isLoading, chartColors, hourlyForecast, airQuality, lat, lon, todayObservedHigh, stationId, sourceType, currentTemp, units }) {
+export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQuality, lat, lon, todayObservedHigh, stationId, sourceType, currentTemp, units }) {
   const scrollRef = useRef(null);
   const groupRefs = useRef([]);
   const [activeLabel, setActiveLabel] = useState(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [dayInsight, setDayInsight] = useState(null);
-  const [dayInsightLoading, setDayInsightLoading] = useState(false);
-  const dayInsightCancelRef = useRef(null);
 
-  const groups = groupByDay(hourlyForecast ? buildHours(hourlyForecast, lat, lon) : []);
+  // The place's clock (see placeTime.js): exploring another time zone, the
+  // strip's "Now", "Today" and the rest-of-today narrative are that place's.
+  const tz = placeTimeZone(hourlyForecast);
+  const clock = placeClock(tz);
+  const groups = groupByDay(buildHours(hourlyForecast, clock), clock.date);
 
   useEffect(() => {
     if (groups.length > 0) setActiveLabel(groups[0].label);
@@ -270,87 +154,46 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
   // trigger this effect on every render. hourlyForecast is the true signal.
   }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const days = buildDays(forecast);
-    if (!days.length) return;
-    const day = days[selectedDayIndex];
-    if (!day) return;
-
-    const insightId = stationId || 'preview';
-    const dayAqi = aqiForDay(airQuality, day.date);
-    // Same 25-wide bucket the server keys on, so client and server invalidate together.
-    const aqiBucket = dayAqi == null ? 'na' : Math.round(dayAqi / 25) * 25;
-    // Today describes the rest of the day, so it's keyed to the part of the day
-    // we're in and regenerates as each one passes; other days are an overview.
-    const part = day.isToday ? currentDayPart() : 'day';
-    const lsKey = STORAGE_KEYS.forecastDayInsightKey(insightId, day.date, units, aqiBucket, part);
-
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw) {
-        const { data, ts } = JSON.parse(raw);
-        if (Date.now() - ts < INSIGHT_TTL_MS) {
-          setDayInsight(data);
-          setDayInsightLoading(false);
-          return;
-        }
-      }
-    } catch {}
-
-    if (dayInsightCancelRef.current) dayInsightCancelRef.current.cancelled = true;
-    const cancelToken = { cancelled: false };
-    dayInsightCancelRef.current = cancelToken;
-
-    setDayInsightLoading(true);
-    setDayInsight(null);
-
-    (async () => {
-      try {
-        const res = await fetch('/api/insight', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'forecast-day',
-            stationId: insightId,
-            date: day.date,
-            dayLabel: day.isToday ? 'Today' : day.dayOfWeek,
-            tempMax: day.tempMax,
-            tempMin: day.tempMin,
-            pop: day.pop,
-            conditions: day.phrase,
-            isToday: day.isToday,
-            dayPart: day.isToday ? part : null,
-            // By day part, so the model can't misfile a 10pm reading as evening.
-            // Today starts at the current hour: what's left, not what's passed.
-            outlook: buildDayOutlook(hourlyForecast, day.date, units,
-              { fromHour: day.isToday ? new Date().getHours() : 0 }),
-            aqi: dayAqi,
-            sourceType: sourceType ?? 'pws',
-            units,
-          }),
-        });
-        if (!res.ok) throw new Error(res.status);
-        const json = await res.json();
-        if (cancelToken.cancelled) return;
-        const updatedAt = new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() });
-        const stored = { narrative: json.narrative ?? '', updatedAt };
-        // Don't pin an empty narrative (refusal, outage) for the full TTL.
-        if (stored.narrative) {
-          try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
-        }
-        setDayInsight(stored);
-      } catch {
-        if (!cancelToken.cancelled) setDayInsight({ narrative: '', updatedAt: '' });
-      } finally {
-        if (!cancelToken.cancelled) setDayInsightLoading(false);
-      }
-    })();
-
-    return () => { cancelToken.cancelled = true; };
-  // hourlyForecast and airQuality are deps because the trajectory and the AQI
-  // sent to the model are derived from them — both arrive after `forecast`, and
-  // without them the first request for a day goes out missing that detail.
-  }, [selectedDayIndex, forecast, hourlyForecast, airQuality, stationId, sourceType, units]); // eslint-disable-line react-hooks/exhaustive-deps
+  // AI narrative for the selected day.
+  const insightDay = buildDays(forecast, clock.date)[selectedDayIndex] ?? null;
+  const insightId = insightScope({ stationId, sourceType, lat, lon });
+  const dayAqi = insightDay ? aqiForDay(airQuality, insightDay.date) : null;
+  // Same 25-wide bucket the server keys on, so client and server invalidate together.
+  const aqiBucket = dayAqi == null ? 'na' : Math.round(dayAqi / 25) * 25;
+  // Today describes the rest of the day, so it's keyed to the part of the day
+  // we're in and regenerates as each one passes; other days are an overview.
+  const dayPart = insightDay?.isToday ? currentDayPart(clock.wall) : 'day';
+  const { data: dayInsight, loading: dayInsightLoading } = useInsight({
+    storageKey: insightDay && STORAGE_KEYS.forecastDayInsightKey(insightId, insightDay.date, units, aqiBucket, dayPart),
+    enabled: !!insightDay,
+    // hourlyForecast and airQuality are deps because the trajectory and the AQI
+    // sent to the model are derived from them — both arrive after `forecast`, and
+    // without them the first request for a day goes out missing that detail.
+    deps: [selectedDayIndex, forecast, hourlyForecast, airQuality],
+    buildBody: async () => ({
+      type: 'forecast-day',
+      stationId: insightId,
+      date: insightDay.date,
+      dayLabel: insightDay.isToday ? 'Today' : insightDay.dayOfWeek,
+      tempMax: insightDay.tempMax,
+      tempMin: insightDay.tempMin,
+      pop: insightDay.pop,
+      conditions: insightDay.phrase,
+      isToday: insightDay.isToday,
+      dayPart: insightDay.isToday ? dayPart : null,
+      // By day part, so the model can't misfile a 10pm reading as evening.
+      // Today starts at the current hour: what's left, not what's passed.
+      outlook: buildDayOutlook(hourlyForecast, insightDay.date, units,
+        { fromHour: insightDay.isToday ? clock.hour : 0 }),
+      aqi: dayAqi,
+      sourceType: sourceType ?? SOURCE_TYPES.PWS,
+      units,
+    }),
+    accept: json => (json?.narrative ? {
+      narrative: json.narrative,
+      updatedAt: fmtClockTime(new Date()),
+    } : null),
+  });
 
   if (isLoading) return <Skeleton />;
 
@@ -365,7 +208,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
     );
   }
 
-  const days = buildDays(forecast);
+  const days = buildDays(forecast, clock.date);
 
   function handleHourlyScroll() {
     if (!scrollRef.current) return;
@@ -452,162 +295,7 @@ export default function ForecastTab({ forecast, isLoading, chartColors, hourlyFo
 
       <ForecastDayInsight insight={dayInsight} isLoading={dayInsightLoading} />
 
-      {/* Sunrise / Sunset — arc progress; flips to Moon card after dusk */}
-      {lat != null && lon != null && (() => {
-        const sunTimes = SunCalc.getTimes(new Date(), lat, lon);
-        const rise = sunTimes.sunrise.toISOString();
-        const set  = sunTimes.sunset.toISOString();
-        const daylight = fmtDaylight(rise, set);
-
-        const dusk = sunTimes.dusk;
-        const showMoon = dusk instanceof Date && isFinite(dusk) && Date.now() > dusk.getTime();
-
-        // ── SUN CARD ──────────────────────────────────────────────────────────
-        if (!showMoon) {
-          const riseMs = rise ? new Date(rise).getTime() : null;
-          const setMs  = set  ? new Date(set).getTime()  : null;
-          const rawProgress = (riseMs && setMs) ? (Date.now() - riseMs) / (setMs - riseMs) : null;
-          const progress = rawProgress != null ? Math.max(0, Math.min(0.9999, rawProgress)) : null;
-          const cx = 100, cy = 84, r = 74;
-          const dotX = progress != null ? cx + r * Math.cos(Math.PI * (1 - progress)) : null;
-          const dotY = progress != null ? cy - r * Math.sin(Math.PI * (1 - progress)) : null;
-
-          return (
-            <div className="y-card">
-              <div className="y-label">Sun</div>
-
-              <svg viewBox="0 0 200 88" style={{ width: '100%', display: 'block' }}>
-                <path
-                  d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
-                  fill="none" stroke="var(--border)" strokeWidth="2" strokeLinecap="round"
-                />
-                {progress != null && progress > 0 && dotX != null && dotY != null && (
-                  <path
-                    d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${dotX} ${dotY}`}
-                    fill="none" stroke="#f5c518" strokeWidth="2" strokeLinecap="round"
-                  />
-                )}
-                <line x1={cx - r - 8} y1={cy} x2={cx + r + 8} y2={cy} stroke="var(--border)" strokeWidth="1" />
-                {dotX != null && dotY != null && (
-                  <g transform={`translate(${dotX}, ${dotY})`}>
-                    <circle r="11" fill="rgba(245,197,24,0.18)" />
-                    {[0, 45, 90, 135, 180, 225, 270, 315].map(deg => {
-                      const rad = (deg * Math.PI) / 180;
-                      return (
-                        <line key={deg}
-                          x1={Math.cos(rad) * 6} y1={Math.sin(rad) * 6}
-                          x2={Math.cos(rad) * 9} y2={Math.sin(rad) * 9}
-                          stroke="#f5c518" strokeWidth="1.5" strokeLinecap="round"
-                        />
-                      );
-                    })}
-                    <circle r="4" fill="#f5c518" />
-                  </g>
-                )}
-              </svg>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                    {fmtSunTime(rise)}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-                    Sunrise
-                  </div>
-                  {sunTimes && (
-                    <div style={{ fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)', marginTop: 3, opacity: 0.7 }}>
-                      {fmtSunTime(sunTimes.dawn)} first light
-                    </div>
-                  )}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                    {fmtSunTime(set)}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-                    Sunset
-                  </div>
-                  {sunTimes && (
-                    <div style={{ fontSize: 9, color: 'var(--tm)', fontFamily: 'var(--font-mono)', marginTop: 3, opacity: 0.7 }}>
-                      last light {fmtSunTime(sunTimes.dusk)}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {daylight && (
-                <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', marginTop: 8 }}>
-                  {daylight}
-                </div>
-              )}
-            </div>
-          );
-        }
-
-        // ── MOON CARD ─────────────────────────────────────────────────────────
-        const moonWindow = resolveMoonWindow(lat, lon);
-        const moonIllum  = SunCalc.getMoonIllumination(new Date());
-        const moonRiseMs = moonWindow.rise?.getTime() ?? null;
-        const moonSetMs  = moonWindow.set?.getTime()  ?? null;
-        const moonRaw    = (moonRiseMs && moonSetMs) ? (Date.now() - moonRiseMs) / (moonSetMs - moonRiseMs) : null;
-        const moonProgress = moonRaw != null ? Math.max(0, Math.min(0.9999, moonRaw)) : null;
-
-        const cx = 100, cy = 84, r = 74;
-        const moonDotX = moonProgress != null ? cx + r * Math.cos(Math.PI * (1 - moonProgress)) : null;
-        const moonDotY = moonProgress != null ? cy - r * Math.sin(Math.PI * (1 - moonProgress)) : null;
-        const phaseName = moonPhaseName(moonIllum.phase);
-        const illumPct  = Math.round(moonIllum.fraction * 100);
-
-        return (
-          <div className="y-card">
-            <div className="y-label">Moon</div>
-
-            <svg viewBox="0 0 200 88" style={{ width: '100%', display: 'block' }}>
-              <path
-                d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
-                fill="none" stroke="var(--border)" strokeWidth="2" strokeLinecap="round"
-              />
-              {moonProgress != null && moonProgress > 0 && moonDotX != null && moonDotY != null && (
-                <path
-                  d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${moonDotX} ${moonDotY}`}
-                  fill="none" stroke="#b0c4de" strokeWidth="2" strokeLinecap="round"
-                />
-              )}
-              <line x1={cx - r - 8} y1={cy} x2={cx + r + 8} y2={cy} stroke="var(--border)" strokeWidth="1" />
-              {moonDotX != null && moonDotY != null && (
-                <MoonPhaseIcon phase={moonIllum.phase} cx={moonDotX} cy={moonDotY} r={9} />
-              )}
-            </svg>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                  {moonWindow.alwaysDown ? '--'
-                    : moonWindow.rise ? fmtMoonTime(moonWindow.rise)
-                    : moonWindow.moonUp ? 'Already up' : '--'}
-                </div>
-                <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-                  Moonrise
-                </div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--tp)' }}>{phaseName}</div>
-                <div style={{ fontSize: 9, color: 'var(--tm)', marginTop: 1 }}>{illumPct}% illuminated</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--tp)', fontFamily: 'var(--font-mono)' }}>
-                  {moonWindow.alwaysUp ? 'Always up'
-                    : moonWindow.alwaysDown ? 'Always down'
-                    : fmtMoonTime(moonWindow.set)}
-                </div>
-                <div style={{ fontSize: 9, color: 'var(--tm)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-                  Moonset
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <SunMoonCard lat={lat} lon={lon} tz={tz} />
 
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', padding: '6px 0 4px', letterSpacing: '0.3px' }}>
         TWC Daily Forecast API

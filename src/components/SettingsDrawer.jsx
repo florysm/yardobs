@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { CONDITION_PREVIEWS, WEATHER_THEME_IDS, DISPLAY_MODES } from '../themes.js';
 import { ACTIVITIES } from '../utils/activities';
+import { PROFILE_MODES, isStationProfile, isPreviewProfile } from '../utils/profile';
 import { UNITS } from '../utils/units';
-import { STORAGE_KEYS } from '../utils/storageKeys';
+import { STORAGE_KEYS, readStored } from '../utils/storageKeys';
 import { buildWidgetScript, buildWidgetUpdatePayload, widgetConfigFromSettings, WIDGET_TEMPLATE_URL, WIDGET_UPDATE_URL, SCRIPTABLE_APP_URL } from '../utils/widgetScript';
 import ChangelogModal from './ChangelogModal';
 import StationForm from './StationForm';
@@ -59,8 +60,8 @@ export default function SettingsDrawer({
   const [showChangelog, setShowChangelog] = useState(false);
   const [widgetCopy, setWidgetCopy] = useState(null); // null | 'copied' | error message
 
-  const twcKey = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_API_KEY) || ''; } catch { return ''; } })();
-  const keyExpires = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_KEY_EXPIRES) || null; } catch { return null; } })();
+  const twcKey = readStored(STORAGE_KEYS.TWC_API_KEY, '');
+  const keyExpires = readStored(STORAGE_KEYS.TWC_KEY_EXPIRES);
   const widgetConfig = widgetConfigFromSettings({ profile, twcKey, keyExpires, units });
 
   const copyWidgetScript = async () => {
@@ -320,7 +321,7 @@ export default function SettingsDrawer({
           <div className="y-label">Station</div>
           <StationForm
             initialStationId={profile?.stationId ?? ''}
-            onSave={(sid) => onSaveProfile({ mode: 'station', stationId: sid })}
+            onSave={(sid) => onSaveProfile({ mode: PROFILE_MODES.STATION, stationId: sid })}
           />
         </div>
 
@@ -370,12 +371,12 @@ export default function SettingsDrawer({
             </button>
             <div style={{ fontSize: 11, marginTop: 8 }}>
               {!widgetConfig
-                ? (profile?.mode === 'station'
+                ? (isStationProfile(profile)
                     ? 'Save your station ID and TWC API key above to set up the widget.'
                     : 'Choose a location to set up the widget.')
                 : widgetCopy && widgetCopy !== 'copied'
                   ? widgetCopy
-                  : profile?.mode === 'station'
+                  : isStationProfile(profile)
                     ? 'The script includes your TWC API key — don’t share it. After renewing your key or changing your station or units, tap Update installed widget.'
                     : 'After changing your location or units, tap Update installed widget.'}
             </div>
@@ -437,7 +438,7 @@ export default function SettingsDrawer({
         <ChangelogModal
           onClose={() => setShowChangelog(false)}
           stationId={profile?.stationId ?? null}
-          isPreview={profile?.mode === 'preview'}
+          isPreview={isPreviewProfile(profile)}
         />
       )}
     </>

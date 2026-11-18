@@ -38,3 +38,11 @@ export function calcFeelsLike(tempF, humidity, windMph) {
 
   return Math.round(T);
 }
+
+// Today's high for the forecast card: the forecast's own figure until the
+// station beats it, so a 74° reading at 2pm still shows after it cools to 68°.
+// Null when there's nothing to show.
+export function todayHigh(forecastMax, observedHigh, currentTemp) {
+  const vals = [forecastMax, observedHigh, currentTemp].filter(v => typeof v === 'number' && !isNaN(v));
+  return vals.length ? Math.max(...vals) : null;
+}

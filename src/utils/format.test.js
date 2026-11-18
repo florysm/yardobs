@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import {
-  aqiCategory, fmt, degreesToCompass, getLocaleHour12,
-  fmtHourShort, fmtHourIso, fmtTimeTick, fmtSunTime,
+  aqiCategory, fmt, fixed, degreesToCompass, getLocaleHour12,
+  fmtHourShort, fmtHourIso, fmtTimeTick, fmtClockTime,
 } from './format';
 
 describe('aqiCategory', () => {
@@ -62,8 +62,25 @@ describe('time formatters (12h locale, TZ=UTC)', () => {
     expect(fmtTimeTick('00:10')).toBe('12am');
     expect(fmtTimeTick('13:40')).toBe('2pm');
   });
-  it('fmtSunTime', () => {
-    expect(fmtSunTime('2026-07-14T13:30:00Z')).toBe('1:30 PM');
-    expect(fmtSunTime(null)).toBe('--');
+  it('fmtClockTime', () => {
+    const t = new Date('2026-07-14T13:30:00Z');
+    expect(fmtClockTime(t)).toBe('1:30 PM');           // device zone (UTC in tests)
+    expect(fmtClockTime(t, 'America/Los_Angeles')).toBe('6:30 AM');
+    expect(fmtClockTime(t, 'Not/AZone')).toBe('1:30 PM');
+    expect(fmtClockTime(null)).toBe('--');
+    expect(fmtClockTime(new Date(NaN))).toBe('--');
+  });
+});
+
+describe('fixed', () => {
+  it('drops the sign when a negative rounds to zero', () => {
+    expect(fixed(-0.3)).toBe('0');
+    expect(fixed(-0.04, 1)).toBe('0.0');
+    expect(fmt(-0.2)).toBe('0');
+  });
+  it('keeps real negatives and positives', () => {
+    expect(fixed(-0.6)).toBe('-1');
+    expect(fixed(-1.25, 1)).toBe('-1.3');
+    expect(fixed(2.5, 1)).toBe('2.5');
   });
 });

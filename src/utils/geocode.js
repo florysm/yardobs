@@ -11,7 +11,14 @@ export async function reverseGeocode(lat, lon) {
     const state = data.address?.state_code || data.address?.state || '';
     if (city) return state ? `${city}, ${state}` : city;
   } catch {}
-  return `${lat.toFixed(1)}°N, ${Math.abs(lon).toFixed(1)}°${lon < 0 ? 'W' : 'E'}`;
+  return coordLabel(lat, lon);
+}
+
+// Fallback name when reverse geocoding has nothing: "33.9°S, 151.2°E".
+export function coordLabel(lat, lon) {
+  const ns = lat < 0 ? 'S' : 'N';
+  const ew = lon < 0 ? 'W' : 'E';
+  return `${Math.abs(lat).toFixed(1)}°${ns}, ${Math.abs(lon).toFixed(1)}°${ew}`;
 }
 
 export async function forwardGeocode(input) {

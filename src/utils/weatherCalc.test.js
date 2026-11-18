@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { beaufort, calcFeelsLike } from './weatherCalc';
+import { beaufort, calcFeelsLike, todayHigh } from './weatherCalc';
 
 describe('beaufort', () => {
   it('maps mph to scale + name', () => {
@@ -28,5 +28,21 @@ describe('calcFeelsLike', () => {
   });
   it('cold but calm stays at air temp (wind chill needs wind ≥ 3)', () => {
     expect(calcFeelsLike(30, 50, 1)).toBe(30);
+  });
+});
+
+describe('todayHigh', () => {
+  it('keeps an observed high that beat the forecast after it cools off', () => {
+    expect(todayHigh(70, 74, 68)).toBe(74);
+  });
+  it('uses the forecast while the day is still below it', () => {
+    expect(todayHigh(70, 62, 60)).toBe(70);
+  });
+  it('lets the current reading lead when it is the highest', () => {
+    expect(todayHigh(70, 71, 72)).toBe(72);
+  });
+  it('skips missing values', () => {
+    expect(todayHigh(null, 65, null)).toBe(65);
+    expect(todayHigh(null, null, null)).toBeNull();
   });
 });

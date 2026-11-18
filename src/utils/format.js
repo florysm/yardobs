@@ -16,12 +16,19 @@ export function aqiCategory(aqi) {
   return hit ? hit[1] : AQI_ABOVE_RANGE;
 }
 
-export function fmt(val, digits = 0) {
-  if (val == null || isNaN(val)) return '—';
-  return Number(val).toFixed(digits);
+// toFixed without the "-0": -0.3 rounds to "-0", which reads as a sign error
+// ("-0°C" just below freezing). Anything that rounds to zero prints as zero.
+export function fixed(v, digits = 0) {
+  const s = v.toFixed(digits);
+  return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
 }
 
-import { COMPASS_DIRS } from '../../utils/compass.js';
+export function fmt(val, digits = 0) {
+  if (val == null || isNaN(val)) return '—';
+  return fixed(Number(val), digits);
+}
+
+const COMPASS_DIRS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 
 export function degreesToCompass(deg) {
   if (deg == null) return '';
@@ -74,19 +81,20 @@ export function fmtTimeTick(t) {
   return `${rounded - 12}pm`;
 }
 
-// ISO timestamp → '12:34 AM/PM' (12h) or '14:34' (24h)
-export function fmtSunTime(isoStr) {
-  if (!isoStr) return '--';
-  const d = new Date(isoStr);
-  const h = d.getHours(), m = d.getMinutes().toString().padStart(2, '0');
-  if (!getLocaleHour12()) return `${h.toString().padStart(2, '0')}:${m}`;
-  return `${h % 12 || 12}:${m} ${h < 12 ? 'AM' : 'PM'}`;
-}
-
-// Date object → '12:34 AM/PM' (12h) or '14:34' (24h)
-export function fmtMoonTime(date) {
-  if (!date) return '--';
-  const h = date.getHours(), m = date.getMinutes().toString().padStart(2, '0');
-  if (!getLocaleHour12()) return `${h.toString().padStart(2, '0')}:${m}`;
-  return `${h % 12 || 12}:${m} ${h < 12 ? 'AM' : 'PM'}`;
+// Date → clock time in the user's locale, '9:45 AM' or '09:45'. `timeZone`
+// shows it on another place's clock (Explore: sunrise in Los Angeles reads as
+// LA time, not the device's). '--' for a missing or invalid date — SunCalc
+// returns Invalid Date for events that don't happen (polar day/night).
+export function fmtClockTime(date, timeZone) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '--';
+  const locale = typeof navigator !== 'undefined' ? navigator.language : undefined;
+  const opts = { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12(locale) };
+  let text;
+  try {
+    text = date.toLocaleTimeString(locale, timeZone ? { ...opts, timeZone } : opts);
+  } catch {
+    text = date.toLocaleTimeString(locale, opts); // unknown zone: the device's
+  }
+  // Newer ICU puts a narrow no-break space before AM/PM; keep a plain one.
+  return text.replace(/\u202f/g, ' ');
 }

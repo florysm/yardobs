@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   pw, computeScore, scoreVerdict, scoreColor, firstSentence, restOfInsight,
   isNotableWeatherChange, precipProbToRate, getForecastRainThreat,
-  getArcData, getBestWindow,
+  getArcData, getBestWindow, getBestWindowRange,
 } from './scoring';
 import { AQI_BOUNDS } from './format';
 
@@ -200,5 +200,14 @@ describe('getBestWindow', () => {
   });
   it('null when fewer than 3 hours remain', () => {
     expect(getBestWindow(arc, 17)).toBeNull();
+    expect(getBestWindowRange(arc, 17)).toBeNull();
+  });
+  it('never picks dark hours, however well they score', () => {
+    const evening = [...arc, ...[19, 20, 21].map(hour => ({ hour, score: 99, dark: true }))];
+    expect(getBestWindow(evening, 12)).toBe('Peak 3 PM–6 PM');
+    expect(getBestWindow(evening, 17)).toBeNull();
+  });
+  it('the range the arc highlights is the window the label names', () => {
+    expect(getBestWindowRange(arc, 12)).toEqual({ start: 15, end: 18 });
   });
 });

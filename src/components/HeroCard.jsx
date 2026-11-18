@@ -1,10 +1,16 @@
-import { useState, useRef, useEffect } from 'react';
-import { fmt, getLocaleHour12 } from '../utils/format';
-import { STORAGE_KEYS, INSIGHT_TTL_MS } from '../utils/storageKeys';
-import { ICONS, LABELS } from '../utils/weatherIcons';
-import { toDateStr, toISODate } from '../utils/dateUtils';
+import { useState, useRef } from 'react';
+import { fmt, fmtClockTime } from '../utils/format';
+import { STORAGE_KEYS } from '../utils/storageKeys';
+import { SOURCE_TYPES } from '../utils/sourceTypes';
+import { insightScope } from '../utils/insightCache';
+import { useInsight } from '../hooks/useInsight';
+import { FALLBACK_ICON } from '../utils/weatherIcons';
+import { heroCondition } from '../utils/sky';
+import { lastYearKey } from '../utils/dateUtils';
+import { tempAtHour } from '../utils/trends';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildLookahead } from '../utils/outlook';
+import { placeClock, placeTimeZone } from '../utils/placeTime';
 import { formatTemp, formatTempParts, formatWindWithCompass, formatPrecipTotal, formatPressure } from '../utils/units';
 
 // ── Tabler-style SVG icon primitives for signal tags ─────────────────────────
@@ -160,7 +166,7 @@ function InsightView({ insight, isLoading, toggle }) {
           color: 'var(--hero-ts)', fontWeight: 500,
           textShadow: 'var(--hero-text-shadow)',
         }}>
-          {insight?._sourceType === 'forecast_model' ? 'Forecast for your area' : 'Your backyard today'}
+          {insight?._sourceType === SOURCE_TYPES.FORECAST_MODEL ? 'Forecast for your area' : 'Your backyard today'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, color: 'var(--hero-dim)' }}>
           <div className="live-dot" style={{ background: 'var(--hero-dim)' }} />
@@ -226,12 +232,10 @@ function InsightView({ insight, isLoading, toggle }) {
 
 // ── HeroCard ──────────────────────────────────────────────────────────────────
 
-export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, onError, units }) {
+export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast, units }) {
   const [showHint,      setShowHint]      = useState(false);
   const [view,          setView]          = useState('conditions');
   const [contentFade,   setContentFade]   = useState(true);
-  const [insight,       setInsight]       = useState(null);
-  const [insightLoading, setInsightLoading] = useState(false);
   const timers = useRef([]);
 
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
@@ -256,99 +260,49 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
     }, 200);
   };
 
-  // Fetch AI daily insight when insights view is active
-  useEffect(() => {
-    if (view !== 'insights' || !current || !hourlyForecast) return;
-
-    // Use location label as cache/API key in preview mode
-    const insightId = stationId || current?.neighborhood || 'preview';
-    const today = toISODate();
-    const period = currentDayPart();
-    const lsKey = STORAGE_KEYS.insightKey(insightId, today, period, units);
-
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw) {
-        const { data, ts } = JSON.parse(raw);
-        if (Date.now() - ts < INSIGHT_TTL_MS) {
-          setInsight(data);
-          return;
-        }
-      }
-    } catch {}
-
-    let cancelled = false;
-    setInsightLoading(true);
-    setInsight(null);
-
-    const run = async () => {
-      const lastYear = new Date();
-      lastYear.setFullYear(lastYear.getFullYear() - 1);
-      const yoyDate = toDateStr(lastYear);
-
+  // AI daily insight, fetched only while the insights view is open.
+  const isModelData = current?.sourceType === SOURCE_TYPES.FORECAST_MODEL;
+  const insightId = insightScope(current);
+  // The place's clock: exploring another time zone, "evening" and "the next
+  // few hours" are that place's (see placeTime.js).
+  const clock = placeClock(placeTimeZone(hourlyForecast));
+  const period = currentDayPart(clock.wall);
+  const { data: insight, loading: insightLoading } = useInsight({
+    storageKey: STORAGE_KEYS.insightKey(insightId, clock.date, period, units),
+    enabled: view === 'insights' && !!current && !!hourlyForecast,
+    deps: [current, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast],
+    buildBody: async () => {
+      // Forecast-model data (preview, Explore) has no station history to compare.
+      // The comparison is with this hour last year (now vs. last year's whole-day
+      // average read warmer every afternoon); the day's summary supplies its rain.
       let yoyReadings = [];
-      try { yoyReadings = (await fetchHistoryDaily?.(yoyDate)) ?? []; } catch { onError?.('Could not load historical data'); }
-
-      if (cancelled) return;
-
-      try {
-        const res = await fetch('/api/insight', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'daily', stationId: insightId, date: today, period, current, yoyReadings,
-            // "What's it doing right now?" — only the next few hours, never the
-            // whole day (that's the Forecast card's question).
-            lookahead: buildLookahead(hourlyForecast, units),
-            sourceType: current?.sourceType,
-            units,
-          }),
-        });
-        if (!res.ok) throw new Error(res.status);
-        const json = await res.json();
-        if (cancelled) return;
-        const updatedAt = new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() });
-        const stored = { ...json, updatedAt, _sourceType: current?.sourceType };
-        try { localStorage.setItem(lsKey, JSON.stringify({ data: stored, ts: Date.now() })); } catch {}
-        setInsight(stored);
-      } catch {
-        if (!cancelled) {
-          setInsight({ narrative: '', tags: [], updatedAt: '' });
-          onError?.('Could not load daily insight');
-        }
-      } finally {
-        if (!cancelled) setInsightLoading(false);
+      let yoyHourTemp = null;
+      if (!isModelData && stationId) {
+        const lyKey = lastYearKey();
+        const [daily, hourly] = await Promise.all([fetchHistoryDaily?.(lyKey), fetchHistory?.(lyKey)]);
+        yoyReadings = daily ?? [];
+        yoyHourTemp = tempAtHour(hourly, clock.hour);
       }
-    };
+      return {
+        type: 'daily', stationId: insightId, placeName: current?.neighborhood ?? null,
+        date: clock.date, period, current, yoyReadings, yoyHourTemp,
+        // "What's it doing right now?" — only the next few hours, never the
+        // whole day (that's the Forecast card's question).
+        lookahead: buildLookahead(hourlyForecast, units, clock.wall),
+        sourceType: current?.sourceType,
+        units,
+      };
+    },
+    accept: json => (json?.narrative ? {
+      ...json,
+      updatedAt: fmtClockTime(new Date()),
+      _sourceType: current?.sourceType,
+    } : null),
+  });
 
-    run();
-    return () => { cancelled = true; };
-  }, [view, current, stationId, fetchHistoryDaily, hourlyForecast, units]); // eslint-disable-line react-hooks/exhaustive-deps
+  const derived = heroCondition(current);
 
-  function deriveFromSensors(obs) {
-    const precip = obs.precipRate ?? 0;
-    if (precip > 0.1)  return { icon: '🌧️', label: 'Heavy Rain' };
-    if (precip > 0)    return { icon: '🌦️', label: 'Light Rain' };
-    if (!obs.isDay)    return { icon: '🌙',  label: 'Clear' };
-    if (obs.solar != null && obs.solar < 150)       return { icon: '☁️', label: 'Cloudy' };
-    if (obs.solar != null && obs.solar >= 450)      return { icon: '☀️', label: 'Sunny' };
-    return { icon: '🌤️', label: 'Partly Cloudy' };
-  }
-
-  const PARTLY_CODES = new Set([23, 24, 29, 30]);
-  const derived = current
-    ? (current.iconCode != null
-        ? (() => {
-            if (PARTLY_CODES.has(current.iconCode) && (current.isDay ?? 1)) {
-              if ((current.uv ?? 0) >= 5 || (current.solar ?? 0) >= 450)
-                return { icon: '☀️', label: 'Sunny' };
-            }
-            return { icon: ICONS[current.iconCode] ?? '🌡️', label: LABELS[current.iconCode] ?? 'Clear' };
-          })()
-        : deriveFromSensors(current))
-    : null;
-
-  const icon      = derived?.icon  ?? '🌡️';
+  const icon      = derived?.icon  ?? FALLBACK_ICON;
   const condition = derived?.label ?? 'Loading…';
 
   const windLabel = current

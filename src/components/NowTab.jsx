@@ -3,9 +3,10 @@ import MetricCard from './MetricCard';
 import { fmt, aqiCategory } from '../utils/format';
 import { beaufort } from '../utils/weatherCalc';
 import { formatTempParts, formatWindParts, formatPrecipRateParts } from '../utils/units';
+import { SOURCE_TYPES } from '../utils/sourceTypes';
 
 
-export default function NowTab({ current, isLoading, error, stationId, hourlyForecast, onError, defaultActivity, units }) {
+export default function NowTab({ current, isLoading, error, stationId, hourlyForecast, defaultActivity, units }) {
   if (isLoading) {
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -26,7 +27,7 @@ export default function NowTab({ current, isLoading, error, stationId, hourlyFor
     );
   }
 
-  const isPreview = current?.sourceType === 'forecast_model';
+  const isPreview = current?.sourceType === SOURCE_TYPES.FORECAST_MODEL;
 
   const dewPoint = formatTempParts(current?.dewPoint, units);
   const windGust = formatWindParts(current?.windGust, units);
@@ -35,7 +36,7 @@ export default function NowTab({ current, isLoading, error, stationId, hourlyFor
   return (
     <div>
       {/* Activity score card */}
-      <ActivityScoreCard current={current} hourlyForecast={hourlyForecast} onError={onError} defaultActivity={defaultActivity} units={units} />
+      <ActivityScoreCard current={current} hourlyForecast={hourlyForecast} defaultActivity={defaultActivity} units={units} />
 
       {/* 4-metric grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>

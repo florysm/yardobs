@@ -136,3 +136,11 @@ describe('aqiPhrase', () => {
   });
   it('null → null', () => expect(aqiPhrase(null)).toBeNull());
 });
+
+describe('AQI window', () => {
+  it('names the same hours aqiForDay judges', async () => {
+    const { AQI_DAY_START, AQI_DAY_END, AQI_WINDOW_LABEL } = await import('./insightVocab');
+    expect([AQI_DAY_START, AQI_DAY_END]).toEqual([8, 20]);
+    expect(AQI_WINDOW_LABEL).toBe('8a–8p');
+  });
+});

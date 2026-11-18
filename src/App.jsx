@@ -13,9 +13,12 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LocationSetup from './components/LocationSetup';
 import { useWeather } from './hooks/useWeather';
 import { CHART_COLORS, META_COLORS, THEME_IDS, DISPLAY_MODES } from './themes.js';
-import { STORAGE_KEYS } from './utils/storageKeys';
+import { STORAGE_KEYS, readStored, writeStored } from './utils/storageKeys';
+import { PROFILE_MODES, isStationProfile, isPreviewProfile, isExploring } from './utils/profile';
+import { DEFAULT_ACTIVITY_ID } from './utils/activities';
 import { toDateStr } from './utils/dateUtils';
 import { detectDefaultUnits } from './utils/units';
+import { resolveAutoTheme } from './utils/sky';
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 const TrendsLockedPlaceholder = lazy(() => import('./components/TrendsLockedPlaceholder'));
@@ -25,71 +28,15 @@ function LazyTabFallback() {
   return <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>Loading…</div>;
 }
 
-const ICON_STORMY = [0, 1, 2, 3, 4, 17, 37, 38, 47];
-const ICON_RAINY  = [5, 6, 8, 9, 10, 11, 12, 35, 39, 40, 45];
-const ICON_CLOUDY = [7, 13, 14, 15, 16, 18, 19, 20, 21, 22, 25, 26, 27, 28, 41, 42, 43, 46];
-const ICON_PARTLY = [23, 24, 29, 30];
-
-// Resolves current conditions → one of the 6 theme names using a sensor-aware
-// cascade. Prefers the station's own measurements and only leans on the model
-// iconCode when local sensors can't answer, so a regional-model storm can't
-// override a backyard that's measurably dry. Day/night comes from current.isDay,
-// which useWeather derives via SunCalc (the TWC observation omits it).
-function resolveAutoTheme(current) {
-  if (!current) return THEME_IDS.light;
-
-  const isDay      = (current.isDay ?? 1) === 1;
-  const iconCode   = current.iconCode ?? null;
-  const precipRate = current.precipRate;   // null → station has no rain sensor
-  const uv         = current.uv;           // null → no UV sensor
-  const solar      = current.solar;        // null → no solar sensor
-
-  const hasRainSensor = precipRate != null;
-
-  const modelStormy = iconCode != null && ICON_STORMY.includes(iconCode);
-  const modelRainy  = iconCode != null && ICON_RAINY.includes(iconCode);
-  const modelCloudy = iconCode != null && ICON_CLOUDY.includes(iconCode);
-  const modelPartly = iconCode != null && ICON_PARTLY.includes(iconCode);
-
-  // 1. Wetness. A local rain gauge is ground truth: a dry reading (0) vetoes the
-  //    model's precipitation; the model's wetness is trusted only when the
-  //    station has no gauge of its own (e.g. preview mode, which has no sensors).
-  const isWet = hasRainSensor ? precipRate > 0 : (modelStormy || modelRainy);
-  if (isWet) {
-    const severe = modelStormy || (hasRainSensor && precipRate > 0.1);
-    return severe ? THEME_IDS.stormy : THEME_IDS.rainy;
-  }
-
-  // 2. Dry night → dark.
-  if (!isDay) return THEME_IDS.dark;
-
-  // 3. Dry day → decide sunny / partly / cloudy, using the strongest signal
-  //    available. Measured sunlight is only ever a positive "sunny" signal or,
-  //    via solar radiation, a positive "overcast" signal — a low UV reading
-  //    alone is ambiguous, so it never forces cloudy. When sensors are silent
-  //    (preview mode, or a station without solar/UV) we defer to the model
-  //    iconCode for the cloud state, which is the only clarity signal we have.
-  if ((uv ?? 0) >= 5 || (solar ?? 0) >= 450) return THEME_IDS.sunny;  // strong sun
-  if (solar != null && solar < 150)          return THEME_IDS.cloudy; // measured overcast
-  // A storm/rain code reaching here was vetoed by a dry gauge, so treat it as
-  // merely cloudy rather than a phantom storm.
-  if (modelCloudy || modelStormy || modelRainy) return THEME_IDS.cloudy;
-  if (modelPartly) return THEME_IDS.light;
-  if (iconCode != null) return THEME_IDS.sunny;   // model reports clear sky
-  // No strong sun reading and no model info: a silent solar sensor implies a
-  // hazy/indeterminate day (light); nothing at all defaults to sunny daytime.
-  return solar != null ? THEME_IDS.light : THEME_IDS.sunny;
-}
-
 function initProfile() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
+    const raw = readStored(STORAGE_KEYS.PROFILE);
     if (raw) return JSON.parse(raw);
     // Migration: existing station user has STATION_ID but no PROFILE yet
-    const sid = localStorage.getItem(STORAGE_KEYS.STATION_ID);
+    const sid = readStored(STORAGE_KEYS.STATION_ID);
     if (sid) {
-      const p = { mode: 'station', stationId: sid };
-      localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(p));
+      const p = { mode: PROFILE_MODES.STATION, stationId: sid };
+      writeStored(STORAGE_KEYS.PROFILE, JSON.stringify(p));
       return p;
     }
     return null;
@@ -104,20 +51,19 @@ export default function App() {
   const [activeTab, setActiveTab]               = useState('now');
   const [settingsOpen, setSettingsOpen]         = useState(false);
   const [alertsOpen, setAlertsOpen]             = useState(false);
-  const [mode, setMode]                         = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.MODE) || DISPLAY_MODES.AUTO; } catch { return DISPLAY_MODES.AUTO; } });
+  const [mode, setMode]                         = useState(() => readStored(STORAGE_KEYS.MODE, DISPLAY_MODES.AUTO));
   const [previewCondition, setPreviewCondition] = useState(null);
-  const [componentError, setComponentError]     = useState(null);
-  const [defaultActivity, setDefaultActivity]   = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.DEFAULT_ACTIVITY) || 'bbq'; } catch { return 'bbq'; } });
-  const [units, setUnits]                       = useState(() => { try { return localStorage.getItem(STORAGE_KEYS.UNITS) || detectDefaultUnits(); } catch { return detectDefaultUnits(); } });
+  const [defaultActivity, setDefaultActivity]   = useState(() => readStored(STORAGE_KEYS.DEFAULT_ACTIVITY, DEFAULT_ACTIVITY_ID));
+  const [units, setUnits]                       = useState(() => readStored(STORAGE_KEYS.UNITS) || detectDefaultUnits());
   const [credentialsVersion, setCredentialsVersion] = useState(0);
 
   const saveProfile = (p) => {
     setProfile(p);
-    try { localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(p)); } catch {}
+    writeStored(STORAGE_KEYS.PROFILE, JSON.stringify(p));
     // Station ID may be unchanged (e.g. only the TWC key was added/updated), which
     // wouldn't otherwise invalidate useWeather's memoized fetch callback. Bumping this
     // forces useWeather's effect to re-run with the freshly saved credentials.
-    if (p.mode === 'station') setCredentialsVersion(v => v + 1);
+    if (isStationProfile(p)) setCredentialsVersion(v => v + 1);
   };
 
   const handleSetExplore = (lat, lon, label) => saveProfile({ ...profile, exploring: { lat, lon, label } });
@@ -129,12 +75,10 @@ export default function App() {
 
   // Alias for components that still reference stationId directly
   const stationId = profile?.stationId ?? null;
-  const isExploring = profile?.mode === 'station' && !!profile?.exploring;
+  const exploring = isExploring(profile);
 
   // Re-read after each credential save (StationForm writes it alongside the key).
-  const keyExpires = useMemo(() => {
-    try { return localStorage.getItem(STORAGE_KEYS.TWC_KEY_EXPIRES); } catch { return null; }
-  }, [credentialsVersion]);
+  const keyExpires = useMemo(() => readStored(STORAGE_KEYS.TWC_KEY_EXPIRES), [credentialsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { current, history, historyRecent, historyDaily, forecast, hourlyForecast, airQuality, alerts, isLoading, error, lastUpdated, fetchHistory, fetchHistoryRecent, fetchHistoryDaily, fetchForecast, fetchHourlyForecast, fetchAirQuality, fetchAlerts } = useWeather(profile, credentialsVersion);
 
@@ -159,17 +103,17 @@ export default function App() {
   const handleSetMode = (m) => {
     setMode(m);
     setPreviewCondition(null);
-    try { if (m === DISPLAY_MODES.AUTO) localStorage.removeItem(STORAGE_KEYS.MODE); else localStorage.setItem(STORAGE_KEYS.MODE, m); } catch {}
+    writeStored(STORAGE_KEYS.MODE, m === DISPLAY_MODES.AUTO ? null : m);
   };
 
   const saveDefaultActivity = (id) => {
     setDefaultActivity(id);
-    try { localStorage.setItem(STORAGE_KEYS.DEFAULT_ACTIVITY, id); } catch {}
+    writeStored(STORAGE_KEYS.DEFAULT_ACTIVITY, id);
   };
 
   const saveUnits = (u) => {
     setUnits(u);
-    try { localStorage.setItem(STORAGE_KEYS.UNITS, u); } catch {}
+    writeStored(STORAGE_KEYS.UNITS, u);
   };
 
   const handleCloseSettings = () => {
@@ -184,10 +128,14 @@ export default function App() {
     if (alerts == null && current) fetchAlerts();
   }, [current, activeTab, forecast, fetchForecast, hourlyForecast, fetchHourlyForecast, airQuality, fetchAirQuality, alerts, fetchAlerts]);
 
-  // Ensure today's recorded high is available for the forecast card even when TrendsTab hasn't been visited
+  // Keep today's recorded high (forecast card) current even when TrendsTab hasn't
+  // been visited. Re-checked on every conditions update (~5 min); the history
+  // cache only actually refetches today once its copy is 15 minutes old, and the
+  // date key rolls over at midnight on its own.
+  const currentObsTime = current?.obsTimeLocal;
   useEffect(() => {
     if (stationId) fetchHistoryDaily(toDateStr(new Date()));
-  }, [stationId, fetchHistoryDaily]);
+  }, [stationId, fetchHistoryDaily, currentObsTime]);
 
   const todayObservedHigh = useMemo(() => {
     const obs = historyDaily[toDateStr(new Date())] ?? [];
@@ -199,12 +147,12 @@ export default function App() {
   if (!profile) {
     return (
       <LocationSetup
-        onResolved={(lat, lon, label) => saveProfile({ mode: 'preview', lat, lon, label })}
+        onResolved={(lat, lon, label) => saveProfile({ mode: PROFILE_MODES.PREVIEW, lat, lon, label })}
       />
     );
   }
 
-  const isPreview = profile.mode === 'preview';
+  const isPreview = isPreviewProfile(profile);
 
   return (
     <>
@@ -219,7 +167,7 @@ export default function App() {
         onUpdatePreviewLocation={handleUpdatePreviewLocation}
       />
       <AlertBar alerts={alerts} onOpen={() => setAlertsOpen(true)} />
-      {profile.mode === 'station' && (
+      {isStationProfile(profile) && (
         <KeyExpiryBanner keyExpires={keyExpires} onOpenSettings={() => setSettingsOpen(true)} />
       )}
       <HeroCard
@@ -227,9 +175,9 @@ export default function App() {
         isLoading={isLoading}
         onLongPress={() => setSettingsOpen(true)}
         stationId={stationId}
+        fetchHistory={fetchHistory}
         fetchHistoryDaily={fetchHistoryDaily}
         hourlyForecast={hourlyForecast}
-        onError={setComponentError}
         units={units}
       />
       <NavTabs active={activeTab} onChange={setActiveTab} />
@@ -243,8 +191,7 @@ export default function App() {
               error={error}
               stationId={stationId}
               hourlyForecast={hourlyForecast}
-              onError={setComponentError}
-              defaultActivity={defaultActivity}
+                    defaultActivity={defaultActivity}
               units={units}
             />
           </ErrorBoundary>
@@ -252,7 +199,7 @@ export default function App() {
         {activeTab === 'trends' && (
           <ErrorBoundary>
             <Suspense fallback={<LazyTabFallback />}>
-              {(isPreview || isExploring || !stationId) ? (
+              {(isPreview || exploring || !stationId) ? (
                 <TrendsLockedPlaceholder onOpenSettings={() => setSettingsOpen(true)} />
               ) : (
                 <TrendsTab
@@ -274,7 +221,7 @@ export default function App() {
         )}
         {activeTab === 'forecast' && (
           <ErrorBoundary>
-            <ForecastTab forecast={forecast} isLoading={isLoading} chartColors={chartColors} hourlyForecast={hourlyForecast} airQuality={airQuality} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} stationId={stationId} sourceType={current?.sourceType ?? null} currentTemp={current?.temp ?? null} units={units} />
+            <ForecastTab forecast={forecast} isLoading={isLoading} hourlyForecast={hourlyForecast} airQuality={airQuality} lat={current?.lat} lon={current?.lon} todayObservedHigh={todayObservedHigh} stationId={stationId} sourceType={current?.sourceType ?? null} currentTemp={current?.temp ?? null} units={units} />
           </ErrorBoundary>
         )}
         {activeTab === 'radar' && (
@@ -304,7 +251,7 @@ export default function App() {
           onSetDefaultActivity={saveDefaultActivity}
           units={units}
           onSetUnits={saveUnits}
-          isExploring={isExploring}
+          isExploring={exploring}
           onClearExplore={handleClearExplore}
         />
       )}
@@ -313,13 +260,13 @@ export default function App() {
         <AlertsSheet alerts={alerts} onClose={() => setAlertsOpen(false)} />
       )}
 
-      {((error && !isLoading) || componentError) && (
+      {error && !isLoading && (
         <div style={{
           position: 'fixed', bottom: 16, left: 16, right: 16, maxWidth: 388, margin: '0 auto',
           background: '#dc2626', color: '#fff', fontSize: 12, padding: '8px 14px',
           borderRadius: 12, zIndex: 300,
         }}>
-          {error || componentError}
+          {error}
         </div>
       )}
     </div>

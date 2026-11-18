@@ -88,3 +88,54 @@ export function buildRadarFrames(nowMs = Date.now(), range = DEFAULT_RADAR_RANGE
 
   return { frames, pastCount };
 }
+
+// ── Clutter filter ────────────────────────────────────────────────────────────
+//
+// The IEM tiles are raw base reflectivity: below ~18 dBZ the speckle is mostly
+// ground clutter, clear-air returns, insects and birds, not rain — the blue
+// noise consumer apps hide. Both the NEXRAD and HRRR tiles are drawn in IEM's
+// n0q palette, where palette entry i is (i × 0.5 − 32.5) dBZ, so a pixel's
+// colour gives its dBZ exactly. RadarTab draws each tile to a canvas and clears
+// the pixels below RADAR_MIN_DBZ (the tiles are served CORS-open).
+
+export const RADAR_MIN_DBZ = 18;
+
+// n0q palette entries 1–120 (−32 … 27.5 dBZ) as RRGGBB, in order. Only the low
+// end is needed: anything not listed is at or above 28 dBZ and always kept.
+const N0Q_LOW =
+  '85718f85728f86738d87758b87768b887789897987897a878a7b858b7d848b7e848c7f828d81808d82808e837e8f847c' +
+  '8f857c90877b918879918979928b77938d759691539894579b975b9d9a60a09d64a3a068a5a36da8a671aaa976adac7a' +
+  'b0af7eb2b283b7b88cbabb90bdbe94bfc199c2c49dc4c7a2c7caa6cacdaaccd0afd2d4b4cfd2b4c9ccb4c6c9b4c3c7b4' +
+  'c0c4b4bdc1b4b9beb4b6bbb4b3b9b4b0b6b4adb3b4aab0b4a4abb4a0a8b49da5b49aa2b497a0b4949db4919ab4949bb5' +
+  '9098b48c95b38892b2808cb07c89af7886ae7483ac7080ab6c7daa6779a96376a85f73a75b70a6576da44f67a24b64a1' +
+  '4761a0435e9f415b9e4361a24568a6486faa4a76ae4d7db24f84b6518bbb5699c3599fc75ba6cb5eadcf60b4d462bbd8' +
+  '65c2dc67c9e06ad0e46fd6e868d6d759d6b352d6a24bd69043d67e3cd66d35d65b11d51811d11710cd1710c81610c416' +
+  '0fbc150fb7140eb3140eaf130eab130da6120da2120d9e11';
+
+// RGB (as an int) → dBZ, for the low end of the palette.
+const LOW_DBZ = new Map();
+for (let k = 0; k < N0Q_LOW.length; k += 6) {
+  LOW_DBZ.set(parseInt(N0Q_LOW.slice(k, k + 6), 16), (k / 6 + 1) * 0.5 - 32.5);
+}
+
+/** dBZ for an n0q pixel colour, or null when it's above the listed low end. */
+export function n0qDbz(r, g, b) {
+  return LOW_DBZ.get((r << 16) | (g << 8) | b) ?? null;
+}
+
+/**
+ * Clears (alpha 0) every pixel below `minDbz` in RGBA image data, in place.
+ * Returns how many pixels were cleared.
+ */
+export function filterRadarPixels(data, minDbz = RADAR_MIN_DBZ) {
+  let cleared = 0;
+  for (let p = 0; p < data.length; p += 4) {
+    if (data[p + 3] === 0) continue;
+    const dbz = n0qDbz(data[p], data[p + 1], data[p + 2]);
+    if (dbz != null && dbz < minDbz) {
+      data[p + 3] = 0;
+      cleared++;
+    }
+  }
+  return cleared;
+}

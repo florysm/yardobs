@@ -139,3 +139,11 @@ export function aqiPhrase(aqi) {
   const category = aqiCategory(aqi);
   return category ? AQI_PHRASES[category] : null;
 }
+
+// The hours a day's air quality is judged over: the ones people are actually
+// outside. A day's worst air at 3am is not what "is this a good day to be out
+// there" turns on, and an all-day average would hide a bad afternoon behind
+// clean overnight air. Used by aqiForDay and named in the Forecast prompt.
+export const AQI_DAY_START = 8;
+export const AQI_DAY_END = 20; // inclusive
+export const AQI_WINDOW_LABEL = `${shortHour(AQI_DAY_START)}–${shortHour(AQI_DAY_END)}`;

@@ -1,4 +1,5 @@
 import { UNITS } from './units';
+import { PROFILE_MODES, isStationProfile } from './profile';
 
 // The Scriptable widget template (public/widget/yardobs-widget.js) carries its
 // settings in one marked span; the app swaps in the user's own values before
@@ -18,12 +19,12 @@ export const WIDGET_UPDATE_URL   = `scriptable:///run/${encodeURIComponent(WIDGE
 // script apart from an older one it already holds an update for.
 export function widgetConfigFromSettings({ profile, twcKey, keyExpires, units, now = Date.now() }) {
   const u = units === UNITS.METRIC ? UNITS.METRIC : UNITS.IMPERIAL;
-  if (profile?.mode === 'station') {
+  if (isStationProfile(profile)) {
     if (!profile.stationId || !twcKey) return null;
-    return { mode: 'station', stationId: profile.stationId, twcKey, keyExpires: keyExpires || null, lat: null, lon: null, label: null, units: u, generatedAt: now };
+    return { mode: PROFILE_MODES.STATION, stationId: profile.stationId, twcKey, keyExpires: keyExpires || null, lat: null, lon: null, label: null, units: u, generatedAt: now };
   }
   if (profile?.lat == null || profile?.lon == null) return null;
-  return { mode: 'preview', stationId: null, twcKey: null, keyExpires: null, lat: profile.lat, lon: profile.lon, label: profile.label ?? null, units: u, generatedAt: now };
+  return { mode: PROFILE_MODES.PREVIEW, stationId: null, twcKey: null, keyExpires: null, lat: profile.lat, lon: profile.lon, label: profile.label ?? null, units: u, generatedAt: now };
 }
 
 // Clipboard payload read by the widget script when opened via WIDGET_UPDATE_URL.

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { buildRadarFrames, hasRadarCoverage, RADAR_RANGES, DEFAULT_RADAR_RANGE } from '../utils/radarFrames.js';
-import { STORAGE_KEYS } from '../utils/storageKeys.js';
+import { buildRadarFrames, hasRadarCoverage, filterRadarPixels, RADAR_RANGES, DEFAULT_RADAR_RANGE } from '../utils/radarFrames.js';
+import { STORAGE_KEYS, readStored, writeStored } from '../utils/storageKeys.js';
 
 // Stadia authorizes localhost without a key, so the key is optional in dev.
 const STADIA_KEY = import.meta.env.VITE_STADIA_API_KEY;
@@ -22,6 +22,34 @@ const LEGEND = [
   { color: '#e0301e', label: 'Extreme' },
 ];
 
+// A tile layer that drops low-reflectivity clutter (filterRadarPixels) before
+// a tile is shown. Each tile is fetched CORS-enabled, drawn to a canvas and
+// filtered once; Leaflet then scales the canvas past maxNativeZoom as it would
+// an <img>. If the pixels can't be read, the tile shows unfiltered.
+const FilteredRadarLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const tile = L.DomUtil.create('canvas', 'leaflet-tile');
+    const size = this.getTileSize();
+    tile.width = size.x;
+    tile.height = size.y;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const ctx = tile.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, size.x, size.y);
+      try {
+        const pixels = ctx.getImageData(0, 0, size.x, size.y);
+        filterRadarPixels(pixels.data);
+        ctx.putImageData(pixels, 0, 0);
+      } catch (_) { /* unreadable (tainted) canvas: leave it unfiltered */ }
+      done(null, tile);
+    };
+    img.onerror = () => done(new Error('radar tile failed'), tile);
+    img.src = L.Util.template(this.options.url, coords);
+    return tile;
+  },
+});
+
 // Preloads every frame as an invisible tile layer on mount so tiles enter the
 // browser cache before animation starts. Frame transitions swap opacity instead
 // of creating/destroying layers, which eliminates the blank flash between frames.
@@ -31,12 +59,43 @@ function RadarLayer({ frames, frameIndex }) {
   const loadedRef  = useRef({});  // index → bool
   const activeRef  = useRef(null);
   const pendingRef = useRef(null); // { layer, handler } — cancelled on frame change
+  const frameIndexRef = useRef(frameIndex);
+  frameIndexRef.current = frameIndex;
+
+  // Makes frame `i` the visible layer once its tiles have loaded. Called both on
+  // frame changes and after the layers are rebuilt: a refresh rebuilds every
+  // layer invisible but usually leaves frameIndex unchanged, so the frame effect
+  // alone wouldn't re-run and the overlay would stay blank.
+  const showFrame = (i) => {
+    if (pendingRef.current) {
+      pendingRef.current.layer.off('load', pendingRef.current.handler);
+      pendingRef.current = null;
+    }
+
+    const layer = cacheRef.current[i];
+    if (!layer) return;
+    const show = () => {
+      pendingRef.current = null;
+      if (activeRef.current && activeRef.current !== layer) {
+        activeRef.current.setOpacity(0.001);
+      }
+      layer.setOpacity(RADAR_OPACITY);
+      activeRef.current = layer;
+    };
+    if (loadedRef.current[i]) {
+      show();
+    } else {
+      pendingRef.current = { layer, handler: show };
+      layer.once('load', show);
+    }
+  };
 
   useEffect(() => {
     if (!frames.length) return;
     frames.forEach((frame, i) => {
       if (cacheRef.current[i]) return;
-      const layer = L.tileLayer(frame.url, {
+      const layer = new FilteredRadarLayer({
+        url: frame.url,
         tileSize: 256,
         opacity: 0.001,
         maxNativeZoom: 8,
@@ -47,7 +106,9 @@ function RadarLayer({ frames, frameIndex }) {
       layer.addTo(map);
       cacheRef.current[i] = layer;
     });
+    showFrame(frameIndexRef.current);
     return () => {
+      if (pendingRef.current) pendingRef.current.layer.off('load', pendingRef.current.handler);
       Object.values(cacheRef.current).forEach(l => { try { map.removeLayer(l); } catch (_) {} });
       cacheRef.current  = {};
       loadedRef.current = {};
@@ -57,31 +118,11 @@ function RadarLayer({ frames, frameIndex }) {
   // cacheRef/loadedRef/activeRef/pendingRef are stable refs — no dep needed
   }, [frames, map]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Cancel any stale load listener before showing the new frame. Without this,
-  // a slow-loading earlier frame can flash briefly after we've already advanced.
+  // showFrame cancels any stale load listener first, so a slow-loading earlier
+  // frame can't flash after we've already advanced.
   useEffect(() => {
-    if (pendingRef.current) {
-      pendingRef.current.layer.off('load', pendingRef.current.handler);
-      pendingRef.current = null;
-    }
-
-    const layer = cacheRef.current[frameIndex];
-    if (!layer) return;
-    const show = () => {
-      pendingRef.current = null;
-      if (activeRef.current && activeRef.current !== layer) {
-        activeRef.current.setOpacity(0.001);
-      }
-      layer.setOpacity(RADAR_OPACITY);
-      activeRef.current = layer;
-    };
-    if (loadedRef.current[frameIndex]) {
-      show();
-    } else {
-      pendingRef.current = { layer, handler: show };
-      layer.once('load', show);
-    }
-  // cacheRef/loadedRef/activeRef/pendingRef are stable refs — no dep needed
+    showFrame(frameIndex);
+  // showFrame only touches stable refs — no dep needed
   }, [frameIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
@@ -92,10 +133,8 @@ function formatTime(unixSec) {
 }
 
 function readStoredRange() {
-  try {
-    const v = localStorage.getItem(STORAGE_KEYS.RADAR_RANGE);
-    return v in RADAR_RANGES ? v : DEFAULT_RADAR_RANGE;
-  } catch { return DEFAULT_RADAR_RANGE; }
+  const v = readStored(STORAGE_KEYS.RADAR_RANGE);
+  return v in RADAR_RANGES ? v : DEFAULT_RADAR_RANGE;
 }
 
 export default function RadarTab({ lat, lon, isLoading }) {
@@ -126,7 +165,7 @@ export default function RadarTab({ lat, lon, isLoading }) {
     setRange(key);
     setPlan(next);
     setFrameIndex(next.pastCount - 1);
-    try { localStorage.setItem(STORAGE_KEYS.RADAR_RANGE, key); } catch { /* storage unavailable */ }
+    writeStored(STORAGE_KEYS.RADAR_RANGE, key);
   };
 
   useEffect(() => {

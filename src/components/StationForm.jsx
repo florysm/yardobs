@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { STORAGE_KEYS } from '../utils/storageKeys';
+import { STORAGE_KEYS, readStored, writeStored } from '../utils/storageKeys';
+import { apiFetch } from '../utils/apiFetch';
 import { isValidExpiryDate, daysUntilExpiry, KEY_RENEW_URL } from '../utils/keyExpiry';
 
 export default function StationForm({ initialStationId, onSave }) {
@@ -8,9 +9,9 @@ export default function StationForm({ initialStationId, onSave }) {
   const [saveStatus, setSaveStatus] = useState('idle'); // idle | testing | success | error
   const [errorMsg, setErrorMsg] = useState('');
 
-  const storedKey = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_API_KEY) || ''; } catch { return ''; } })();
+  const storedKey = readStored(STORAGE_KEYS.TWC_API_KEY, '');
   const hasKey = storedKey.length > 0;
-  const storedExpiry = (() => { try { return localStorage.getItem(STORAGE_KEYS.TWC_KEY_EXPIRES) || ''; } catch { return ''; } })();
+  const storedExpiry = readStored(STORAGE_KEYS.TWC_KEY_EXPIRES, '');
   const [keyExpires, setKeyExpires] = useState(storedExpiry);
   const hasChanges = stationId.trim() !== (initialStationId ?? '') || twcApiKey.trim() !== '' || keyExpires !== storedExpiry;
 
@@ -27,34 +28,30 @@ export default function StationForm({ initialStationId, onSave }) {
     setSaveStatus('testing');
     setErrorMsg('');
     try {
-      const res = await fetch(`/api/weather?type=current&stationId=${encodeURIComponent(sid)}`, {
-        headers: key ? { 'x-twc-key': key } : {},
+      // Tests the key being entered, which isn't saved yet — apiFetch keeps a
+      // caller's own key header instead of the stored one.
+      await apiFetch(`/api/weather?type=current&stationId=${encodeURIComponent(sid)}`, {
+        headers: { 'X-TWC-Key': key },
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMsg(data?.error ?? `Connection failed (${res.status})`);
-        setSaveStatus('error');
-        return;
-      }
-      // Save credentials only after a successful test
-      try { if (twcApiKey.trim()) localStorage.setItem(STORAGE_KEYS.TWC_API_KEY, twcApiKey.trim()); } catch {}
-      // A new key with the old, already-passed date left in place would keep
-      // warning about an expiry that no longer applies — drop it.
-      let expiry = keyExpires;
-      if (twcApiKey.trim() && expiry === storedExpiry && (daysUntilExpiry(expiry) ?? 0) < 0) expiry = '';
-      try {
-        if (isValidExpiryDate(expiry)) localStorage.setItem(STORAGE_KEYS.TWC_KEY_EXPIRES, expiry);
-        else localStorage.removeItem(STORAGE_KEYS.TWC_KEY_EXPIRES);
-      } catch {}
-      setKeyExpires(isValidExpiryDate(expiry) ? expiry : '');
-      onSave(sid);
-      setSaveStatus('success');
-      setTwcApiKey('');
-      setTimeout(() => setSaveStatus('idle'), 4000);
-    } catch {
-      setErrorMsg('Could not reach the server — check your connection.');
+    } catch (err) {
+      // `status` means the server answered (bad key, unknown station); without
+      // it the request never got there.
+      setErrorMsg(err?.status ? err.message : 'Could not reach the server — check your connection.');
       setSaveStatus('error');
+      return;
     }
+    // Save credentials only after a successful test
+    if (twcApiKey.trim()) writeStored(STORAGE_KEYS.TWC_API_KEY, twcApiKey.trim());
+    // A new key with the old, already-passed date left in place would keep
+    // warning about an expiry that no longer applies — drop it.
+    let expiry = keyExpires;
+    if (twcApiKey.trim() && expiry === storedExpiry && (daysUntilExpiry(expiry) ?? 0) < 0) expiry = '';
+    writeStored(STORAGE_KEYS.TWC_KEY_EXPIRES, isValidExpiryDate(expiry) ? expiry : null);
+    setKeyExpires(isValidExpiryDate(expiry) ? expiry : '');
+    onSave(sid);
+    setSaveStatus('success');
+    setTwcApiKey('');
+    setTimeout(() => setSaveStatus('idle'), 4000);
   };
 
   const inputStyle = {

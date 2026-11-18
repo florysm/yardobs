@@ -1,32 +1,14 @@
 import { applyCors } from './lib/cors.js';
+import { clientIp, createRateLimiter } from './lib/rateLimit.js';
 import { validCoords, validStationId, validDate } from './lib/validate.js';
 
 const TWC_BASE = 'https://api.weather.com';
 
-// ── Per-IP rate limiter: 30 requests per 5 minutes ────────────────────────────
-const RATE_WINDOW_MS = 5 * 60 * 1000;
-const RATE_LIMIT     = 30;
-const rateLimiter    = new Map();
+// Every `type` the switch below handles — kept here so the 400 message can't drift.
+export const ROUTE_TYPES = ['current', 'history', 'history-recent', 'history-daily', 'forecast', 'hourly-forecast', 'alerts'];
 
-function checkRateLimit(ip) {
-  const now  = Date.now();
-  const entry = rateLimiter.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimiter.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return false;
-  }
-  if (entry.count >= RATE_LIMIT) return true;
-  entry.count++;
-  return false;
-}
-
-// Periodic cleanup so the map doesn't grow unbounded in long-lived instances
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of rateLimiter) {
-    if (now > entry.resetAt) rateLimiter.delete(ip);
-  }
-}, RATE_WINDOW_MS);
+// ── Per-IP rate limiter: 30 requests in any 5 minutes (api/lib/rateLimit.js) ─
+const rateLimiter = createRateLimiter({ limit: 30, windowMs: 5 * 60 * 1000 });
 
 // ── Friendly error messages for common TWC status codes ───────────────────────
 function twcErrorMessage(status) {
@@ -35,7 +17,7 @@ function twcErrorMessage(status) {
   if (status === 401) return 'TWC API key rejected — it may have expired. Renew it at wunderground.com/member/api-keys, then update it in Settings';
   if (status === 403) return 'API access denied — check your TWC API key permissions';
   if (status === 429) return 'TWC API rate limit exceeded — try again in a few minutes';
-  if (status === 204 || status === 404) return 'Station not found — check your station ID';
+  if (status === 404) return 'Station not found — check your station ID';
   return `Upstream error (${status})`;
 }
 
@@ -43,8 +25,7 @@ function twcErrorMessage(status) {
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
-  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() ?? req.socket?.remoteAddress ?? 'unknown';
-  if (checkRateLimit(ip)) {
+  if (rateLimiter.hit(clientIp(req))) {
     return res.status(429).json({ error: 'Too many requests — slow down and try again' });
   }
 
@@ -60,7 +41,7 @@ export default async function handler(req, res) {
   // mode is served entirely by Open-Meteo, so no shared credential is exposed to
   // anonymous traffic and no owner quota is spent on it.
   const apiKey = req.headers['x-twc-key'];
-  const keylessTypes = new Set(['hourly-forecast', 'air-quality', 'alerts']);
+  const keylessTypes = new Set(['hourly-forecast', 'alerts']);
   if (!apiKey && !keylessTypes.has(type)) {
     return res.status(401).json({ error: 'TWC API key required — add your station key in Settings.' });
   }
@@ -88,10 +69,6 @@ export default async function handler(req, res) {
       if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
       url = `${TWC_BASE}/v3/wx/forecast/daily/5day?geocode=${lat},${lon}&format=json&units=e&language=en-US&apiKey=${apiKey}`;
       break;
-    case 'hourly-forecast-twc':
-      if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
-      url = `${TWC_BASE}/v3/wx/forecast/hourly/2day?geocode=${lat},${lon}&format=json&units=e&language=en-US&apiKey=${apiKey}`;
-      break;
     case 'hourly-forecast':
       if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
       // forecast_days=5 matches the TWC 5-day span, so every day the Forecast tab
@@ -103,12 +80,6 @@ export default async function handler(req, res) {
       // rides along on this request rather than costing a second round trip.
       url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation_probability,weathercode,apparent_temperature,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,uv_index&daily=sunrise,sunset,temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max&forecast_days=5&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto`;
       break;
-    case 'air-quality':
-      if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
-      // Kept in step with the client's direct call in useWeather (fetchAirQuality):
-      // `hourly=us_aqi` is what lets the Forecast tab report air quality per day.
-      url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone&hourly=us_aqi&forecast_days=5&timezone=auto`;
-      break;
     case 'alerts':
       // Severe-weather alerts. NWS is free/keyless but US-only; the client
       // normalizes the response (src/utils/alerts.js) so another source can be
@@ -117,7 +88,7 @@ export default async function handler(req, res) {
       url = `https://api.weather.gov/alerts/active?point=${lat},${lon}`;
       break;
     default:
-      return res.status(400).json({ error: 'Invalid type. Use: current, history, history-daily, forecast, hourly-forecast, air-quality, alerts' });
+      return res.status(400).json({ error: `Invalid type. Use: ${ROUTE_TYPES.join(', ')}` });
   }
 
   // NWS requires an identifying User-Agent; other upstreams ignore it.
@@ -132,6 +103,16 @@ export default async function handler(req, res) {
     const upstream = await fetch(url, { signal: timeoutCtrl.signal, headers: fetchHeaders });
     clearTimeout(timeoutId);
     const text = await upstream.text();
+
+    // TWC answers "nothing here" with 204 and an empty body. That's ok-status, so
+    // without this it fell through to JSON.parse('') and surfaced as a 502.
+    if (upstream.status === 204 || (upstream.ok && !text.trim())) {
+      if (type === 'current') {
+        return res.status(404).json({ error: 'No current data — the station may be offline or the ID may be wrong' });
+      }
+      // A history day with no readings is a real, cacheable answer.
+      return res.status(200).json({ observations: [] });
+    }
 
     if (!upstream.ok) {
       return res.status(upstream.status).json({ error: twcErrorMessage(upstream.status) });

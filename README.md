@@ -93,10 +93,11 @@ The frontend is a React SPA. Two Vercel serverless functions act as API proxies:
 yardobs/
 ├── api/
 │   ├── weather.js        # TWC + Open-Meteo + NWS proxy (forwards the caller's own TWC key)
-│   ├── insight.js        # Claude AI insight engine (activity + daily briefings)
+│   ├── insight.js        # Claude AI insight engine (activity, daily and forecast-day; failures return 502/503, never cached)
 │   └── lib/
 │       ├── cors.js       # Origin allowlist + OPTIONS preflight
 │       ├── insightPersona.js  # Shared AI persona and prompt rules
+│       ├── rateLimit.js  # Per-IP sliding-window rate limiter + client IP (clock-jump safe)
 │       ├── sanitize.js   # Request body size clamping (prevents token inflation)
 │       └── validate.js   # Pure validators for coords, station IDs, dates
 ├── src/
@@ -114,6 +115,7 @@ yardobs/
 │   │   ├── TrendsTab.jsx           # History charts with YoY overlay (lazy-loaded)
 │   │   ├── ForecastTab.jsx         # 5-day + hourly forecast view
 │   │   ├── RadarTab.jsx            # Animated radar map (lazy-loaded)
+│   │   ├── SunMoonCard.jsx         # Sunrise/sunset and moon phase, rise and set
 │   │   ├── SettingsDrawer.jsx      # Theme picker, station setup, widget setup, changelog viewer
 │   │   ├── LocationSetup.jsx       # Onboarding: station ID entry or preview mode
 │   │   ├── LocationSearchInput.jsx # Geocoding search for preview mode
@@ -122,26 +124,37 @@ yardobs/
 │   │   ├── TrendsLockedPlaceholder.jsx  # "Connect a station to unlock trends"
 │   │   └── ErrorBoundary.jsx       # React error boundary (supports reload)
 │   ├── hooks/
+│   │   ├── useInsight.js           # Shared AI-insight fetch + localStorage cache for the three cards
+│   │   ├── useTrendsData.js        # What the Trends tab fetches, and its loading state
 │   │   └── useWeather.js           # Data fetching, polling, caching, alert fetch
 │   ├── utils/
 │   │   ├── activities.js           # Activity definitions and scoring weights
 │   │   ├── alerts.js               # NWS alert normalization + severity helpers
-│   │   ├── apiFetch.js             # HTTP client with error handling
-│   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr)
+│   │   ├── apiFetch.js             # HTTP client: attaches the saved TWC key, throws errors with status
+│   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr, addDays, lastYearKey)
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
+│   │   ├── forecastView.js         # Forecast tab hourly strip + daily cards (on the place's clock)
 │   │   ├── format.js               # Display formatting helpers
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
 │   │   ├── keyExpiry.js            # TWC key expiration date helpers
+│   │   ├── moon.js                 # Moon phase and rise/set pass selection
 │   │   ├── insightVocab.js         # Shared score/AQI/time-of-day wording for prompts and UI
 │   │   ├── outlook.js              # Hourly forecast grouped by part of day, for the AI prompts
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
-│   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
+│   │   ├── profile.js              # Profile modes (station/preview) + isExploring
+│   │   ├── placeTime.js            # The shown place's clock (Explore across time zones)
+│   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check, clutter filter
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
-│   │   ├── storageKeys.js          # localStorage key constants
+│   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
+│   │   ├── sky.js                  # Theme + hero condition rules (code groups, sensor thresholds)
+│   │   ├── sourceTypes.js          # Station vs. forecast-model source type constants
+│   │   ├── storageKeys.js          # localStorage key constants + readStored/writeStored
+│   │   ├── trends.js               # Trends chart rows, date keys, rain totals
 │   │   ├── units.js                # Imperial/metric conversion + locale detection
 │   │   ├── weatherCalc.js          # Feels-like, dew point, and related calculations
+│   │   ├── yoyInsight.js           # Trends "Today vs. One Year Ago" note
 │   │   ├── widgetScript.js         # Fills your settings into the Scriptable widget script
-│   │   └── weatherIcons.js         # WMO code → emoji/label mapping
+│   │   └── weatherIcons.js         # TWC icons/labels + the one WMO → TWC code table
 │   └── index.css                   # CSS variable theme definitions + component classes
 ├── public/
 │   └── widget/
@@ -228,9 +241,9 @@ Proxies weather data requests. TWC routes require the caller's own key via the `
 | `history-daily` | `stationId`, `date` (YYYYMMDD) | TWC | ✅ | Daily summary (high/low/precip) |
 | `forecast` | `lat`, `lon` | TWC | ✅ | 5-day daily forecast. Station owners only — Preview Mode reads its daily forecast from the `daily` block of `hourly-forecast` instead. |
 | `hourly-forecast` | `lat`, `lon` | Open-Meteo | — | Global hourly forecast (5 days) **plus** a `daily` block (max/min, weather code, precip probability). Works for any location worldwide. |
-| `hourly-forecast-twc` | `lat`, `lon` | TWC | ✅ | TWC hourly forecast (alternate source; no current caller) |
-| `air-quality` | `lat`, `lon` | Open-Meteo | — | Current AQI, PM2.5, PM10, ozone, **plus** an `hourly` block of `us_aqi` covering 5 days (used for per-day air quality on the Forecast tab) |
 | `alerts` | `lat`, `lon` | NWS | — | Active severe-weather alerts (US only; returns empty array outside NWS coverage) |
+
+Air quality isn't proxied: the browser calls Open-Meteo's air-quality API directly (see `fetchAirQuality` in `src/hooks/useWeather.js`). When TWC has no data (HTTP 204), the history routes return `{ "observations": [] }` and `current` returns a 404.
 
 ### `POST /api/insight`
 

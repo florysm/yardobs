@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  UNITS, convertTemp, convertWind, convertPrecip, convertPressure,
+  UNITS, convertTemp, convertWind, convertPrecip, convertPressure, INHG_PER_HPA, formatTempParts,
   formatTemp, formatWind, formatPressure, formatPrecipTotal, formatPrecipRate,
   unitsForTimezone, unitsForRegion,
 } from './units';
@@ -68,5 +68,21 @@ describe('unit detection helpers', () => {
     expect(unitsForRegion('LR')).toBe(UNITS.IMPERIAL);
     expect(unitsForRegion('GB')).toBe(UNITS.METRIC);
     expect(unitsForRegion('CO')).toBe(UNITS.METRIC);
+  });
+});
+
+describe('no "-0" just below freezing', () => {
+  it('formats 31.5°F as 0°C, not -0°C', () => {
+    expect(formatTemp(31.5, UNITS.METRIC)).toBe('0°C');
+    expect(formatTempParts(31.5, UNITS.METRIC).value).toBe('0');
+  });
+  it('still shows real sub-zero temperatures', () => {
+    expect(formatTemp(30, UNITS.METRIC)).toBe('-1°C');
+  });
+});
+
+describe('INHG_PER_HPA', () => {
+  it('round-trips a standard-atmosphere reading', () => {
+    expect(convertPressure(1013.25 * INHG_PER_HPA, UNITS.METRIC)).toBeCloseTo(1013.25, 6);
   });
 });

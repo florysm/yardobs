@@ -289,8 +289,11 @@ export function getArcData(hf, actId, current, today = toISODate()) {
 // help, and the Activity narrative is handed this same window, so the card and
 // the advice can't point at different times.
 // The arc highlights this same range, so the bars and the label always agree.
+// Dark hours are never part of it: a mild 7–10 PM can outscore the afternoon,
+// but it's no window for a BBQ. They sit only at the ends of the arc, so the
+// daylight hours left are still consecutive.
 export function getBestWindowRange(arcData, fromHour = 0) {
-  arcData = arcData.filter(a => a.hour >= fromHour);
+  arcData = arcData.filter(a => a.hour >= fromHour && !a.dark);
   if (arcData.length < 3) return null;
   let bi = 0, best = 0;
   for (let i = 0; i <= arcData.length - 3; i++) {

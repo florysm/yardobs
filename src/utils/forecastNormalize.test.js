@@ -47,6 +47,15 @@ describe('normalizeTwcForecast', () => {
     expect(days[1].iconCode).toBe(30);
   });
 
+  it("dates days from validTimeLocal, the location's own clock", () => {
+    // Exploring Tokyo: the device (UTC) is still on the 16th, Tokyo is on the 17th.
+    const tokyo = { ...twc, validTimeLocal: [
+      '2026-07-17T07:00:00+0900', '2026-07-18T07:00:00+0900', '2026-07-19T07:00:00+0900',
+    ] };
+    expect(normalizeTwcForecast(tokyo).map(d => d.date)).toEqual(['2026-07-17', '2026-07-18', '2026-07-19']);
+    expect(normalizeTwcForecast(tokyo)[0].dayOfWeek).toBe('Friday');
+  });
+
   it('survives a missing daypart block', () => {
     const days = normalizeTwcForecast({ ...twc, daypart: [] });
     expect(days).toHaveLength(3);

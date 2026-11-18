@@ -239,9 +239,9 @@ export function precipProbToRate(prob) {
 
 // Only hours still ahead count: at 7pm a morning shower that already passed
 // isn't a risk to plan around.
-export function getForecastRainThreat(hf, fromHour = 0) {
+// `today` is the place's date (placeClock) — Open-Meteo's times are its wall clock.
+export function getForecastRainThreat(hf, fromHour = 0, today = toISODate()) {
   if (!hf?.hourly?.time) return { rate: 0, maxProb: 0 };
-  const today = toISODate();
   let maxProb = 0;
   hf.hourly.time.forEach((t, i) => {
     if (!t.startsWith(today)) return;
@@ -252,15 +252,19 @@ export function getForecastRainThreat(hf, fromHour = 0) {
   return { rate: precipProbToRate(maxProb), maxProb };
 }
 
-export function getArcData(hf, actId, current) {
+// The daylight hours the activity arc scores, inclusive (7a–6p).
+export const ARC_START_HOUR = 7;
+export const ARC_END_HOUR = 18;
+
+// `today` is the place's date (placeClock), as for getForecastRainThreat.
+export function getArcData(hf, actId, current, today = toISODate()) {
   if (!hf?.hourly?.time) return [];
-  const today = toISODate();
   const result = [];
   hf.hourly.time.forEach((t, i) => {
     const [date, timeStr] = t.split('T');
     if (date !== today) return;
     const hour = parseInt(timeStr, 10);
-    if (hour < 7 || hour > 18) return;
+    if (hour < ARC_START_HOUR || hour > ARC_END_HOUR) return;
     const cHour = {
       temp:       hf.hourly.temperature_2m?.[i]          ?? current?.temp      ?? 70,
       feelsLike:  hf.hourly.apparent_temperature?.[i]    ?? null,

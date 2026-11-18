@@ -5,7 +5,7 @@ import { STORAGE_KEYS } from '../utils/storageKeys';
 import { SOURCE_TYPES } from '../utils/sourceTypes';
 import { insightScope } from '../utils/insightCache';
 import { useInsight } from '../hooks/useInsight';
-import { toISODate } from '../utils/dateUtils';
+import { placeClock, placeTimeZone } from '../utils/placeTime';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildDayOutlook } from '../utils/outlook';
 import { formatTemp } from '../utils/units';
@@ -140,16 +140,20 @@ export default function ActivityScoreCard({ current, hourlyForecast, defaultActi
   const [activeId,       setActiveId]       = useState(defaultActivity ?? 'bbq');
   const [expanded,       setExpanded]       = useState(false);
 
+  // The forecast's place clock, not the device's: exploring another time zone,
+  // "today" and "hours still ahead" are that place's. Read every render so the
+  // memos below move on as the hour turns, not only when the forecast refreshes.
+  const clock = placeClock(placeTimeZone(hourlyForecast));
   const { rate: forecastRate, maxProb: forecastMaxProb } = useMemo(
-    () => getForecastRainThreat(hourlyForecast, new Date().getHours()),
-    [hourlyForecast]
+    () => getForecastRainThreat(hourlyForecast, clock.hour, clock.date),
+    [hourlyForecast, clock.hour, clock.date]
   );
   // Rest of today by day part — the Activity card is the one that answers
   // "when should I go", so it's the one that gets the timing detail. Recomputed
   // whenever the hourly forecast refreshes (hourly, see useWeather).
   const outlook = useMemo(
-    () => buildDayOutlook(hourlyForecast, toISODate(), units, { fromHour: new Date().getHours() }),
-    [hourlyForecast, units]
+    () => buildDayOutlook(hourlyForecast, clock.date, units, { fromHour: clock.hour }),
+    [hourlyForecast, units, clock.date, clock.hour]
   );
   // rainThreat combines measured rain with forecast risk. Scoring deliberately
   // ignores it (computeScore keys off measured precipRate, so a dry morning with
@@ -163,8 +167,11 @@ export default function ActivityScoreCard({ current, hourlyForecast, defaultActi
 
   const allScores = useMemo(() => computeAllScores(currentWithThreat, units), [currentWithThreat, units]);
   const active    = allScores[activeId];
-  const arcData   = useMemo(() => getArcData(hourlyForecast, activeId, current), [hourlyForecast, activeId, current]);
-  const bestWindow = useMemo(() => getBestWindow(arcData, new Date().getHours()), [arcData]);
+  const arcData   = useMemo(
+    () => getArcData(hourlyForecast, activeId, current, clock.date),
+    [hourlyForecast, activeId, current, clock.date]
+  );
+  const bestWindow = useMemo(() => getBestWindow(arcData, clock.hour), [arcData, clock.hour]);
   const act = ACTIVITIES.find(a => a.id === activeId);
 
   const showPawAlert = activeId === 'dogwalk' && (active.pavementTemp ?? 0) >= 100;
@@ -178,7 +185,7 @@ export default function ActivityScoreCard({ current, hourlyForecast, defaultActi
     rainThreat: currentWithThreat.rainThreat ?? 0,
     score: active.score,
   } : null;
-  const period = currentDayPart();
+  const period = currentDayPart(clock.wall);
   const insightId = insightScope(current);
   const { data: insight, loading: insightLoading } = useInsight({
     storageKey: STORAGE_KEYS.activityInsightKey(insightId, activeId, period, units),

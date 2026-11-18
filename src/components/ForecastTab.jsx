@@ -1,8 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
-import SunCalc from 'suncalc';
-import { fmtHourIso, getLocaleHour12 } from '../utils/format';
-import { iconFor, wmoToTwc, hourlyDisplayCode } from '../utils/weatherIcons';
-import { toISODate } from '../utils/dateUtils';
+import { fmtHourIso, fmtClockTime } from '../utils/format';
+import { buildHours, groupByDay, buildDays } from '../utils/forecastView';
+import { placeClock, placeTimeZone } from '../utils/placeTime';
 import { STORAGE_KEYS } from '../utils/storageKeys';
 import { insightScope } from '../utils/insightCache';
 import { useInsight } from '../hooks/useInsight';
@@ -14,34 +13,6 @@ import { todayHigh } from '../utils/weatherCalc';
 import SunMoonCard from './SunMoonCard';
 import { SOURCE_TYPES } from '../utils/sourceTypes';
 
-function buildHours(hf, lat, lon) {
-  const h = hf?.hourly;
-  if (!h?.time?.length) return [];
-  const now = Date.now();
-
-  const sunMap = {};
-  [...new Set(h.time.map(t => t.slice(0, 10)))].forEach(dateStr => {
-    if (lat == null || lon == null) return;
-    const { sunrise, sunset } = SunCalc.getTimes(new Date(dateStr + 'T12:00'), lat, lon);
-    sunMap[dateStr] = { riseMs: sunrise.getTime(), setMs: sunset.getTime() };
-  });
-
-  return h.time
-    .map((t, i) => {
-      const ms = new Date(t).getTime();
-      const sun = sunMap[t.slice(0, 10)];
-      const isNight = sun ? (ms < sun.riseMs || ms > sun.setMs) : false;
-      const code = h.weathercode?.[i];
-      const pop  = h.precipitation_probability?.[i] ?? 0;
-      // Same WMO table as the daily cards and current conditions.
-      const icon = iconFor(wmoToTwc(hourlyDisplayCode(code, pop), isNight ? 0 : 1));
-      return { time: t, ms, icon, temp: h.temperature_2m?.[i], pop };
-    })
-    .filter(hr => hr.ms >= now - 30 * 60 * 1000)
-    .slice(0, 24)
-    .map((hr, i) => ({ ...hr, isNow: i === 0 }));
-}
-
 // Matches HourlyCard's `flex: '0 0 56px'` and .fc-hourly-group's `gap: 8`.
 const HOUR_CARD_W = 56;
 const HOUR_CARD_GAP = 8;
@@ -50,42 +21,6 @@ const HOUR_GROUP_MARGIN = 16; // marginLeft applied to every group after the fir
 function groupWidthPx(hourCount) {
   return hourCount * HOUR_CARD_W + Math.max(0, hourCount - 1) * HOUR_CARD_GAP;
 }
-
-function groupByDay(hours) {
-  const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
-  const groups = [];
-  let current = null;
-  for (const hr of hours) {
-    const date = hr.time.slice(0, 10);
-    if (!current || current.date !== date) {
-      const d = new Date(date + 'T12:00:00');
-      current = {
-        date,
-        label: date === todayStr
-          ? 'Today'
-          : `${d.toLocaleDateString(navigator.language, { weekday: 'long' })} ${d.getDate()}`,
-        hours: [],
-      };
-      groups.push(current);
-    }
-    current.hours.push(hr);
-  }
-  return groups;
-}
-
-// `forecast` arrives already normalized from useWeather (see forecastNormalize.js),
-// so this only adds presentation: the emoji and the isToday flag. Vendor quirks —
-// TWC's day/night interleaved dayparts, Open-Meteo's WMO codes — are handled there.
-function buildDays(forecast) {
-  if (!forecast?.length) return [];
-  const todayStr = toISODate(new Date());
-  return forecast.map(day => ({
-    ...day,
-    icon:    iconFor(day.iconCode),
-    isToday: day.date === todayStr,
-  }));
-}
-
 
 function HourlyCard({ hr, units }) {
   return (
@@ -207,7 +142,11 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
   const [activeLabel, setActiveLabel] = useState(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
 
-  const groups = groupByDay(hourlyForecast ? buildHours(hourlyForecast, lat, lon) : []);
+  // The place's clock (see placeTime.js): exploring another time zone, the
+  // strip's "Now", "Today" and the rest-of-today narrative are that place's.
+  const tz = placeTimeZone(hourlyForecast);
+  const clock = placeClock(tz);
+  const groups = groupByDay(buildHours(hourlyForecast, clock), clock.date);
 
   useEffect(() => {
     if (groups.length > 0) setActiveLabel(groups[0].label);
@@ -216,14 +155,14 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
   }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // AI narrative for the selected day.
-  const insightDay = buildDays(forecast)[selectedDayIndex] ?? null;
+  const insightDay = buildDays(forecast, clock.date)[selectedDayIndex] ?? null;
   const insightId = insightScope({ stationId, sourceType, lat, lon });
   const dayAqi = insightDay ? aqiForDay(airQuality, insightDay.date) : null;
   // Same 25-wide bucket the server keys on, so client and server invalidate together.
   const aqiBucket = dayAqi == null ? 'na' : Math.round(dayAqi / 25) * 25;
   // Today describes the rest of the day, so it's keyed to the part of the day
   // we're in and regenerates as each one passes; other days are an overview.
-  const dayPart = insightDay?.isToday ? currentDayPart() : 'day';
+  const dayPart = insightDay?.isToday ? currentDayPart(clock.wall) : 'day';
   const { data: dayInsight, loading: dayInsightLoading } = useInsight({
     storageKey: insightDay && STORAGE_KEYS.forecastDayInsightKey(insightId, insightDay.date, units, aqiBucket, dayPart),
     enabled: !!insightDay,
@@ -245,14 +184,14 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
       // By day part, so the model can't misfile a 10pm reading as evening.
       // Today starts at the current hour: what's left, not what's passed.
       outlook: buildDayOutlook(hourlyForecast, insightDay.date, units,
-        { fromHour: insightDay.isToday ? new Date().getHours() : 0 }),
+        { fromHour: insightDay.isToday ? clock.hour : 0 }),
       aqi: dayAqi,
       sourceType: sourceType ?? SOURCE_TYPES.PWS,
       units,
     }),
     accept: json => (json?.narrative ? {
       narrative: json.narrative,
-      updatedAt: new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() }),
+      updatedAt: fmtClockTime(new Date()),
     } : null),
   });
 
@@ -269,7 +208,7 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
     );
   }
 
-  const days = buildDays(forecast);
+  const days = buildDays(forecast, clock.date);
 
   function handleHourlyScroll() {
     if (!scrollRef.current) return;
@@ -356,7 +295,7 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
 
       <ForecastDayInsight insight={dayInsight} isLoading={dayInsightLoading} />
 
-      <SunMoonCard lat={lat} lon={lon} />
+      <SunMoonCard lat={lat} lon={lon} tz={tz} />
 
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', padding: '6px 0 4px', letterSpacing: '0.3px' }}>
         TWC Daily Forecast API

@@ -1,14 +1,15 @@
 import { useState, useRef } from 'react';
-import { fmt, getLocaleHour12 } from '../utils/format';
+import { fmt, fmtClockTime } from '../utils/format';
 import { STORAGE_KEYS } from '../utils/storageKeys';
 import { SOURCE_TYPES } from '../utils/sourceTypes';
 import { insightScope } from '../utils/insightCache';
 import { useInsight } from '../hooks/useInsight';
 import { FALLBACK_ICON } from '../utils/weatherIcons';
 import { heroCondition } from '../utils/sky';
-import { toISODate, lastYearKey } from '../utils/dateUtils';
+import { lastYearKey } from '../utils/dateUtils';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildLookahead } from '../utils/outlook';
+import { placeClock, placeTimeZone } from '../utils/placeTime';
 import { formatTemp, formatTempParts, formatWindWithCompass, formatPrecipTotal, formatPressure } from '../utils/units';
 
 // ── Tabler-style SVG icon primitives for signal tags ─────────────────────────
@@ -261,9 +262,12 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
   // AI daily insight, fetched only while the insights view is open.
   const isModelData = current?.sourceType === SOURCE_TYPES.FORECAST_MODEL;
   const insightId = insightScope(current);
-  const period = currentDayPart();
+  // The place's clock: exploring another time zone, "evening" and "the next
+  // few hours" are that place's (see placeTime.js).
+  const clock = placeClock(placeTimeZone(hourlyForecast));
+  const period = currentDayPart(clock.wall);
   const { data: insight, loading: insightLoading } = useInsight({
-    storageKey: STORAGE_KEYS.insightKey(insightId, toISODate(), period, units),
+    storageKey: STORAGE_KEYS.insightKey(insightId, clock.date, period, units),
     enabled: view === 'insights' && !!current && !!hourlyForecast,
     deps: [current, stationId, fetchHistoryDaily, hourlyForecast],
     buildBody: async () => {
@@ -274,17 +278,17 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
       }
       return {
         type: 'daily', stationId: insightId, placeName: current?.neighborhood ?? null,
-        date: toISODate(), period, current, yoyReadings,
+        date: clock.date, period, current, yoyReadings,
         // "What's it doing right now?" — only the next few hours, never the
         // whole day (that's the Forecast card's question).
-        lookahead: buildLookahead(hourlyForecast, units),
+        lookahead: buildLookahead(hourlyForecast, units, clock.wall),
         sourceType: current?.sourceType,
         units,
       };
     },
     accept: json => (json?.narrative ? {
       ...json,
-      updatedAt: new Date().toLocaleTimeString(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: getLocaleHour12() }),
+      updatedAt: fmtClockTime(new Date()),
       _sourceType: current?.sourceType,
     } : null),
   });

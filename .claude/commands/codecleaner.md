@@ -48,14 +48,14 @@ These are invariants the codebase currently satisfies (re-verified 2026-11-17). 
 
 **Duplicated formatting and constants (tracked in TechDebt.md, re-verify until fixed):**
 
-- The `updatedAt` `toLocaleTimeString(...)` line duplicated in `HeroCard.jsx`/`ForecastTab.jsx`/`AlertsSheet.jsx`, plus 7 overlapping hour formatters — tracked as item 12. Once a `fmtUpdatedAt()` lands in `src/utils/format.js`, convert this into a single-definition invariant.
+- Clock times (`h:mm AM`) have one formatter: `fmtClockTime(date, timeZone)` in `src/utils/format.js` (2026-11-17) — flag a new `toLocaleTimeString({ hour, minute })` call outside it. The overlapping hour-only formatters are still tracked as item 12.
 - The hPa↔inHg constant is single-sourced as `INHG_PER_HPA` in `units.js` (fixed 2026-11-17) — flag any raw `0.02953`. More generally: grep for repeated numeric literals that form conversion pairs across files.
 - Client cache keys that must match server bucketing: only ForecastTab's `Math.round(aqi/25)*25` still mirrors the server (`bucket(aqi, 25)` in `api/insight.js`); the server's buckets go through one `bucket(v, step, fallback)` helper (2026-11-17). Flag any new client/server pair that must agree but isn't shared.
 
 **Vocabularies and code tables (found 2026-11-17):**
 
 - Weather codes: one table, `WMO_TO_TWC` in `src/utils/weatherIcons.js` (2026-11-17); emoji and labels come from `ICONS`/`LABELS` via `iconFor`/`labelFor`, and the hourly low-chance rule is `hourlyDisplayCode`. Flag any other WMO→emoji/label lookup, a raw `'🌡️'` fallback, or a direct `ICONS[...] ??` outside weatherIcons.
-- Day parts / time windows: `insightVocab.js` `DAY_PARTS` is meant to be the only vocabulary; the AQI 8a–8p window in the prompt text, and 4 rain-probability threshold sets break that (item 8).
+- Day parts / time windows: `insightVocab.js` `DAY_PARTS` is the only day-part vocabulary; the AQI window is `AQI_DAY_START/END`/`AQI_WINDOW_LABEL` there and the activity arc is `ARC_START_HOUR/END_HOUR` in `scoring.js` (2026-11-17) — flag new hour literals for either. The 4 rain-probability threshold sets are still item 8.
 - Sky rules: TWC code groups (`ICON_STORMY/RAINY/CLOUDY/PARTLY`), sensor thresholds (`SKY`), `resolveAutoTheme`, `deriveFromSensors` and `heroCondition` live only in `src/utils/sky.js` (2026-11-17, tested). Flag a solar/UV/rain-rate threshold or code set defined anywhere else.
 - String literals with no constant: profile modes `'station'`/`'preview'`, default activity `'bbq'` (item 13). Source types are single-sourced as `SOURCE_TYPES` in `src/utils/sourceTypes.js` (2026-11-17) — flag any raw `'forecast_model'`/`'pws'` outside it.
 

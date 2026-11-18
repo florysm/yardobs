@@ -1,5 +1,5 @@
 import SunCalc from 'suncalc';
-import { fmtSunTime, fmtMoonTime } from '../utils/format';
+import { fmtClockTime } from '../utils/format';
 import { resolveMoonWindow, moonPhaseName, arcProgress } from '../utils/moon';
 
 // Arc geometry shared by the sun and moon cards (SVG viewBox 0 0 200 88).
@@ -94,7 +94,7 @@ function MoonPhaseIcon({ phase, cx, cy, r = 9 }) {
   );
 }
 
-function SunCard({ times, now }) {
+function SunCard({ times, now, tz }) {
   const { sunrise, sunset, dawn, dusk } = times;
   const progress = arcProgress(sunrise?.getTime(), sunset?.getTime(), now.getTime());
   const daylight = fmtDaylight(sunrise, sunset);
@@ -105,8 +105,8 @@ function SunCard({ times, now }) {
         {dot => <g transform={`translate(${dot.x}, ${dot.y})`}><SunIcon /></g>}
       </ArcTrack>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-        <TimeLabel value={fmtSunTime(sunrise)} caption="Sunrise" note={`${fmtSunTime(dawn)} first light`} />
-        <TimeLabel value={fmtSunTime(sunset)} caption="Sunset" note={`last light ${fmtSunTime(dusk)}`} align="right" />
+        <TimeLabel value={fmtClockTime(sunrise, tz)} caption="Sunrise" note={`${fmtClockTime(dawn, tz)} first light`} />
+        <TimeLabel value={fmtClockTime(sunset, tz)} caption="Sunset" note={`last light ${fmtClockTime(dusk, tz)}`} align="right" />
       </div>
       {daylight && (
         <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--tm)', fontFamily: 'var(--font-mono)', marginTop: 8 }}>
@@ -117,17 +117,17 @@ function SunCard({ times, now }) {
   );
 }
 
-function MoonCard({ lat, lon, now }) {
+function MoonCard({ lat, lon, now, tz }) {
   const win   = resolveMoonWindow(lat, lon, now);
   const illum = SunCalc.getMoonIllumination(now);
   const progress = arcProgress(win.rise?.getTime(), win.set?.getTime(), now.getTime());
 
   const riseText = win.alwaysDown ? '--'
-    : win.rise ? fmtMoonTime(win.rise)
+    : win.rise ? fmtClockTime(win.rise, tz)
     : win.moonUp ? 'Already up' : '--';
   const setText = win.alwaysUp ? 'Always up'
     : win.alwaysDown ? 'Always down'
-    : fmtMoonTime(win.set);
+    : fmtClockTime(win.set, tz);
 
   return (
     <div className="y-card">
@@ -147,13 +147,15 @@ function MoonCard({ lat, lon, now }) {
   );
 }
 
-// Sunrise/sunset arc by day; flips to the moon card after dusk.
-export default function SunMoonCard({ lat, lon }) {
+// Sunrise/sunset arc by day; flips to the moon card after dusk. Times are shown
+// on `tz`, the place's clock (null = the device's), so exploring another time
+// zone doesn't print its sunrise in yours.
+export default function SunMoonCard({ lat, lon, tz = null }) {
   if (lat == null || lon == null) return null;
   const now = new Date();
   const times = SunCalc.getTimes(now, lat, lon);
   const pastDusk = times.dusk instanceof Date && isFinite(times.dusk) && now > times.dusk;
   return pastDusk
-    ? <MoonCard lat={lat} lon={lon} now={now} />
-    : <SunCard times={times} now={now} />;
+    ? <MoonCard lat={lat} lon={lon} now={now} tz={tz} />
+    : <SunCard times={times} now={now} tz={tz} />;
 }

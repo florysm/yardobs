@@ -131,12 +131,14 @@ yardobs/
 │   │   ├── apiFetch.js             # HTTP client with error handling
 │   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr, addDays, lastYearKey)
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
+│   │   ├── forecastView.js         # Forecast tab hourly strip + daily cards (on the place's clock)
 │   │   ├── format.js               # Display formatting helpers
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
 │   │   ├── keyExpiry.js            # TWC key expiration date helpers
 │   │   ├── insightVocab.js         # Shared score/AQI/time-of-day wording for prompts and UI
 │   │   ├── outlook.js              # Hourly forecast grouped by part of day, for the AI prompts
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
+│   │   ├── placeTime.js            # The shown place's clock (Explore across time zones)
 │   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope

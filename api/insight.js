@@ -50,7 +50,7 @@ import { applyCors } from './lib/cors.js';
 import { SOURCE_TYPES } from '../src/utils/sourceTypes.js';
 import { clampBody } from './lib/sanitize.js';
 import { degreesToCompass } from '../src/utils/format.js';
-import { scoreBand } from '../src/utils/insightVocab.js';
+import { scoreBand, AQI_WINDOW_LABEL } from '../src/utils/insightVocab.js';
 import { aqiLine, buildSystem } from './lib/insightPersona.js';
 import { formatTemp, formatWind, formatPrecipRate, formatPrecipTotal, formatPressure, convertTemp, tempUnitLabel } from '../src/utils/units.js';
 
@@ -431,7 +431,7 @@ function buildForecastDayCall({ date, dayLabel, tempMax, tempMin, pop, condition
   // Without this the model recommended an "ideal day to spend time outside" on a
   // day whose air was Unhealthy — it simply had no air-quality data to weigh.
   const aqiLineText = aqi != null
-    ? `Air quality, worst of the 8a–8p stretch: ${aqiLine(aqi)}`
+    ? `Air quality, worst of the ${AQI_WINDOW_LABEL} stretch: ${aqiLine(aqi)}`
     : 'Air quality: no forecast available for this day — do not comment on air quality.';
 
   const prompt = `${dayLine}

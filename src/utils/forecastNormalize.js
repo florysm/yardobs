@@ -1,5 +1,6 @@
 import { toISODate } from './dateUtils';
 import { LABELS, wmoToTwc } from './weatherIcons';
+import { AQI_DAY_START, AQI_DAY_END } from './insightVocab';
 
 // The daily forecast comes from two vendors with very different shapes: TWC for
 // station owners (their key), Open-Meteo for preview (keyless). Both are
@@ -7,7 +8,7 @@ import { LABELS, wmoToTwc } from './weatherIcons';
 // the same split useWeather already applies to `current`.
 //
 // Shape: [{ date, dayOfWeek, tempMax, tempMin, iconCode, phrase, pop }]
-//   date     — YYYY-MM-DD, local
+//   date     — YYYY-MM-DD on the forecast location's clock
 //   iconCode — TWC iconCode; keys both ICONS (emoji) and LABELS (text)
 //   phrase   — short condition text, for display and for the insight prompt
 //   pop      — daytime probability of precipitation, %
@@ -35,12 +36,19 @@ export function normalizeTwcForecast(data, currentIconCode = null) {
   const icons   = daypart?.[0]?.iconCode ?? [];
   const pops    = daypart?.[0]?.precipChance ?? [];
   const phrases = daypart?.[0]?.wxPhraseLong ?? [];
+  const { validTimeLocal = [] } = data;
   const today = new Date();
 
   return dayOfWeek.map((_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    const date = toISODate(d);
+    // validTimeLocal ("2026-11-17T07:00:00-0800") is on the forecast location's
+    // clock, so day 0 is that place's today even when exploring another time
+    // zone. Counting from the device's date is only the fallback.
+    let date = typeof validTimeLocal[i] === 'string' ? validTimeLocal[i].slice(0, 10) : null;
+    if (!date) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      date = toISODate(d);
+    }
     const iconCode = icons[i * 2] ?? (i === 0 ? currentIconCode : null);
     return {
       date,
@@ -57,15 +65,10 @@ export function normalizeTwcForecast(data, currentIconCode = null) {
   });
 }
 
-// The hours people are actually outside. A day's worst air at 3am is not what
-// "is this a good day to be out there" turns on, and an all-day average would
-// hide a bad afternoon behind clean overnight air.
-const AQI_DAY_START = 8;
-const AQI_DAY_END = 20; // inclusive
 
 /**
- * Peak US AQI between 8a and 8p for one day, from the Open-Meteo air-quality
- * `hourly` block. Null when that day isn't covered — the prompt then says
+ * Peak US AQI over the AQI_DAY_START–END hours (8a–8p, see insightVocab.js)
+ * for one day, from the Open-Meteo air-quality `hourly` block. Null when that day isn't covered — the prompt then says
  * nothing about air quality rather than guessing.
  */
 export function aqiForDay(airQuality, dateStr) {

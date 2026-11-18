@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   trailingDayKeys, lastYearKeys, weekdayLabel, dayPrecip, sumPrecip, weeklyGroups,
   fixMidnightReset, stats, summarize, buildHourlyRows, buildDailyRows,
-  hourlyLastYearKeys, todayPrecipFromRecent,
+  hourlyLastYearKeys, todayPrecipFromRecent, tempAtHour,
 } from './trends';
 
 // TZ=UTC (npm script): local dates equal the UTC dates below.
@@ -92,5 +92,19 @@ describe('buildDailyRows', () => {
     expect(rows[0].ly_precip).toBe(0.3);
     const plain = buildDailyRows({ historyDaily, keys, lyKeys, metric: 'precip', showYoY: false, units: 'imperial' });
     expect(plain[0]).not.toHaveProperty('ly_precip');
+  });
+});
+
+describe('tempAtHour', () => {
+  const obs = [
+    { obsTimeLocal: '2025-11-18 13:59:59', imperial: { tempAvg: 48.2 } },
+    { obsTimeLocal: '2025-11-18 14:59:59', imperial: { tempAvg: 50.1 } },
+  ];
+  it("finds the matching hour's average", () => {
+    expect(tempAtHour(obs, 14)).toBe(50.1);
+  });
+  it('null when that hour is missing or there is no data', () => {
+    expect(tempAtHour(obs, 9)).toBeNull();
+    expect(tempAtHour(null, 14)).toBeNull();
   });
 });

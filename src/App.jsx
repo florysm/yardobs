@@ -175,6 +175,7 @@ export default function App() {
         isLoading={isLoading}
         onLongPress={() => setSettingsOpen(true)}
         stationId={stationId}
+        fetchHistory={fetchHistory}
         fetchHistoryDaily={fetchHistoryDaily}
         hourlyForecast={hourlyForecast}
         units={units}

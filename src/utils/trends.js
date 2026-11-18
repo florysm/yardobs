@@ -59,6 +59,15 @@ export function mergeHourly(obs = [], units) {
   }));
 }
 
+// Last year's average temperature (raw °F) for `hour` (0–23) from a day of
+// hourly history, or null. Hours come from obsTimeLocal, as in mergeHourly, so
+// this is the same hour the Trends 24h chart pairs with.
+export function tempAtHour(obs, hour) {
+  const hh = String(hour).padStart(2, '0');
+  const o = (obs ?? []).find(x => x.obsTimeLocal?.slice(11, 13) === hh);
+  return o?.imperial?.tempAvg ?? null;
+}
+
 // Daily summary — one observation object → one chart row.
 export function mergeDay(o, units) {
   if (!o) return null;

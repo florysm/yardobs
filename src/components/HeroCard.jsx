@@ -7,6 +7,7 @@ import { useInsight } from '../hooks/useInsight';
 import { FALLBACK_ICON } from '../utils/weatherIcons';
 import { heroCondition } from '../utils/sky';
 import { lastYearKey } from '../utils/dateUtils';
+import { tempAtHour } from '../utils/trends';
 import { currentDayPart } from '../utils/insightVocab';
 import { buildLookahead } from '../utils/outlook';
 import { placeClock, placeTimeZone } from '../utils/placeTime';
@@ -231,7 +232,7 @@ function InsightView({ insight, isLoading, toggle }) {
 
 // ── HeroCard ──────────────────────────────────────────────────────────────────
 
-export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistoryDaily, hourlyForecast, units }) {
+export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast, units }) {
   const [showHint,      setShowHint]      = useState(false);
   const [view,          setView]          = useState('conditions');
   const [contentFade,   setContentFade]   = useState(true);
@@ -269,16 +270,22 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
   const { data: insight, loading: insightLoading } = useInsight({
     storageKey: STORAGE_KEYS.insightKey(insightId, clock.date, period, units),
     enabled: view === 'insights' && !!current && !!hourlyForecast,
-    deps: [current, stationId, fetchHistoryDaily, hourlyForecast],
+    deps: [current, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast],
     buildBody: async () => {
       // Forecast-model data (preview, Explore) has no station history to compare.
+      // The comparison is with this hour last year (now vs. last year's whole-day
+      // average read warmer every afternoon); the day's summary supplies its rain.
       let yoyReadings = [];
+      let yoyHourTemp = null;
       if (!isModelData && stationId) {
-        yoyReadings = (await fetchHistoryDaily?.(lastYearKey())) ?? [];
+        const lyKey = lastYearKey();
+        const [daily, hourly] = await Promise.all([fetchHistoryDaily?.(lyKey), fetchHistory?.(lyKey)]);
+        yoyReadings = daily ?? [];
+        yoyHourTemp = tempAtHour(hourly, clock.hour);
       }
       return {
         type: 'daily', stationId: insightId, placeName: current?.neighborhood ?? null,
-        date: clock.date, period, current, yoyReadings,
+        date: clock.date, period, current, yoyReadings, yoyHourTemp,
         // "What's it doing right now?" — only the next few hours, never the
         // whole day (that's the Forecast card's question).
         lookahead: buildLookahead(hourlyForecast, units, clock.wall),

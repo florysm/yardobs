@@ -286,7 +286,7 @@ const DAILY_EXAMPLES = [
 ];
 
 async function handleDailyInsight(req, res) {
-  const { stationId, placeName, date, current: c, yoyReadings, lookahead, sourceType, period } = req.body ?? {};
+  const { stationId, placeName, date, current: c, yoyReadings, yoyHourTemp, lookahead, sourceType, period } = req.body ?? {};
   const units = resolveUnits(req.body);
   const isPreview = sourceType === SOURCE_TYPES.FORECAST_MODEL;
   const key = keyPrefix(units, isPreview) + `daily|${stationId}|${date}|${bucket(c?.temp, 2, 70)}|${period ?? 'unknown'}|${lookahead ?? 'steady'}`;
@@ -294,7 +294,7 @@ async function handleDailyInsight(req, res) {
   return runCachedInsight(res, {
     tag: 'daily',
     key,
-    build: () => buildDailyCall({ stationId, placeName, date, c, yoyReadings, lookahead, period, units, isPreview }),
+    build: () => buildDailyCall({ stationId, placeName, date, c, yoyReadings, yoyHourTemp, lookahead, period, units, isPreview }),
     parse: parseDaily,
   });
 }
@@ -312,21 +312,28 @@ function parseDaily(text) {
   }
 }
 
-function buildDailyCall({ stationId, placeName, date, c, yoyReadings, lookahead, period, units, isPreview }) {
+function buildDailyCall({ stationId, placeName, date, c, yoyReadings, yoyHourTemp, lookahead, period, units, isPreview }) {
   const dir = degreesToCompass(c?.windDir) || 'variable';
 
-  // No year-over-year data in preview mode (no historical data available)
+  // No year-over-year data in preview mode (no historical data available).
+  // The temperature is compared with this hour last year (yoyHourTemp, from the
+  // station's hourly history): set against last year's whole-day average, every
+  // afternoon read warmer and every early morning colder. The day average is the
+  // fallback, labeled as such, when that hour is missing.
   const yoyDelta = (() => {
-    if (isPreview) return '';
-    const yoy = Array.isArray(yoyReadings) ? yoyReadings[0] : null;
-    if (!yoy || c?.temp == null) return '';
-    const avg = yoy.imperial?.tempAvg ?? yoy.imperial?.temp ?? null;
-    if (avg == null) return '';
-    const diff = Math.round(convertTemp(c.temp, units) - convertTemp(avg, units));
-    const precip = yoy.imperial?.precipTotal ?? 0;
-    return diff !== 0
-      ? `\nVs. last year same date: ${diff > 0 ? '+' : ''}${diff}${tempUnitLabel(units)} on temp, ${formatPrecipTotal(precip, units)} precip.`
-      : '\nSame date last year was nearly identical in temperature.';
+    if (isPreview || c?.temp == null) return '';
+    const day = Array.isArray(yoyReadings) ? yoyReadings[0] : null;
+    const hourTemp = Number.isFinite(yoyHourTemp) ? yoyHourTemp : null;
+    const dayAvg = day?.imperial?.tempAvg ?? day?.imperial?.temp ?? null;
+    const then = hourTemp ?? dayAvg;
+    if (then == null) return '';
+    const label = hourTemp != null ? 'this time last year' : "last year's average for the day";
+    const diff = Math.round(convertTemp(c.temp, units) - convertTemp(then, units));
+    const temp = diff !== 0
+      ? `${diff > 0 ? '+' : ''}${diff}${tempUnitLabel(units)} vs. ${label}`
+      : `about the same temperature as ${label}`;
+    const rain = day ? `; ${formatPrecipTotal(day.imperial?.precipTotal ?? 0, units)} of rain fell that day` : '';
+    return `\nLast year: ${temp}${rain}.`;
   })();
 
   // Rain is only in the prompt when there is some. A standing "Raining now:

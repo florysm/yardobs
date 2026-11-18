@@ -102,6 +102,24 @@ describe('insight handlers', () => {
     expect(system).toContain('leave rain out entirely');
   });
 
+  it("daily: compares with this hour last year, with that day's rain", async () => {
+    create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"narrative":"n","tags":[]}' }] });
+    await call({ type: 'daily', stationId: 'S1', date: '2026-11-18', period: 'afternoon', units: 'imperial',
+      current: { temp: 54 }, yoyHourTemp: 50.2,
+      yoyReadings: [{ imperial: { tempAvg: 44, precipTotal: 0.12 } }] });
+    const prompt = create.mock.calls[0][0].messages[0].content;
+    expect(prompt).toContain('Last year: +4°F vs. this time last year; 0.12" of rain fell that day.');
+    expect(prompt).toContain('Reference the year-over-year difference in the final sentence.');
+  });
+
+  it("daily: falls back to last year's day average, and says so", async () => {
+    create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"narrative":"n","tags":[]}' }] });
+    await call({ type: 'daily', stationId: 'S1', date: '2026-11-19', period: 'afternoon', units: 'imperial',
+      current: { temp: 54 }, yoyReadings: [{ imperial: { tempAvg: 54, precipTotal: 0 } }] });
+    expect(create.mock.calls[0][0].messages[0].content)
+      .toContain("Last year: about the same temperature as last year's average for the day;");
+  });
+
   it('daily: rain earlier today is reported as earlier, not as now', async () => {
     create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"narrative":"n","tags":[]}' }] });
     await call({ type: 'daily', stationId: 'S1', date: '2026-11-04', period: 'afternoon',

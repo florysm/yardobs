@@ -115,6 +115,7 @@ yardobs/
 │   │   ├── TrendsTab.jsx           # History charts with YoY overlay (lazy-loaded)
 │   │   ├── ForecastTab.jsx         # 5-day + hourly forecast view
 │   │   ├── RadarTab.jsx            # Animated radar map (lazy-loaded)
+│   │   ├── SunMoonCard.jsx         # Sunrise/sunset and moon phase, rise and set
 │   │   ├── SettingsDrawer.jsx      # Theme picker, station setup, widget setup, changelog viewer
 │   │   ├── LocationSetup.jsx       # Onboarding: station ID entry or preview mode
 │   │   ├── LocationSearchInput.jsx # Geocoding search for preview mode
@@ -136,12 +137,13 @@ yardobs/
 │   │   ├── format.js               # Display formatting helpers
 │   │   ├── geocode.js              # Location search via Open-Meteo Geocoding API
 │   │   ├── keyExpiry.js            # TWC key expiration date helpers
+│   │   ├── moon.js                 # Moon phase and rise/set pass selection
 │   │   ├── insightVocab.js         # Shared score/AQI/time-of-day wording for prompts and UI
 │   │   ├── outlook.js              # Hourly forecast grouped by part of day, for the AI prompts
 │   │   ├── parseChangelog.js       # Changelog parser for the in-app modal
 │   │   ├── profile.js              # Profile modes (station/preview) + isExploring
 │   │   ├── placeTime.js            # The shown place's clock (Explore across time zones)
-│   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check
+│   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check, clutter filter
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
 │   │   ├── sky.js                  # Theme + hero condition rules (code groups, sensor thresholds)

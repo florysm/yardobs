@@ -2,6 +2,32 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.11.0] - 2026-11-18
+
+### Changed
+
+- The Activity Score timeline now runs from 6 AM to 9 PM, dims the hours after dark, and never suggests a "best window" in the dark.
+- The highlighted bars on the Activity timeline now always match the "Best window" shown under them.
+- The radar now hides ground clutter and other non-rain noise, so only real precipitation shows.
+- Your Backyard Today summary now compares the temperature with the same hour last year instead of last year's daily average.
+- The home-screen widget now uses the same weather descriptions as the app and warns you two weeks before your weather key expires.
+- Behind the scenes: steadier AI summaries and server limits, plus many new automated checks.
+
+### Fixed
+
+- Exploring a city in another time zone now shows its hourly forecast, "Today", sunrise and sunset, and activity timing on that city's clock instead of yours.
+- Weather icons and descriptions are more accurate: light showers no longer show as "Heavy Rain", and freezing rain, drizzle and snow intensities are told apart.
+- Fixed the 7 Day and 30 Day temperature charts, which had stopped drawing their high and low lines.
+- The 24-hour Trends chart now lines up each hour with the same hour last year, and "last year" comparisons are no longer a day off after a leap day.
+- Switching stations or locations no longer briefly shows the previous one's history, forecast or air quality, and today's history keeps updating through the day.
+- AI summaries no longer get stuck loading or show a blank card, and summaries for preview and explored places now name the place.
+- Your Backyard Today summary no longer hints at rain on a dry day.
+- The paused radar no longer goes blank when it refreshes.
+- The Moon card now shows tonight's moonrise instead of this morning's moonset.
+- Today's forecast high is never lower than the temperature already reached.
+- Temperatures no longer show as "-0°".
+- Saving a new weather key now shows the real reason when it's rejected.
+
 ## [1.10.1] - 2026-11-05
 
 ### Changed

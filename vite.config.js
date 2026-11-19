@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import legacy from '@vitejs/plugin-legacy';
 import { readFileSync } from 'fs';
 
 const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -8,7 +9,13 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    // A second, transpiled + polyfilled bundle for old Safari (an iPad 4 tops
+    // out at iOS 10.3, which can't parse `?.` / `??`). Modern browsers never
+    // download it; it loads only where the modern bundle can't run.
+    legacy({ targets: ['ios >= 10', 'safari >= 10'] }),
+  ],
   build: {
     rollupOptions: {
       output: {

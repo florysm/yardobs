@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   DEFAULT_ACTIVITY: 'yardobs-default-activity',
   UNITS:            'yardobs-units',
   RADAR_RANGE:      'yardobs-radar-range',
+  DASHBOARD:        'yardobs-dashboard',
   insightKey: (stationId, today, period, units) => `yardobs-insight-${stationId}-${today}-${slug(period)}-${units}`,
   activityInsightKey: (stationId, activityId, period, units) => `yardobs-activity-insight-${stationId}-${activityId}-${slug(period)}-${units}`,
   // aqiBucket participates so a day whose air quality changes category doesn't

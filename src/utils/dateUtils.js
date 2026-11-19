@@ -55,3 +55,25 @@ export function sameDayLastYear(date = new Date()) {
 export function lastYearKey(date = new Date()) {
   return toDateStr(sameDayLastYear(date));
 }
+
+// How old the last conditions update is, for a display left on for hours:
+// 'fresh' under 15 minutes, 'stale' under 30, 'old' after that (or never loaded).
+// The normal poll is every 5 minutes, so 'stale' means a few polls have failed.
+export const STALE_AFTER_MS = 15 * 60 * 1000;
+export const OLD_AFTER_MS   = 30 * 60 * 1000;
+export function freshness(lastUpdated, nowMs = Date.now()) {
+  if (!lastUpdated) return 'old';
+  const age = nowMs - lastUpdated.getTime();
+  if (age < STALE_AFTER_MS) return 'fresh';
+  if (age < OLD_AFTER_MS) return 'stale';
+  return 'old';
+}
+
+// The next local `hour`:00 strictly after `now`, as epoch ms. The dashboard
+// reloads itself then, once a day, to shed whatever a long-lived page piles up.
+export function nextLocalHour(hour, now = new Date()) {
+  const t = new Date(now);
+  t.setHours(hour, 0, 0, 0);
+  if (t.getTime() <= now.getTime()) t.setDate(t.getDate() + 1);
+  return t.getTime();
+}

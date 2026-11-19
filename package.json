@@ -1,6 +1,6 @@
 {
   "name": "yardobs",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,10 +21,12 @@
     "suncalc": "^1.9.0"
   },
   "devDependencies": {
+    "@vitejs/plugin-legacy": "^6.1.1",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.6.1",
     "postcss": "^8.5.30",
     "tailwindcss": "^3.4.14",
+    "terser": "^5.51.2",
     "vite": "^6.4.4",
     "vitest": "^4.1.12"
   }

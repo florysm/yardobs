@@ -11,6 +11,9 @@ import { SOURCE_TYPES } from '../utils/sourceTypes';
 import { isPreviewProfile, isExploring } from '../utils/profile';
 
 const POLL_MS = 5 * 60 * 1000;
+// Returning to the app (or regaining a connection) refreshes at once only when
+// the last reading is at least this old; see the resume effect below.
+const RESUME_REFRESH_MS = 2 * 60 * 1000;
 // Forecasts change slowly, but a tab left open all afternoon used to keep
 // narrating the morning's forecast — the AI cards describe "the rest of today",
 // so the hourly data under them has to keep up.
@@ -401,6 +404,28 @@ export function useWeather(profile, credentialsVersion) {
     };
     schedule();
     return () => clearTimeout(timer);
+  }, [fetchCurrent, fetchAlerts]);
+
+  // Coming back online, or back to the front after a while, shouldn't wait up to
+  // five minutes for the next poll: a phone reopened after an hour, or a
+  // dashboard tablet whose Wi-Fi just returned, refreshes right away. Skipped
+  // when the last update is recent, so quick app switches cost nothing.
+  const lastUpdatedRef = useRef(lastUpdated);
+  lastUpdatedRef.current = lastUpdated;
+  useEffect(() => {
+    const refreshIfStale = () => {
+      if (document.visibilityState !== 'visible') return;
+      const last = lastUpdatedRef.current;
+      if (last && Date.now() - last.getTime() < RESUME_REFRESH_MS) return;
+      fetchCurrent();
+      fetchAlerts();
+    };
+    window.addEventListener('online', refreshIfStale);
+    document.addEventListener('visibilitychange', refreshIfStale);
+    return () => {
+      window.removeEventListener('online', refreshIfStale);
+      document.removeEventListener('visibilitychange', refreshIfStale);
+    };
   }, [fetchCurrent, fetchAlerts]);
 
   // Initial forecast loads stay in App (they wait for the first observation);

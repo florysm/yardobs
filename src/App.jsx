@@ -11,6 +11,7 @@ import KeyExpiryBanner from './components/KeyExpiryBanner';
 import AlertsSheet from './components/AlertsSheet';
 import ErrorBoundary from './components/ErrorBoundary';
 import LocationSetup from './components/LocationSetup';
+import DashboardView from './components/DashboardView';
 import { useWeather } from './hooks/useWeather';
 import { CHART_COLORS, META_COLORS, THEME_IDS, DISPLAY_MODES } from './themes.js';
 import { STORAGE_KEYS, readStored, writeStored } from './utils/storageKeys';
@@ -26,6 +27,17 @@ const RadarTab  = lazy(() => import('./components/RadarTab'));
 
 function LazyTabFallback() {
   return <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>Loading…</div>;
+}
+
+// Dashboard layout is per device. `?dashboard=1` (e.g. a tablet's home-screen
+// bookmark) turns it on and remembers it; `?dashboard=0` turns it off.
+function initDashboard() {
+  try {
+    const param = new URLSearchParams(window.location.search).get('dashboard');
+    if (param === '1') writeStored(STORAGE_KEYS.DASHBOARD, '1');
+    if (param === '0') writeStored(STORAGE_KEYS.DASHBOARD, null);
+  } catch { /* no URL support: fall back to the saved setting */ }
+  return readStored(STORAGE_KEYS.DASHBOARD) === '1';
 }
 
 function initProfile() {
@@ -56,6 +68,7 @@ export default function App() {
   const [defaultActivity, setDefaultActivity]   = useState(() => readStored(STORAGE_KEYS.DEFAULT_ACTIVITY, DEFAULT_ACTIVITY_ID));
   const [units, setUnits]                       = useState(() => readStored(STORAGE_KEYS.UNITS) || detectDefaultUnits());
   const [credentialsVersion, setCredentialsVersion] = useState(0);
+  const [dashboard, setDashboard]               = useState(initDashboard);
 
   const saveProfile = (p) => {
     setProfile(p);
@@ -116,6 +129,19 @@ export default function App() {
     writeStored(STORAGE_KEYS.UNITS, u);
   };
 
+  const saveDashboard = (on) => {
+    setDashboard(on);
+    writeStored(STORAGE_KEYS.DASHBOARD, on ? '1' : null);
+    // Drop a ?dashboard param so a reload keeps the choice just made.
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('dashboard')) {
+        url.searchParams.delete('dashboard');
+        window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+      }
+    } catch { /* leave the URL alone */ }
+  };
+
   const handleCloseSettings = () => {
     setPreviewCondition(null);
     setSettingsOpen(false);
@@ -153,6 +179,77 @@ export default function App() {
   }
 
   const isPreview = isPreviewProfile(profile);
+
+  // Sheets and toasts shared by both layouts.
+  const overlays = (
+    <>
+      {settingsOpen && (
+        <SettingsDrawer
+          onClose={handleCloseSettings}
+          mode={mode}
+          onSetMode={handleSetMode}
+          autoTheme={autoTheme}
+          previewCondition={previewCondition}
+          onSetPreview={setPreviewCondition}
+          profile={profile}
+          onSaveProfile={saveProfile}
+          defaultActivity={defaultActivity}
+          onSetDefaultActivity={saveDefaultActivity}
+          units={units}
+          onSetUnits={saveUnits}
+          isExploring={exploring}
+          onClearExplore={handleClearExplore}
+          dashboard={dashboard}
+          onSetDashboard={saveDashboard}
+        />
+      )}
+
+      {alertsOpen && alerts?.length > 0 && (
+        <AlertsSheet alerts={alerts} onClose={() => setAlertsOpen(false)} />
+      )}
+
+      {error && !isLoading && (
+        <div style={{
+          position: 'fixed', bottom: 16, left: 16, right: 16, maxWidth: 388, margin: '0 auto',
+          background: '#dc2626', color: '#fff', fontSize: 12, padding: '8px 14px',
+          borderRadius: 12, zIndex: 300,
+        }}>
+          {error}
+        </div>
+      )}
+    </>
+  );
+
+  if (dashboard) {
+    return (
+      <>
+        <ErrorBoundary>
+        <DashboardView
+          banner={isStationProfile(profile) && (
+            <KeyExpiryBanner keyExpires={keyExpires} onOpenSettings={() => setSettingsOpen(true)} />
+          )}
+          profile={profile}
+          current={currentWithAQI}
+          isLoading={isLoading}
+          error={error}
+          stationId={stationId}
+          hourlyForecast={hourlyForecast}
+          forecast={forecast}
+          todayObservedHigh={todayObservedHigh}
+          alerts={alerts}
+          lastUpdated={lastUpdated}
+          units={units}
+          fetchHistory={fetchHistory}
+          fetchHistoryDaily={fetchHistoryDaily}
+          onOpenAlerts={() => setAlertsOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        </ErrorBoundary>
+        {overlays}
+        <Analytics />
+      </>
+    );
+  }
 
   return (
     <>
@@ -237,38 +334,7 @@ export default function App() {
         )}
       </div>
 
-      {settingsOpen && (
-        <SettingsDrawer
-          onClose={handleCloseSettings}
-          mode={mode}
-          onSetMode={handleSetMode}
-          autoTheme={autoTheme}
-          previewCondition={previewCondition}
-          onSetPreview={setPreviewCondition}
-          profile={profile}
-          onSaveProfile={saveProfile}
-          defaultActivity={defaultActivity}
-          onSetDefaultActivity={saveDefaultActivity}
-          units={units}
-          onSetUnits={saveUnits}
-          isExploring={exploring}
-          onClearExplore={handleClearExplore}
-        />
-      )}
-
-      {alertsOpen && alerts?.length > 0 && (
-        <AlertsSheet alerts={alerts} onClose={() => setAlertsOpen(false)} />
-      )}
-
-      {error && !isLoading && (
-        <div style={{
-          position: 'fixed', bottom: 16, left: 16, right: 16, maxWidth: 388, margin: '0 auto',
-          background: '#dc2626', color: '#fff', fontSize: 12, padding: '8px 14px',
-          borderRadius: 12, zIndex: 300,
-        }}>
-          {error}
-        </div>
-      )}
+      {overlays}
     </div>
     <Analytics />
     </>

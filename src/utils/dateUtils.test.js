@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toDateStr, toISODate, historyCacheUsable, HISTORY_REFRESH_MS, addDays, sameDayLastYear, lastYearKey } from './dateUtils';
+import { toDateStr, toISODate, historyCacheUsable, HISTORY_REFRESH_MS, addDays, sameDayLastYear, lastYearKey, freshness, nextLocalHour } from './dateUtils';
 
 // TZ=UTC (npm script) means local getters equal the UTC values below.
 const d = (h) => new Date(Date.UTC(2026, 6, 14, h, 30, 0)); // 2026-07-14
@@ -62,5 +62,31 @@ describe('sameDayLastYear / lastYearKey', () => {
   });
   it('keeps the time of day', () => {
     expect(sameDayLastYear(new Date(Date.UTC(2026, 10, 17, 15, 45))).getUTCHours()).toBe(15);
+  });
+});
+
+describe('freshness', () => {
+  const now = Date.UTC(2026, 10, 19, 12, 0, 0);
+  const ago = (min) => new Date(now - min * 60_000);
+  it('grades the last update by age', () => {
+    expect(freshness(ago(0), now)).toBe('fresh');
+    expect(freshness(ago(14), now)).toBe('fresh');
+    expect(freshness(ago(15), now)).toBe('stale');
+    expect(freshness(ago(29), now)).toBe('stale');
+    expect(freshness(ago(30), now)).toBe('old');
+  });
+  it('treats never-loaded as old', () => {
+    expect(freshness(null, now)).toBe('old');
+  });
+});
+
+describe('nextLocalHour', () => {
+  it('is later today when the hour has not passed', () => {
+    const now = new Date(Date.UTC(2026, 10, 19, 1, 30));
+    expect(nextLocalHour(3, now)).toBe(Date.UTC(2026, 10, 19, 3, 0));
+  });
+  it('is tomorrow when the hour has passed or is now', () => {
+    expect(nextLocalHour(3, new Date(Date.UTC(2026, 10, 19, 3, 0)))).toBe(Date.UTC(2026, 10, 20, 3, 0));
+    expect(nextLocalHour(3, new Date(Date.UTC(2026, 10, 19, 22, 0)))).toBe(Date.UTC(2026, 10, 20, 3, 0));
   });
 });

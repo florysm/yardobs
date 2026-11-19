@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import {
   aqiCategory, fmt, fixed, degreesToCompass, getLocaleHour12,
-  fmtHourShort, fmtHourIso, fmtTimeTick, fmtClockTime,
+  fmtHourShort, fmtHourIso, fmtTimeTick, fmtClockTime, hour12FromResolved,
 } from './format';
 
 describe('aqiCategory', () => {
@@ -57,6 +57,19 @@ describe('time formatters (12h locale, TZ=UTC)', () => {
   it('fmtHourIso rounds to nearest hour', () => {
     expect(fmtHourIso('2026-07-14T13:10:00Z')).toBe('1pm');
     expect(fmtHourIso('2026-07-14T13:40:00Z')).toBe('2pm');
+  });
+  it('fmtHourIso reads the wall-clock text, not the device zone', () => {
+    // Open-Meteo hourly times carry no offset; old Safari parsed them as UTC.
+    expect(fmtHourIso('2026-11-19T19:00')).toBe('7pm');
+    expect(fmtHourIso('2026-11-19T00:00')).toBe('12am');
+    expect(fmtHourIso('2026-11-19T23:30')).toBe('12am');
+  });
+  it('hour12FromResolved falls back to hour12 when hourCycle is missing', () => {
+    expect(hour12FromResolved({ hourCycle: 'h23' })).toBe(false);
+    expect(hour12FromResolved({ hourCycle: 'h12' })).toBe(true);
+    expect(hour12FromResolved({ hour12: true })).toBe(true);   // iOS 10 Safari
+    expect(hour12FromResolved({ hour12: false })).toBe(false);
+    expect(hour12FromResolved({})).toBe(true);
   });
   it('fmtTimeTick', () => {
     expect(fmtTimeTick('00:10')).toBe('12am');

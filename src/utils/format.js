@@ -41,11 +41,18 @@ export function degreesToCompass(deg) {
 export function getLocaleHour12(locale) {
   try {
     const loc = locale ?? (typeof navigator !== 'undefined' ? navigator.language : undefined);
-    const { hourCycle } = new Intl.DateTimeFormat(loc, { hour: 'numeric' }).resolvedOptions();
-    return hourCycle === 'h11' || hourCycle === 'h12';
+    return hour12FromResolved(new Intl.DateTimeFormat(loc, { hour: 'numeric' }).resolvedOptions());
   } catch {
     return true;
   }
+}
+
+// hourCycle is recent (Safari 13+); older browsers (iOS 10 on an iPad 4) only
+// report hour12, and without this fallback they always got the 24-hour clock.
+export function hour12FromResolved({ hourCycle, hour12 } = {}) {
+  if (hourCycle) return hourCycle === 'h11' || hourCycle === 'h12';
+  if (typeof hour12 === 'boolean') return hour12;
+  return true;
 }
 
 // Integer hour (0–23) → compact label: '12A'/'1P' (12h locales) or '13' (24h locales).
@@ -57,9 +64,14 @@ export function fmtHourShort(h) {
 }
 
 // ISO timestamp → rounded hour label: '12am'/'1pm' (12h) or '13:00' (24h).
+// Read from the text, never `new Date(isoStr)`: Open-Meteo's times are the
+// place's wall clock with no offset, which modern browsers parse as local time
+// but older Safari (iOS 10) parses as UTC, shifting every label by the UTC
+// offset. The text is already the hour to show.
 export function fmtHourIso(isoStr) {
-  const d = new Date(isoStr);
-  const h = d.getMinutes() >= 30 ? (d.getHours() + 1) % 24 : d.getHours();
+  const hh = Number(String(isoStr).slice(11, 13));
+  const mm = Number(String(isoStr).slice(14, 16)) || 0;
+  const h = mm >= 30 ? (hh + 1) % 24 : hh;
   if (!getLocaleHour12()) return `${h}:00`;
   if (h === 0) return '12am';
   if (h < 12) return `${h}am`;

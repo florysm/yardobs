@@ -2,6 +2,17 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.13.1] - 2026-11-19
+
+### Fixed
+
+- Fixed the hourly forecast showing the wrong times on older iPads and iPhones (iOS 10), where every hour was off by your time zone's offset.
+- Fixed older iPads and iPhones showing a 24-hour clock even when the device is set to 12-hour time.
+
+### Changed
+
+- The Dashboard no longer shows the sun and moon card, which ran off the bottom of the screen on tablets.
+
 ## [1.13.0] - 2026-11-19
 
 ### Added

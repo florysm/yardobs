@@ -40,7 +40,11 @@ export default async function handler(req, res) {
   // station owners). There is deliberately no server-side fallback key: preview
   // mode is served entirely by Open-Meteo, so no shared credential is exposed to
   // anonymous traffic and no owner quota is spent on it.
-  const apiKey = req.headers['x-twc-key'];
+  // Trimmed and URL-encoded: the key is spliced into the upstream query string,
+  // so a stray space or symbol would otherwise garble the request and come
+  // back from TWC as a misleading 401 "key rejected".
+  const rawKey = String(req.headers['x-twc-key'] ?? '').trim();
+  const apiKey = rawKey ? encodeURIComponent(rawKey) : '';
   const keylessTypes = new Set(['hourly-forecast', 'alerts']);
   if (!apiKey && !keylessTypes.has(type)) {
     return res.status(401).json({ error: 'TWC API key required — add your station key in Settings.' });

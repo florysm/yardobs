@@ -8,7 +8,7 @@ A mobile-first personal weather station dashboard with AI-powered activity scori
 
 YardObs is a personal weather dashboard built around your own backyard weather station. Instead of checking a generic city forecast, it shows exactly what's happening at your location right now — temperature, wind, rain, air quality — and uses that data to score whether conditions are good for grilling, gardening, letting the dog out, or any other outdoor activity. It also remembers what the weather was doing a year ago today so you can see how this season compares.
 
-The Anthropic key stays on the server. Your TWC station key is stored only in your own browser and sent straight through to The Weather Company — it is never committed, never bundled, and never shared with other users. If you set up the iPhone widget, a copy also lives in that script on your phone.
+The Anthropic key stays on the server. Your TWC station key is stored only in your own browser and sent straight through to The Weather Company — it is never committed, never bundled, and never shared with other users. If you set up the iPhone widget, a copy also lives in that script on your phone, and if you send yourself a "Set up another device" link, the key travels inside that link.
 
 > **No weather station? No problem.** Use [Preview Mode](#option-a--preview-mode-no-weather-station-required) to explore the full app with any location — no API keys or hardware required.
 
@@ -67,6 +67,7 @@ The widget shows current conditions from your station (or your preview location)
 - **In-app Changelog** — version history accessible from the settings drawer
 - **iPhone Widget** — small and medium home screen widgets plus Lock Screen widgets via the free Scriptable app, set up from Settings with one copy-and-paste
 - **API Key Expiry Reminders** — record your TWC key's expiration date and YardObs (and the widget) warns you two weeks before it stops working
+- **Set Up Another Device** — send yourself a link from Settings that sets up your station and key on a second device, such as a tablet; the details ride in the part of the link browsers never send to a server
 - **Location Search** — geocoding via Open-Meteo to find any location for preview or comparison
 
 ## Tech Stack
@@ -135,6 +136,7 @@ yardobs/
 │   │   ├── alerts.js               # NWS alert normalization + severity helpers
 │   │   ├── apiFetch.js             # HTTP client: attaches the saved TWC key, throws errors with status
 │   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr, addDays, lastYearKey)
+│   │   ├── deviceSetup.js          # TWC key clean-up + "set up another device" link (build/read)
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
 │   │   ├── forecastView.js         # Forecast tab hourly strip + daily cards (on the place's clock)
 │   │   ├── format.js               # Display formatting helpers

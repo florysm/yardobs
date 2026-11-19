@@ -2,6 +2,20 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.13.0] - 2026-11-19
+
+### Added
+
+- A new "Set up another device" button in Settings → Station sends a link, by AirDrop, Messages or copy, that sets up your station and API key on another device like an iPad, with nothing to type.
+
+### Fixed
+
+- Fixed API keys being rejected when they were pasted with stray spaces or hidden characters.
+
+### Changed
+
+- The API key field now has a Show button and a character count, and a rejected key tells you when it looks mistyped, such as the wrong length.
+
 ## [1.12.0] - 2026-11-19
 
 ### Added

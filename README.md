@@ -63,6 +63,7 @@ The widget shows current conditions from your station (or your preview location)
 - **Units & Locale** — imperial (°F / mph / in) or metric (°C / km/h / mm) auto-detected from your device's region, with a manual override in Settings; time displays follow your device's 12h or 24h clock preference
 - **Adaptive Theming** — 6 themes (sunny, cloudy, rainy, stormy, light, dark) auto-selected from current conditions using your station's rain gauge as ground truth; manual override persisted in `localStorage`
 - **Preview Mode** — explore with any location without owning a personal weather station
+- **Dashboard Mode** — a one-screen landscape layout for a tablet on a stand, with a clock, a stale-data warning, and screen keep-awake; turn it on per device in Settings → Layout
 - **In-app Changelog** — version history accessible from the settings drawer
 - **iPhone Widget** — small and medium home screen widgets plus Lock Screen widgets via the free Scriptable app, set up from Settings with one copy-and-paste
 - **API Key Expiry Reminders** — record your TWC key's expiration date and YardObs (and the widget) warns you two weeks before it stops working
@@ -72,7 +73,7 @@ The widget shows current conditions from your station (or your preview location)
 
 | Layer | Technology | Notes |
 |---|---|---|
-| UI framework | React 19 + Vite 6 | Mobile-first, 420px max-width |
+| UI framework | React 19 + Vite 6 | Mobile-first, 420px max-width; full-width Dashboard layout for tablets; legacy bundle for iOS 10+ |
 | Styling | Tailwind CSS v3 + CSS variable themes | 6 condition-aware themes |
 | Charts | Recharts 2 | Line charts with optional YoY overlay |
 | Maps | Leaflet 1.9 + React-Leaflet 5 | Iowa Environmental Mesonet radar tiles, Stadia Maps basemap |
@@ -101,11 +102,13 @@ yardobs/
 │       ├── sanitize.js   # Request body size clamping (prevents token inflation)
 │       └── validate.js   # Pure validators for coords, station IDs, dates
 ├── src/
-│   ├── App.jsx           # Root: theme resolution, tab routing, settings drawer
+│   ├── App.jsx           # Root: theme resolution, phone/dashboard layout, tab routing, settings drawer
 │   ├── themes.js         # Single source of truth for all theme color values
+│   ├── polyfills.js      # Stand-ins for browser APIs old Safari lacks (AbortController)
 │   ├── components/
 │   │   ├── TopBar.jsx              # Station ID + live last-updated timestamp
 │   │   ├── HeroCard.jsx            # Current temp hero; toggles to AI daily briefing
+│   │   ├── DashboardView.jsx       # One-screen tablet layout (clock, stale-data warning, keep-awake, nightly reload)
 │   │   ├── NavTabs.jsx             # Now / Trends / Forecast / Radar tab bar
 │   │   ├── NowTab.jsx              # Conditions detail grid + Activity Score Card
 │   │   ├── ActivityScoreCard.jsx   # Scored activity picker with factor breakdown

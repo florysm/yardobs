@@ -2,6 +2,20 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.12.0] - 2026-11-19
+
+### Added
+
+- A new Dashboard layout for a tablet left on a stand puts current conditions, the AI backyard briefing, the next 12 hours, the 5-day forecast, air quality and sun/moon on one landscape screen; turn it on in Settings → Layout (saved on that device only).
+- The Dashboard shows a clock and how long ago the weather last updated, turning amber after 15 minutes and red after 30 so a dropped connection is obvious.
+- The Dashboard keeps the screen awake where the browser allows it and quietly reloads itself once a night to stay running smoothly.
+- YardObs now loads on older iPads and iPhones running iOS 10 through 13, which previously showed a blank page.
+
+### Changed
+
+- Coming back to the app, or getting your connection back, now refreshes conditions right away instead of waiting for the next five-minute update.
+- The installed app can now rotate to landscape.
+
 ## [1.11.0] - 2026-11-18
 
 ### Changed

@@ -40,6 +40,7 @@ export default function SettingsDrawer({
   defaultActivity, onSetDefaultActivity,
   units, onSetUnits,
   isExploring, onClearExplore,
+  dashboard, onSetDashboard,
 }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -313,6 +314,42 @@ export default function SettingsDrawer({
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Layout section — saved on this device only */}
+        <div style={{ marginBottom: 22 }}>
+          <div className="y-label">Layout</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[{ on: false, label: 'Phone' }, { on: true, label: 'Dashboard' }].map(opt => {
+              const isActive = !!dashboard === opt.on;
+              return (
+                <button
+                  key={opt.label}
+                  onClick={() => onSetDashboard(opt.on)}
+                  aria-pressed={isActive}
+                  style={{
+                    flex: 1,
+                    padding: '8px 14px',
+                    textAlign: 'center',
+                    background: isActive ? 'var(--accent)' : 'var(--soft)',
+                    border: `1.5px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 20,
+                    cursor: 'pointer',
+                    fontSize: 13, fontWeight: isActive ? 600 : 400,
+                    color: isActive ? '#fff' : 'var(--tp)',
+                    fontFamily: 'var(--font-body)',
+                    boxShadow: isActive ? '0 0 0 3px var(--glow)' : 'none',
+                    transition: 'all var(--tr-fast)',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--tm)', marginTop: 8, lineHeight: 1.5 }}>
+            Dashboard puts everything on one screen for a tablet left on a stand. Saved on this device only.
           </div>
         </div>
 

@@ -22,7 +22,7 @@ function groupWidthPx(hourCount) {
   return hourCount * HOUR_CARD_W + Math.max(0, hourCount - 1) * HOUR_CARD_GAP;
 }
 
-function HourlyCard({ hr, units }) {
+export function HourlyCard({ hr, units }) {
   return (
     <div
       className="fc-card"
@@ -47,7 +47,7 @@ function HourlyCard({ hr, units }) {
   );
 }
 
-function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh, units }) {
+export function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh, units }) {
   return (
     <div
       className="fc-card"
@@ -56,7 +56,7 @@ function DailyCard({ day, isSelected, onClick, currentTemp, todayObservedHigh, u
         flex: '0 0 70px',
         padding: '12px 8px',
         textAlign: 'center',
-        cursor: 'pointer',
+        cursor: onClick ? 'pointer' : 'default',
         ...(isSelected ? { background: 'var(--soft)', borderColor: 'var(--accent)' } : {}),
       }}
     >

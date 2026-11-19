@@ -232,7 +232,9 @@ function InsightView({ insight, isLoading, toggle }) {
 
 // ── HeroCard ──────────────────────────────────────────────────────────────────
 
-export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast, units }) {
+// `dashboard` shows conditions and the AI briefing together, with no toggle,
+// for a tablet left on a stand (DashboardView).
+export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast, units, dashboard = false }) {
   const [showHint,      setShowHint]      = useState(false);
   const [view,          setView]          = useState('conditions');
   const [contentFade,   setContentFade]   = useState(true);
@@ -269,7 +271,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
   const period = currentDayPart(clock.wall);
   const { data: insight, loading: insightLoading } = useInsight({
     storageKey: STORAGE_KEYS.insightKey(insightId, clock.date, period, units),
-    enabled: view === 'insights' && !!current && !!hourlyForecast,
+    enabled: (dashboard || view === 'insights') && !!current && !!hourlyForecast,
     deps: [current, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast],
     buildBody: async () => {
       // Forecast-model data (preview, Explore) has no station history to compare.
@@ -353,7 +355,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
       style={{
-        margin: '0 16px',
+        margin: dashboard ? 0 : '0 16px',
         borderRadius: 24,
         background: 'var(--hero)',
         padding: '26px 24px 22px',
@@ -391,7 +393,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
         opacity: contentFade ? 1 : 0,
         transition: 'opacity var(--tr-fast)',
       }}>
-        {view === 'conditions' ? (
+        {(dashboard || view === 'conditions') && (
           <>
             {/* Top row: label + toggle */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
@@ -403,7 +405,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
                   {condition}
                 </div>
               </div>
-              {togglePill}
+              {dashboard ? null : togglePill}
             </div>
 
             {/* Temperature row — icon sits to the right, aligned with the numerals */}
@@ -445,7 +447,12 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
               ))}
             </div>
           </>
-        ) : (
+        )}
+        {dashboard ? (
+          <div style={{ marginTop: 22, paddingTop: 20, borderTop: '1px solid var(--hero-skel)' }}>
+            <InsightView insight={insight} isLoading={insightLoading} toggle={null} />
+          </div>
+        ) : view === 'insights' && (
           <InsightView insight={insight} isLoading={insightLoading} toggle={togglePill} />
         )}
       </div>

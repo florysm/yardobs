@@ -354,3 +354,53 @@ input:focus-visible {
   background: var(--soft);
   color: var(--accent);
 }
+
+/* ── Dashboard layout (DashboardView.jsx) ────────────────────────────────────
+ * A tablet left on a stand, landscape. Spacing uses margins plus grid-gap
+ * rather than flex `gap`, which older iPad Safari doesn't support.
+ * Below 760px the two columns stack, so it still works in split view.
+ * ─────────────────────────────────────────────────────────────────────────── */
+.dash {
+  max-width: 1280px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 16px 20px 24px;
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+}
+.dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.dash-cols {
+  display: flex;
+  align-items: flex-start;
+}
+.dash-left {
+  flex: 0 0 42%;
+  min-width: 0;
+  margin-right: 16px;
+}
+.dash-right {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dash-section + .dash-section { margin-top: 16px; }
+.dash-metrics,
+.dash-hours,
+.dash-days {
+  display: grid;
+  grid-gap: 8px;
+  gap: 8px;
+}
+.dash-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dash-hours   { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.dash-days    { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+@media (max-width: 760px) {
+  .dash-cols { display: block; }
+  .dash-left { margin-right: 0; margin-bottom: 16px; }
+  .dash-hours { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

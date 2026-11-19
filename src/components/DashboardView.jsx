@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import HeroCard from './HeroCard';
 import MetricCard from './MetricCard';
 import AlertBar from './AlertBar';
-import SunMoonCard from './SunMoonCard';
 import { HourlyCard, DailyCard } from './ForecastTab';
 import { buildHours, buildDays } from '../utils/forecastView';
 import { placeClock, placeTimeZone } from '../utils/placeTime';
@@ -209,10 +208,6 @@ export default function DashboardView({
               ) : (
                 <div className="y-card" style={{ fontSize: 13, color: 'var(--tm)', textAlign: 'center' }}>Forecast loading…</div>
               )}
-            </div>
-
-            <div className="dash-section">
-              <SunMoonCard lat={current?.lat} lon={current?.lon} tz={tz} />
             </div>
           </div>
         </div>

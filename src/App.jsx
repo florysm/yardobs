@@ -20,6 +20,7 @@ import { DEFAULT_ACTIVITY_ID } from './utils/activities';
 import { toDateStr } from './utils/dateUtils';
 import { detectDefaultUnits } from './utils/units';
 import { resolveAutoTheme } from './utils/sky';
+import { readDeviceLink } from './utils/deviceSetup';
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 const TrendsLockedPlaceholder = lazy(() => import('./components/TrendsLockedPlaceholder'));
@@ -40,7 +41,24 @@ function initDashboard() {
   return readStored(STORAGE_KEYS.DASHBOARD) === '1';
 }
 
+// A "set up another device" link (#setup&station=…&key=…, see deviceSetup.js)
+// saves its station, key and expiry here, replacing whatever profile this
+// device had, then removes itself from the address bar so the key isn't left
+// in view, in history, or in a bookmark made later.
+function consumeDeviceLink() {
+  let link;
+  try { link = readDeviceLink(window.location.hash); } catch { return; }
+  if (!link) return;
+  writeStored(STORAGE_KEYS.TWC_API_KEY, link.key);
+  writeStored(STORAGE_KEYS.TWC_KEY_EXPIRES, link.expires);
+  writeStored(STORAGE_KEYS.PROFILE, JSON.stringify({ mode: PROFILE_MODES.STATION, stationId: link.stationId }));
+  try {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  } catch { /* the fragment stays visible but is harmless */ }
+}
+
 function initProfile() {
+  consumeDeviceLink();
   try {
     const raw = readStored(STORAGE_KEYS.PROFILE);
     if (raw) return JSON.parse(raw);

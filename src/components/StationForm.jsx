@@ -2,12 +2,15 @@ import { useState } from 'react';
 import { STORAGE_KEYS, readStored, writeStored } from '../utils/storageKeys';
 import { apiFetch } from '../utils/apiFetch';
 import { isValidExpiryDate, daysUntilExpiry, KEY_RENEW_URL } from '../utils/keyExpiry';
+import { cleanKey, keyShapeHint, buildDeviceLink } from '../utils/deviceSetup';
 
 export default function StationForm({ initialStationId, onSave }) {
   const [stationId, setStationId] = useState(initialStationId ?? '');
   const [twcApiKey, setTwcApiKey] = useState('');
   const [saveStatus, setSaveStatus] = useState('idle'); // idle | testing | success | error
   const [errorMsg, setErrorMsg] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [linkStatus, setLinkStatus] = useState(null); // null | 'shared' | 'copied' | link text to copy by hand
 
   const storedKey = readStored(STORAGE_KEYS.TWC_API_KEY, '');
   const hasKey = storedKey.length > 0;
@@ -36,7 +39,12 @@ export default function StationForm({ initialStationId, onSave }) {
     } catch (err) {
       // `status` means the server answered (bad key, unknown station); without
       // it the request never got there.
-      setErrorMsg(err?.status ? err.message : 'Could not reach the server — check your connection.');
+      // A rejected key that doesn't look like a TWC key is almost always a
+      // typo, so say what's off rather than only "rejected".
+      const hint = err?.status === 401 ? keyShapeHint(key) : null;
+      setErrorMsg(err?.status
+        ? (hint ? `${err.message}. ${hint}` : err.message)
+        : 'Could not reach the server — check your connection.');
       setSaveStatus('error');
       return;
     }
@@ -52,6 +60,30 @@ export default function StationForm({ initialStationId, onSave }) {
     setSaveStatus('success');
     setTwcApiKey('');
     setTimeout(() => setSaveStatus('idle'), 4000);
+  };
+
+  // "Set up another device": a link carrying this station, key and expiry,
+  // sent by the share sheet (AirDrop, Messages) or copied. See deviceSetup.js.
+  const canLink = hasKey && !!initialStationId;
+  const handleDeviceLink = async () => {
+    const link = buildDeviceLink(window.location.origin, {
+      stationId: initialStationId, key: storedKey, expires: storedExpiry || null,
+    });
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'YardObs setup link', url: link });
+        setLinkStatus('shared');
+        return;
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return; // closed the share sheet
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      setLinkStatus('copied');
+    } catch {
+      setLinkStatus(link); // no share sheet or clipboard: show it to copy by hand
+    }
   };
 
   const inputStyle = {
@@ -81,9 +113,30 @@ export default function StationForm({ initialStationId, onSave }) {
         <label style={labelStyle}>
           TWC API Key{hasKey ? ' (leave blank to keep existing)' : ''}
         </label>
-        <input style={inputStyle} type="password"
-          placeholder={hasKey ? '••••••••  (unchanged)' : 'Your Weather Company API key'}
-          value={twcApiKey} onChange={e => { setTwcApiKey(e.target.value); setSaveStatus('idle'); }} autoComplete="off" />
+        <div style={{ position: 'relative' }}>
+          {/* Cleaned as it's entered: pasted keys often carry spaces or
+              invisible characters that TWC would reject. Shown as plain text
+              on request, since a 32-character key typed blind is easy to get
+              wrong; autocapitalize/autocorrect are off so iOS can't "fix" it. */}
+          <input style={{ ...inputStyle, paddingRight: 64 }} type={showKey ? 'text' : 'password'}
+            placeholder={hasKey ? '••••••••  (unchanged)' : 'Your Weather Company API key'}
+            value={twcApiKey} onChange={e => { setTwcApiKey(cleanKey(e.target.value)); setSaveStatus('idle'); }}
+            autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+          <button type="button" onClick={() => setShowKey(v => !v)}
+            aria-label={showKey ? 'Hide API key' : 'Show API key'}
+            style={{
+              position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+              background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer',
+              fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-body)', padding: '6px 8px',
+            }}>
+            {showKey ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        {twcApiKey && (
+          <div style={{ ...hintStyle, fontFamily: 'var(--font-mono)' }}>
+            {twcApiKey.length} characters{keyShapeHint(twcApiKey) ? ` · ${keyShapeHint(twcApiKey)}` : ''}
+          </div>
+        )}
         <div style={hintStyle}>
           Get your TWC API key at{' '}
           <a href={KEY_RENEW_URL} target="_blank" rel="noopener noreferrer"
@@ -120,6 +173,25 @@ export default function StationForm({ initialStationId, onSave }) {
       }}>
         {isBusy ? 'Testing connection…' : 'Test & Save'}
       </button>
+      {canLink && (
+        <div style={{ marginTop: 14 }}>
+          <button type="button" onClick={handleDeviceLink} style={{
+            width: '100%', padding: '10px 0', borderRadius: 12,
+            background: 'var(--soft)', border: '1px solid var(--border)', color: 'var(--accent)',
+            fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)', cursor: 'pointer',
+          }}>
+            {linkStatus === 'copied' ? 'Link copied ✓' : linkStatus === 'shared' ? 'Link sent ✓' : 'Set up another device'}
+          </button>
+          {linkStatus && linkStatus !== 'copied' && linkStatus !== 'shared' && (
+            <input readOnly value={linkStatus} onFocus={e => e.target.select()}
+              style={{ ...inputStyle, marginTop: 8, fontSize: 11 }} />
+          )}
+          <div style={hintStyle}>
+            Sends a link that sets up your station and key on another device, like an iPad: AirDrop or message it to yourself and open it there.
+            The link contains your API key, so only send it to your own devices.
+          </div>
+        </div>
+      )}
     </form>
   );
 }

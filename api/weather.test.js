@@ -28,6 +28,18 @@ describe('/api/weather', () => {
     expect(res.json).toHaveBeenCalledWith({ observations: [{ stationID: 'S1' }] });
   });
 
+  it('trims and URL-encodes the key before splicing it into the TWC URL', async () => {
+    upstream(200, '{"observations":[]}');
+    await call({ type: 'current', stationId: 'S1' }, { 'x-twc-key': ' ab+c&d ' });
+    const url = fetch.mock.calls[0][0];
+    expect(url).toMatch(/apiKey=ab%2Bc%26d$/);
+  });
+
+  it('treats a blank key as missing', async () => {
+    const res = await call({ type: 'current', stationId: 'S1' }, { 'x-twc-key': '   ' });
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
   it('turns a TWC 204 on a history route into an empty, cacheable day', async () => {
     for (const type of ['history', 'history-daily']) {
       upstream(204, '');

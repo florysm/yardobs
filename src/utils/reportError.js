@@ -47,13 +47,27 @@ export function reportError(error, context) {
   } catch { /* reporting must never cause an error of its own */ }
 }
 
+// iOS 10.3's Safari runs <script type="module"> but not `nomodule`, so it
+// tries to parse the modern bundle too, fails on syntax it doesn't know
+// (object spread), and then runs the legacy bundle as intended. The parse
+// error is expected there and says nothing about the app working.
+export function isModernBundleParseError(message, filename) {
+  return /SyntaxError/.test(String(message ?? ''))
+    && /\/assets\/[^/]+\.js/.test(String(filename ?? ''))
+    && !/-legacy/.test(String(filename));
+}
+
 // Errors no error boundary sees: event handlers, timers, promise rejections.
 export function installGlobalErrorReporting() {
   if (typeof window === 'undefined') return;
   window.addEventListener('error', (e) => {
     // Cross-origin script errors arrive as a bare "Script error." with nothing to act on.
     if (!e || (!e.error && e.message === 'Script error.')) return;
-    reportError(e.error ?? e.message, { where: 'window.onerror' });
+    if (isModernBundleParseError(e.message, e.filename)) return;
+    const err = e.error ?? new Error(String(e.message ?? 'Unknown error'));
+    // Errors without a stack (parse errors) still say which file and line.
+    if (!e.error?.stack && e.filename) err.stack = `${e.filename}:${e.lineno ?? 0}:${e.colno ?? 0}`;
+    reportError(err, { where: 'window.onerror' });
   });
   window.addEventListener('unhandledrejection', (e) => {
     const reason = e?.reason;

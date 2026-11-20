@@ -47,3 +47,16 @@ describe('reportError', () => {
     expect(() => reportError(new Error('boom'))).not.toThrow();
   });
 });
+
+describe('isModernBundleParseError', () => {
+  it('skips old Safari failing to parse the modern bundle', async () => {
+    const { isModernBundleParseError } = await load();
+    expect(isModernBundleParseError("SyntaxError: Unexpected token '...'", 'https://yardobs.app/assets/index-Ab12.js')).toBe(true);
+  });
+  it('keeps parse errors in the legacy bundle, and every other error', async () => {
+    const { isModernBundleParseError } = await load();
+    expect(isModernBundleParseError('SyntaxError: x', 'https://yardobs.app/assets/index-legacy-Ab12.js')).toBe(false);
+    expect(isModernBundleParseError('TypeError: x', 'https://yardobs.app/assets/index-Ab12.js')).toBe(false);
+    expect(isModernBundleParseError('SyntaxError: x', '')).toBe(false);
+  });
+});

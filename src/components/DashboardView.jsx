@@ -11,7 +11,9 @@ import { fmt, fmtClockTime, aqiCategory } from '../utils/format';
 import { beaufort } from '../utils/weatherCalc';
 import { formatTempParts, formatWindParts, formatPrecipTotal, convertTemp } from '../utils/units';
 import { freshness, nextLocalHour, toDateStr } from '../utils/dateUtils';
-import { DASHBOARD_SIZES, SIZE_LABELS, resolveDashboardSize, FIT, FIT_MIN_WIDTH, nextFit } from '../utils/dashboardSize';
+import {
+  DASHBOARD_SIZES, SIZE_LABELS, resolveDashboardSize, FIT, FIT_MIN_WIDTH, FIT_MAX_STEPS, MAX_FIT_SCALE, nextFit,
+} from '../utils/dashboardSize';
 import { sparklinePoints } from '../utils/sparkline';
 
 import { isPreviewProfile, isExploring } from '../utils/profile';

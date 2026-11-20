@@ -2,6 +2,16 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.14.3] - 2026-11-20
+
+### Fixed
+
+- Fixed the Dashboard showing "The dashboard couldn't load" on every tablet and desktop screen since 1.14.1.
+
+### Changed
+
+- Error reports no longer include a harmless startup message from older iPads, and parse errors now say which file they came from.
+
 ## [1.14.2] - 2026-11-20
 
 ### Fixed

@@ -2,6 +2,25 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.14.0] - 2026-11-20
+
+### Added
+
+- The Dashboard now comes in three sizes: Large for a tablet across the room, Normal (the current layout), and Detailed for up close or a big screen. Pick one from the new "Aa" button or Settings → Layout.
+- A new Auto size, the default, picks Normal or Detailed from your screen size.
+- Detailed adds a "Today so far" card with the day's high, low, rain total and a temperature line since midnight, and brings back the sun and moon card.
+- "Set up another device" can now open the other device straight into Dashboard mode.
+- If a home-screen app opens without your station, you can paste a setup link into the first-run screen or the Station ID box to set it up.
+
+### Fixed
+
+- Fixed a setup link losing your station and key when you added YardObs to the Home Screen from the page it opened.
+- Setup links now always point to yardobs.app, even when made on a device that opened YardObs at its yardobs.vercel.app address.
+
+### Changed
+
+- The API key inside a setup link is now scrambled, so it can't be read from the address bar or a screenshot. Anyone with the whole link can still use it, so only send it to your own devices.
+
 ## [1.13.1] - 2026-11-19
 
 ### Fixed

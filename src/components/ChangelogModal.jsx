@@ -52,10 +52,13 @@ export default function ChangelogModal({ onClose, stationId = null, isPreview = 
         onClick={onClose}
         aria-hidden="true"
         style={{
-          position: 'fixed', inset: 0,
+          // top/right/bottom/left: iOS 10 ignores `inset`. cursor:pointer: iOS
+          // Safari doesn't deliver taps on a plain div without it.
+          position: 'fixed', top: 0, right: 0, bottom: 0, left: 0,
           background: 'rgba(0,0,0,0.6)',
           backdropFilter: 'blur(6px)',
-          zIndex: 210,
+          WebkitBackdropFilter: 'blur(6px)',
+          zIndex: 210, cursor: 'pointer',
         }}
       />
 

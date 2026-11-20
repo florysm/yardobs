@@ -44,7 +44,7 @@ YardObs is a **Progressive Web App (PWA)** — you can install it directly to yo
 iOS only allows home screen widgets from native apps, so YardObs provides one through the free [Scriptable](https://apps.apple.com/app/scriptable/id1405459188) app:
 
 1. Install Scriptable from the App Store
-2. In YardObs, open **Settings → iPhone Home Screen Widget** and tap **Copy widget script**
+2. In YardObs, open **Settings → Home Screen widget** and tap **Copy widget script**
 3. In Scriptable, tap **+**, paste, and name the script "YardObs"
 4. Long-press your home screen, add a small or medium Scriptable widget, then edit it and choose **YardObs**
 
@@ -121,7 +121,8 @@ yardobs/
 │   │   ├── ForecastTab.jsx         # 5-day + hourly forecast view
 │   │   ├── RadarTab.jsx            # Animated radar map (lazy-loaded)
 │   │   ├── SunMoonCard.jsx         # Sunrise/sunset and moon phase, rise and set
-│   │   ├── SettingsDrawer.jsx      # Theme picker, station setup, widget setup, changelog viewer
+│   │   ├── SettingsDrawer.jsx      # Settings: bottom sheet on phones, side panel on tablets; theme, units, layout, station, widget, changelog
+│   │   ├── Collapsible.jsx         # One-line Settings row that opens in place
 │   │   ├── LocationSetup.jsx       # Onboarding: station ID entry or preview mode
 │   │   ├── LocationSearchInput.jsx # Geocoding search for preview mode
 │   │   ├── ChangelogModal.jsx      # In-app changelog viewer
@@ -130,6 +131,7 @@ yardobs/
 │   │   └── ErrorBoundary.jsx       # React error boundary (supports reload)
 │   ├── hooks/
 │   │   ├── useInsight.js           # Shared AI-insight fetch + localStorage cache for the three cards
+│   │   ├── useWindowSize.js        # Window size, kept current through rotation
 │   │   ├── useTrendsData.js        # What the Trends tab fetches, and its loading state
 │   │   └── useWeather.js           # Data fetching, polling, caching, alert fetch
 │   ├── utils/
@@ -155,6 +157,7 @@ yardobs/
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
 │   │   ├── sparkline.js            # Points for the Detailed dashboard's since-midnight temperature line
+│   │   ├── settingsSummary.js      # Station status line for Settings, and the side-panel width breakpoint
 │   │   ├── sky.js                  # Theme + hero condition rules (code groups, sensor thresholds)
 │   │   ├── sourceTypes.js          # Station vs. forecast-model source type constants
 │   │   ├── storageKeys.js          # localStorage key constants + readStored/writeStored

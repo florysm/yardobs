@@ -237,6 +237,69 @@ body.theme-dark {
   }
   .y-pref-row:hover { background: var(--card-h); }
 
+  /* Settings: collapsible row (Collapsible.jsx). Content laid out by the inner
+     span: iOS 10 ignores flex on <button>. */
+  .y-collapsible-row {
+    display: block;
+    width: 100%;
+    padding: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    cursor: pointer;
+    font-family: var(--font-body);
+    text-align: left;
+    transition: background var(--tr-fast);
+  }
+  .y-collapsible-row:hover { background: var(--card-h); }
+  .y-collapsible-inner {
+    display: flex;
+    align-items: center;
+    padding: 13px 14px;
+  }
+
+  /* Settings: header that stays at the top while the sheet scrolls.
+     -webkit-sticky for iOS 10–12. */
+  .y-sheet-header {
+    position: -webkit-sticky;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0 -20px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Settings: segmented control (theme, units, layout, size). Margins rather
+     than flex gap, which iOS 10 ignores. */
+  .y-seg {
+    display: flex;
+    padding: 3px;
+    background: var(--soft);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .y-seg-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    margin: 0;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--tp);
+    font-family: var(--font-body);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background var(--tr-fast), color var(--tr-fast);
+  }
+  .y-seg-btn + .y-seg-btn { margin-left: 3px; }
+  .y-seg-btn[aria-pressed="true"] {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+
   /* Live pulse dot */
   .live-dot {
     width: 5px;

@@ -98,8 +98,10 @@ export default function AlertsSheet({ alerts, onClose }) {
         onClick={onClose}
         aria-hidden="true"
         style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          backdropFilter: 'blur(5px)', zIndex: 190,
+          // top/right/bottom/left: iOS 10 ignores `inset`. cursor:pointer: iOS
+          // Safari doesn't deliver taps on a plain div without it.
+          position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, background: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)', zIndex: 190, cursor: 'pointer',
         }}
       />
       <div

@@ -340,6 +340,7 @@ input:focus-visible {
   width: 34px; height: 34px; border-radius: 50%;
   border: 1px solid var(--border); background: var(--card);
   color: var(--tm); cursor: pointer; font-size: 16px;
+  padding: 0; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   transition: background var(--tr-fast), color var(--tr-fast); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
@@ -349,6 +350,17 @@ input:focus-visible {
   border: 1px solid color-mix(in srgb, var(--score-marginal) 35%, transparent);
   color: var(--score-marginal);
 }
+
+/* Old Safari (iOS 10) ignores flex on <button> itself, so the icon is
+ * centered by a span inside it instead. */
+.btn-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.btn-center > svg { display: block; }
 
 .topbar-settings-btn:hover {
   background: var(--soft);
@@ -406,17 +418,20 @@ input:focus-visible {
 .dash-clock    { font-size: 28px; }
 .dash-updated  { font-size: 11px; }
 
-/* Large: for across the room. Everything below the header is scaled with
- * `zoom` (Safari has had it since long before iOS 10; Chrome and Firefox 126+
- * too), and DashboardView shows less so the scaled content still fits. */
-.dash--large .dash-cols { zoom: 1.35; }
+/* Fit to screen: on tablet-sized windows DashboardView lays the page out at a
+ * set width and scales it to fill the window (useFitToScreen), so it sets the
+ * width and position itself. Large shows less, so it scales up the most. */
+.dash--fit {
+  max-width: none;
+  margin: 0;
+  min-height: 0;
+}
 .dash--large .dash-left { flex-basis: 46%; }
-.dash--large .dash-wordmark { font-size: 30px; }
-.dash--large .dash-place    { font-size: 16px; }
-.dash--large .dash-clock    { font-size: 48px; }
-.dash--large .dash-updated  { font-size: 15px; }
+.dash--large .dash-hours { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dash--large .dash-clock   { font-size: 34px; }
+.dash--large .dash-updated { font-size: 12px; }
 
-/* Detailed: up close or on a big screen; uses the full width. */
+/* Detailed on a window too narrow to fit: use the full width. */
 .dash--detailed { max-width: 1600px; }
 
 @media (max-width: 760px) {
@@ -424,5 +439,4 @@ input:focus-visible {
   .dash-left { margin-right: 0; margin-bottom: 16px; }
   .dash-hours { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dash-hours--6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .dash--large .dash-cols { zoom: 1.15; }
 }

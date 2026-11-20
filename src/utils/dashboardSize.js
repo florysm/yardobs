@@ -29,3 +29,34 @@ export function resolveForWindow(pref) {
   if (typeof window === 'undefined') return resolveDashboardSize(pref, 0, 0);
   return resolveDashboardSize(pref, window.innerWidth, window.innerHeight);
 }
+
+// ── Fit to screen ───────────────────────────────────────────────────────────
+// On a tablet-sized window the dashboard is laid out at a set width and then
+// scaled to fill the screen (DashboardView). Each size starts at `base` and
+// may narrow toward `min`: narrower makes the content taller relative to its
+// width, so a short layout (Large) grows until it fills the height instead of
+// leaving the bottom of the screen empty. Below FIT_MIN_WIDTH (phones, slim
+// split view) the dashboard scrolls normally; it matches the 760px breakpoint
+// in index.css where the columns stack.
+export const FIT_MIN_WIDTH = 760;
+export const FIT = {
+  large:    { base: 820,  min: 680 },
+  normal:   { base: 1024, min: 880 },
+  detailed: { base: 1280, min: 1060 },
+};
+export const MAX_FIT_SCALE = 2;
+export const FIT_MAX_STEPS = 10;
+const SLACK = 1.06; // leftover space under 6% is left alone
+const STEP = 0.06;
+
+// One step of fitting. Given the window, the layout width just tried and the
+// content height it produced, returns { width } to try a different width, or
+// { width, scale } when that width is the one to use.
+export function nextFit({ winW, winH, width, contentH, size }) {
+  const { base, min } = FIT[size] ?? FIT.normal;
+  const sW = winW / width;
+  const sH = contentH > 0 ? winH / contentH : sW;
+  if (sH > sW * SLACK && width > min) return { width: Math.max(min, Math.round(width * (1 - STEP))) };
+  if (sW > sH * SLACK && width < base) return { width: Math.min(base, Math.round(width * (1 + STEP))) };
+  return { width, scale: Math.min(sW, sH, MAX_FIT_SCALE) };
+}

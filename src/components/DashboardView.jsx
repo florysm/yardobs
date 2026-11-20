@@ -1,6 +1,7 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import HeroCard from './HeroCard';
 import SunMoonCard from './SunMoonCard';
+import ErrorBoundary from './ErrorBoundary';
 import MetricCard from './MetricCard';
 import AlertBar from './AlertBar';
 import { HourlyCard, DailyCard } from './ForecastTab';
@@ -10,9 +11,9 @@ import { fmt, fmtClockTime, aqiCategory } from '../utils/format';
 import { beaufort } from '../utils/weatherCalc';
 import { formatTempParts, formatWindParts, formatPrecipTotal, convertTemp } from '../utils/units';
 import { freshness, nextLocalHour, toDateStr } from '../utils/dateUtils';
-import { DASHBOARD_SIZES, SIZE_LABELS, resolveDashboardSize } from '../utils/dashboardSize';
+import { DASHBOARD_SIZES, SIZE_LABELS, resolveDashboardSize, FIT, FIT_MIN_WIDTH, nextFit } from '../utils/dashboardSize';
+import { sparklinePoints } from '../utils/sparkline';
 
-const DashboardTodayChart = lazy(() => import('./DashboardTodayChart'));
 import { isPreviewProfile, isExploring } from '../utils/profile';
 
 // One-screen layout for a tablet left on a stand: no tabs, nothing hidden
@@ -112,6 +113,55 @@ function useWindowSize() {
   return size;
 }
 
+// Lays the dashboard out at a set width, measures how tall that makes it, and
+// scales it to fill the window (see nextFit in utils/dashboardSize.js). Runs
+// after every render, so content that arrives later (forecast, AI briefing)
+// is refitted; it settles in a few renders and then stops changing anything.
+// Scaling uses transform, which every Safari since long before iOS 10 handles
+// (CSS zoom doesn't lay grids out correctly on iOS 10).
+function useFitToScreen(size, win) {
+  const fit = win.w >= FIT_MIN_WIDTH;
+  const key = `${size}|${win.w}x${win.h}`;
+  const base = (FIT[size] ?? FIT.normal).base;
+  const ref = useRef(null);
+  const fresh = { key, width: base, scale: null, contentH: 0, steps: 0 };
+  const [state, setState] = useState(fresh);
+  const cur = state.key === key ? state : fresh; // new window or size: start over
+
+  useLayoutEffect(() => {
+    if (!fit || !ref.current) return;
+    const contentH = ref.current.offsetHeight; // layout height; transform doesn't change it
+    const r = nextFit({ winW: win.w, winH: win.h, width: cur.width, contentH, size });
+    const next = (r.scale == null && cur.steps < FIT_MAX_STEPS)
+      ? { ...cur, width: r.width, contentH, steps: cur.steps + 1 }
+      : { ...cur, contentH, scale: r.scale ?? Math.min(win.w / cur.width, win.h / contentH, MAX_FIT_SCALE) };
+    const same = next.key === state.key && next.width === state.width && next.steps === state.steps
+      && next.contentH === state.contentH && Math.abs((next.scale ?? 0) - (state.scale ?? 0)) < 0.002;
+    if (!same) setState(next);
+  });
+
+  // Webfonts finishing late change text heights without a re-render.
+  const [, bump] = useState(0);
+  useEffect(() => {
+    let live = true;
+    document.fonts?.ready?.then(() => { if (live) bump(n => n + 1); });
+    return () => { live = false; };
+  }, []);
+
+  if (!fit) return { fit, ref, style: undefined };
+  const scale = cur.scale ?? win.w / cur.width;
+  const left = Math.max(0, (win.w - cur.width * scale) / 2);
+  const top = Math.max(0, (win.h - cur.contentH * scale) / 2);
+  const transform = `scale(${scale})`;
+  return {
+    fit, ref, height: win.h,
+    style: {
+      position: 'absolute', left, top, width: cur.width,
+      transform, WebkitTransform: transform, transformOrigin: '0 0', WebkitTransformOrigin: '0 0',
+    },
+  };
+}
+
 // "Aa" button in the header: pick a size without opening Settings.
 function SizeMenu({ sizePref, resolved, onSetSize }) {
   const [open, setOpen] = useState(false);
@@ -120,7 +170,7 @@ function SizeMenu({ sizePref, resolved, onSetSize }) {
     <div style={{ position: 'relative', marginRight: 8 }}>
       <button onClick={() => setOpen(o => !o)} aria-label="Dashboard size" aria-expanded={open}
         className="topbar-settings-btn" style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600 }}>
-        Aa
+        <span className="btn-center">Aa</span>
       </button>
       {open && (
         <>
@@ -149,6 +199,29 @@ function SizeMenu({ sizePref, resolved, onSetSize }) {
       )}
     </div>
   );
+}
+
+// A plain SVG line, stretched to its box. Hand-drawn rather than Recharts:
+// Recharts sizes itself with ResizeObserver, which iOS 10 lacks, and this card
+// only needs the shape of the day.
+const SPARK_W = 300;
+const SPARK_H = 64;
+function Sparkline({ values, color }) {
+  const pts = sparklinePoints(values, SPARK_W, SPARK_H);
+  if (!pts) return null;
+  return (
+    <svg viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} preserveAspectRatio="none" width="100%" height={SPARK_H}
+      style={{ display: 'block' }} aria-hidden="true">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2"
+        strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+// Each extra card in its own boundary: if one fails on some browser, only that
+// card goes missing and the rest of the dashboard keeps running.
+function Optional({ children }) {
+  return <ErrorBoundary fallback={null}>{children}</ErrorBoundary>;
 }
 
 // Detailed only: what the station has recorded since midnight.
@@ -186,11 +259,9 @@ function TodaySoFar({ stationId, fetchHistory, lastUpdated, current, high, low, 
         {stat('Rain', formatPrecipTotal(current?.precipTotal ?? null, units))}
       </div>
       {points.length > 1 && (
-        <Suspense fallback={<div style={{ height: 64 }} />}>
-          <div style={{ marginTop: 8 }}>
-            <DashboardTodayChart points={points} color={color} />
-          </div>
-        </Suspense>
+        <div style={{ marginTop: 8 }}>
+          <Sparkline values={points.map(p => p.temp)} color={color} />
+        </div>
       )}
     </div>
   );
@@ -213,6 +284,7 @@ export default function DashboardView({
   const win = useWindowSize();
   const size = resolveDashboardSize(sizePref, win.w, win.h);
   const layout = LAYOUT[size];
+  const fitted = useFitToScreen(size, win);
 
   // One tick drives the clock and the "updated N min ago" line.
   const [now, setNow] = useState(() => Date.now());
@@ -236,8 +308,8 @@ export default function DashboardView({
   const dewPoint = formatTempParts(current?.dewPoint, units);
   const windGust = formatWindParts(current?.windGust, units);
 
-  return (
-    <div className={`dash dash--${size}`}>
+  const page = (
+    <div ref={fitted.ref} className={`dash dash--${size}${fitted.fit ? ' dash--fit' : ''}`} style={fitted.style}>
       <div className="dash-header">
         <div style={{ minWidth: 0 }}>
           <div className="dash-wordmark" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, letterSpacing: '-0.5px', color: 'var(--tp)', lineHeight: 1 }}>
@@ -258,7 +330,7 @@ export default function DashboardView({
           </div>
           <SizeMenu sizePref={sizePref} resolved={resolveDashboardSize('auto', win.w, win.h)} onSetSize={onSetSize} />
           <button onClick={onOpenSettings} aria-label="Open settings" className="topbar-settings-btn">
-            <GearIcon />
+            <span className="btn-center"><GearIcon /></span>
           </button>
         </div>
       </div>
@@ -293,7 +365,7 @@ export default function DashboardView({
             />
             {layout.sunMoon && (
               <div style={{ marginTop: 16 }}>
-                <SunMoonCard lat={current?.lat} lon={current?.lon} tz={tz} />
+                <Optional><SunMoonCard lat={current?.lat} lon={current?.lon} tz={tz} /></Optional>
               </div>
             )}
           </div>
@@ -339,7 +411,7 @@ export default function DashboardView({
             {layout.today && stationId && (
               <div className="dash-section">
                 <SectionTitle>Today so far</SectionTitle>
-                <TodaySoFar
+                <Optional><TodaySoFar
                   stationId={stationId}
                   fetchHistory={fetchHistory}
                   lastUpdated={lastUpdated}
@@ -348,12 +420,19 @@ export default function DashboardView({
                   low={todayObservedLow}
                   units={units}
                   color={chartColors?.accent ?? '#888'}
-                />
+                /></Optional>
               </div>
             )}
           </div>
         </div>
       )}
+    </div>
+  );
+
+  if (!fitted.fit) return page;
+  return (
+    <div style={{ position: 'relative', width: '100%', height: fitted.height, overflow: 'hidden' }}>
+      {page}
     </div>
   );
 }

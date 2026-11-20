@@ -190,7 +190,7 @@ export default function TopBar({
           aria-label="Open settings"
           className="topbar-settings-btn"
         >
-          <GearIcon />
+          <span className="btn-center"><GearIcon /></span>
         </button>
       </div>
     </div>

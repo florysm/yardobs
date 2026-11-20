@@ -2,6 +2,20 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.14.1] - 2026-11-20
+
+### Fixed
+
+- Fixed the Detailed dashboard failing to load on older iPads (iOS 10) and getting stuck on "Try again".
+- Fixed the Large dashboard leaving the bottom of the screen empty and cutting off the last hourly forecast card on older iPads.
+- Fixed the "Aa" and settings button icons sitting off-center on older iPads.
+- Fixed the Trends charts not loading on older iPhones and iPads (iOS 10).
+
+### Changed
+
+- The Dashboard now scales itself to fill a tablet's screen at every size, and Large shows the next 6 hours in two rows of bigger cards.
+- If one of the Detailed dashboard's extra cards ever fails to load, only that card is left out instead of the whole screen.
+
 ## [1.14.0] - 2026-11-20
 
 ### Added

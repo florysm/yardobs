@@ -2,6 +2,22 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.15.0] - 2026-11-20
+
+### Changed
+
+- Settings is much shorter: Station, Set up another device and the Home Screen widget are now one-line rows that open when tapped, and the theme choice is a single Match / Light / Dark control.
+- The Done button now sits at the top of Settings, so you can close it without scrolling to the bottom.
+- On tablets and computers, Settings opens as a panel on the right instead of a narrow sheet in the middle of the screen.
+- The Layout options only appear on tablets and computers, where Dashboard mode makes sense.
+- The Station row shows your station and key status at a glance, and opens on its own when the key is missing, expired or about to expire.
+
+### Fixed
+
+- Tapping outside Settings, Alerts or What's new now closes them reliably on iPhones and iPads, including older iPads where it didn't work at all.
+- The dimmed background behind Settings now shows on older iPads.
+- Buttons in Settings no longer run together on older iPads.
+
 ## [1.14.3] - 2026-11-20
 
 ### Fixed

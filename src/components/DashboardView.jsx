@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import HeroCard from './HeroCard';
 import SunMoonCard from './SunMoonCard';
 import ErrorBoundary from './ErrorBoundary';
+import { useWindowSize } from '../hooks/useWindowSize';
 import MetricCard from './MetricCard';
 import AlertBar from './AlertBar';
 import { HourlyCard, DailyCard } from './ForecastTab';
@@ -98,23 +99,6 @@ function GearIcon() {
   );
 }
 
-// The window's size, kept current through rotation and split view, so Auto can
-// switch between Normal and Detailed.
-function useWindowSize() {
-  const read = () => ({ w: window.innerWidth, h: window.innerHeight });
-  const [size, setSize] = useState(read);
-  useEffect(() => {
-    const onResize = () => setSize(read());
-    window.addEventListener('resize', onResize);
-    window.addEventListener('orientationchange', onResize);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('orientationchange', onResize);
-    };
-  }, []);
-  return size;
-}
-
 // Lays the dashboard out at a set width, measures how tall that makes it, and
 // scales it to fill the window (see nextFit in utils/dashboardSize.js). Runs
 // after every render, so content that arrives later (forecast, AI briefing)
@@ -176,7 +160,7 @@ function SizeMenu({ sizePref, resolved, onSetSize }) {
       </button>
       {open && (
         <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} />
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40, cursor: 'pointer' }} />
           <div className="y-card" role="menu" style={{
             position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 41,
             padding: 6, minWidth: 170, boxShadow: '0 8px 28px rgba(0,0,0,0.18)',

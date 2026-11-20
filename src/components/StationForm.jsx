@@ -4,14 +4,12 @@ import { apiFetch } from '../utils/apiFetch';
 import { isValidExpiryDate, daysUntilExpiry, KEY_RENEW_URL } from '../utils/keyExpiry';
 import { cleanKey, keyShapeHint, buildDeviceLink, linkOrigin, readPastedLink, clearSetupHash } from '../utils/deviceSetup';
 
-export default function StationForm({ initialStationId, onSave, dashboard = false }) {
+export default function StationForm({ initialStationId, onSave }) {
   const [stationId, setStationId] = useState(initialStationId ?? '');
   const [twcApiKey, setTwcApiKey] = useState('');
   const [saveStatus, setSaveStatus] = useState('idle'); // idle | testing | success | error
   const [errorMsg, setErrorMsg] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [linkStatus, setLinkStatus] = useState(null); // null | 'shared' | 'copied' | link text to copy by hand
-  const [linkDashboard, setLinkDashboard] = useState(dashboard);
 
   const storedKey = readStored(STORAGE_KEYS.TWC_API_KEY, '');
   const hasKey = storedKey.length > 0;
@@ -62,30 +60,6 @@ export default function StationForm({ initialStationId, onSave, dashboard = fals
     setSaveStatus('success');
     setTwcApiKey('');
     setTimeout(() => setSaveStatus('idle'), 4000);
-  };
-
-  // "Set up another device": a link carrying this station, key and expiry,
-  // sent by the share sheet (AirDrop, Messages) or copied. See deviceSetup.js.
-  const canLink = hasKey && !!initialStationId;
-  const handleDeviceLink = async () => {
-    const link = buildDeviceLink(linkOrigin(window.location), {
-      stationId: initialStationId, key: storedKey, expires: storedExpiry || null, dashboard: linkDashboard,
-    });
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'YardObs setup link', url: link });
-        setLinkStatus('shared');
-        return;
-      }
-    } catch (err) {
-      if (err?.name === 'AbortError') return; // closed the share sheet
-    }
-    try {
-      await navigator.clipboard.writeText(link);
-      setLinkStatus('copied');
-    } catch {
-      setLinkStatus(link); // no share sheet or clipboard: show it to copy by hand
-    }
   };
 
   // A setup link pasted into the Station ID box fills in the station, key and
@@ -187,32 +161,68 @@ export default function StationForm({ initialStationId, onSave, dashboard = fals
       }}>
         {isBusy ? 'Testing connection…' : 'Test & Save'}
       </button>
-      {canLink && (
-        <div style={{ marginTop: 14 }}>
-          <button type="button" onClick={handleDeviceLink} style={{
-            width: '100%', padding: '10px 0', borderRadius: 12,
-            background: 'var(--soft)', border: '1px solid var(--border)', color: 'var(--accent)',
-            fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)', cursor: 'pointer',
-          }}>
-            {linkStatus === 'copied' ? 'Link copied ✓' : linkStatus === 'shared' ? 'Link sent ✓' : 'Set up another device'}
-          </button>
-          <label style={{ display: 'flex', alignItems: 'center', marginTop: 8, fontSize: 12, color: 'var(--ts)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={linkDashboard}
-              onChange={e => { setLinkDashboard(e.target.checked); setLinkStatus(null); }}
-              style={{ marginRight: 8 }} />
-            Open as a dashboard on that device
-          </label>
-          {linkStatus && linkStatus !== 'copied' && linkStatus !== 'shared' && (
-            <input readOnly value={linkStatus} onFocus={e => e.target.select()}
-              style={{ ...inputStyle, marginTop: 8, fontSize: 11 }} />
-          )}
-          <div style={hintStyle}>
-            Sends a link that sets up your station and key on another device, like an iPad: AirDrop or message it to yourself and open it in Safari there.
-            To use it from the Home Screen, add it from that Safari page.
-            The key in the link is scrambled, not locked, so only send it to your own devices.
-          </div>
-        </div>
-      )}
     </form>
+  );
+}
+
+// "Set up another device": a link carrying this device's saved station, key
+// and expiry, sent by the share sheet (AirDrop, Messages) or copied. See
+// deviceSetup.js. Settings shows it only once a station and key are saved.
+export function DeviceLinkForm({ stationId, dashboard = false }) {
+  const [linkStatus, setLinkStatus] = useState(null); // null | 'shared' | 'copied' | link text to copy by hand
+  const [linkDashboard, setLinkDashboard] = useState(dashboard);
+  const storedKey = readStored(STORAGE_KEYS.TWC_API_KEY, '');
+  const storedExpiry = readStored(STORAGE_KEYS.TWC_KEY_EXPIRES, '');
+
+  const handleDeviceLink = async () => {
+    const link = buildDeviceLink(linkOrigin(window.location), {
+      stationId, key: storedKey, expires: storedExpiry || null, dashboard: linkDashboard,
+    });
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'YardObs setup link', url: link });
+        setLinkStatus('shared');
+        return;
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return; // closed the share sheet
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      setLinkStatus('copied');
+    } catch {
+      setLinkStatus(link); // no share sheet or clipboard: show it to copy by hand
+    }
+  };
+
+  if (!storedKey || !stationId) return null;
+  return (
+    <div>
+      <button type="button" onClick={handleDeviceLink} style={{
+        width: '100%', padding: '10px 0', borderRadius: 12,
+        background: 'var(--soft)', border: '1px solid var(--border)', color: 'var(--accent)',
+        fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)', cursor: 'pointer',
+      }}>
+        {linkStatus === 'copied' ? 'Link copied ✓' : linkStatus === 'shared' ? 'Link sent ✓' : 'Send setup link'}
+      </button>
+      <label style={{ display: 'flex', alignItems: 'center', marginTop: 8, fontSize: 12, color: 'var(--ts)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={linkDashboard}
+          onChange={e => { setLinkDashboard(e.target.checked); setLinkStatus(null); }}
+          style={{ marginRight: 8 }} />
+        Open as a dashboard on that device
+      </label>
+      {linkStatus && linkStatus !== 'copied' && linkStatus !== 'shared' && (
+        <input readOnly value={linkStatus} onFocus={e => e.target.select()}
+          style={{
+            width: '100%', marginTop: 8, padding: '10px 12px', boxSizing: 'border-box',
+            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10,
+            fontSize: 11, color: 'var(--tp)', fontFamily: 'var(--font-mono)', outline: 'none',
+          }} />
+      )}
+      <div style={{ fontSize: 11, color: 'var(--tm)', marginTop: 6, lineHeight: 1.5 }}>
+        Open the link in Safari on your iPad or other device; add it to the Home Screen from there.
+        The key in the link is scrambled, not locked, so only send it to your own devices.
+      </div>
+    </div>
   );
 }

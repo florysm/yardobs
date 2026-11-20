@@ -2,6 +2,12 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.15.1] - 2026-11-20
+
+### Fixed
+
+- Fixed the "Now" card in the hourly forecast showing a different temperature from your station's current reading; it now shows the same live temperature as the main card, on both the Dashboard and the Forecast tab.
+
 ## [1.15.0] - 2026-11-20
 
 ### Changed

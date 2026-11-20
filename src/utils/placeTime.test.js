@@ -114,6 +114,15 @@ describe('buildHours', () => {
     expect(icon('2026-11-17T06:00')).not.toBe(icon('2026-11-17T07:00'));
   });
 
+  it('the Now card shows the live reading when there is one; later hours stay forecasts', () => {
+    const clock = placeClock(LA, new Date('2026-11-17T07:10:00Z'));
+    const hours = buildHours(laForecast, clock, 67);
+    expect(hours[0]).toMatchObject({ isNow: true, temp: 67 });
+    expect(hours[1].temp).toBe(buildHours(laForecast, clock)[1].temp);
+    expect(buildHours(laForecast, clock, null)[0].temp).toBe(23);
+    expect(buildHours(laForecast, clock, NaN)[0].temp).toBe(23);
+  });
+
   it('empty without data or once the forecast has run out', () => {
     expect(buildHours(null, placeClock(LA, NOW))).toEqual([]);
     expect(buildHours(laForecast, placeClock(LA, new Date('2026-11-20T00:00:00Z')))).toEqual([]);

@@ -234,7 +234,7 @@ function InsightView({ insight, isLoading, toggle }) {
 
 // `dashboard` shows conditions and the AI briefing together, with no toggle,
 // for a tablet left on a stand (DashboardView).
-export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast, units, dashboard = false }) {
+export default function HeroCard({ current, isLoading, onLongPress, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast, units, dashboard = false, briefing = true }) {
   const [showHint,      setShowHint]      = useState(false);
   const [view,          setView]          = useState('conditions');
   const [contentFade,   setContentFade]   = useState(true);
@@ -271,7 +271,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
   const period = currentDayPart(clock.wall);
   const { data: insight, loading: insightLoading } = useInsight({
     storageKey: STORAGE_KEYS.insightKey(insightId, clock.date, period, units),
-    enabled: (dashboard || view === 'insights') && !!current && !!hourlyForecast,
+    enabled: ((dashboard && briefing) || view === 'insights') && !!current && !!hourlyForecast,
     deps: [current, stationId, fetchHistory, fetchHistoryDaily, hourlyForecast],
     buildBody: async () => {
       // Forecast-model data (preview, Explore) has no station history to compare.
@@ -448,7 +448,7 @@ export default function HeroCard({ current, isLoading, onLongPress, stationId, f
             </div>
           </>
         )}
-        {dashboard ? (
+        {dashboard ? briefing && (
           <div style={{ marginTop: 22, paddingTop: 20, borderTop: '1px solid var(--hero-skel)' }}>
             <InsightView insight={insight} isLoading={insightLoading} toggle={null} />
           </div>

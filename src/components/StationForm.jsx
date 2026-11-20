@@ -2,15 +2,16 @@ import { useState } from 'react';
 import { STORAGE_KEYS, readStored, writeStored } from '../utils/storageKeys';
 import { apiFetch } from '../utils/apiFetch';
 import { isValidExpiryDate, daysUntilExpiry, KEY_RENEW_URL } from '../utils/keyExpiry';
-import { cleanKey, keyShapeHint, buildDeviceLink } from '../utils/deviceSetup';
+import { cleanKey, keyShapeHint, buildDeviceLink, linkOrigin, readPastedLink, clearSetupHash } from '../utils/deviceSetup';
 
-export default function StationForm({ initialStationId, onSave }) {
+export default function StationForm({ initialStationId, onSave, dashboard = false }) {
   const [stationId, setStationId] = useState(initialStationId ?? '');
   const [twcApiKey, setTwcApiKey] = useState('');
   const [saveStatus, setSaveStatus] = useState('idle'); // idle | testing | success | error
   const [errorMsg, setErrorMsg] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [linkStatus, setLinkStatus] = useState(null); // null | 'shared' | 'copied' | link text to copy by hand
+  const [linkDashboard, setLinkDashboard] = useState(dashboard);
 
   const storedKey = readStored(STORAGE_KEYS.TWC_API_KEY, '');
   const hasKey = storedKey.length > 0;
@@ -56,6 +57,7 @@ export default function StationForm({ initialStationId, onSave }) {
     if (twcApiKey.trim() && expiry === storedExpiry && (daysUntilExpiry(expiry) ?? 0) < 0) expiry = '';
     writeStored(STORAGE_KEYS.TWC_KEY_EXPIRES, isValidExpiryDate(expiry) ? expiry : null);
     setKeyExpires(isValidExpiryDate(expiry) ? expiry : '');
+    clearSetupHash();
     onSave(sid);
     setSaveStatus('success');
     setTwcApiKey('');
@@ -66,8 +68,8 @@ export default function StationForm({ initialStationId, onSave }) {
   // sent by the share sheet (AirDrop, Messages) or copied. See deviceSetup.js.
   const canLink = hasKey && !!initialStationId;
   const handleDeviceLink = async () => {
-    const link = buildDeviceLink(window.location.origin, {
-      stationId: initialStationId, key: storedKey, expires: storedExpiry || null,
+    const link = buildDeviceLink(linkOrigin(window.location), {
+      stationId: initialStationId, key: storedKey, expires: storedExpiry || null, dashboard: linkDashboard,
     });
     try {
       if (navigator.share) {
@@ -84,6 +86,18 @@ export default function StationForm({ initialStationId, onSave }) {
     } catch {
       setLinkStatus(link); // no share sheet or clipboard: show it to copy by hand
     }
+  };
+
+  // A setup link pasted into the Station ID box fills in the station, key and
+  // expiry from it; Test & Save then checks and saves them as usual. This is
+  // the way in when a home-screen app opens without the link's data.
+  const handleStationInput = (value) => {
+    setSaveStatus('idle');
+    const link = readPastedLink(value);
+    if (!link) { setStationId(value); return; }
+    setStationId(link.stationId);
+    setTwcApiKey(link.key);
+    if (link.expires) setKeyExpires(link.expires);
   };
 
   const inputStyle = {
@@ -106,8 +120,8 @@ export default function StationForm({ initialStationId, onSave }) {
       <div style={{ marginBottom: 12 }}>
         <label style={labelStyle}>Station ID</label>
         <input style={inputStyle} placeholder="e.g. KFLMIAMI123"
-          value={stationId} onChange={e => { setStationId(e.target.value); setSaveStatus('idle'); }} required />
-        <div style={hintStyle}>Your Weather Underground PWS station ID</div>
+          value={stationId} onChange={e => handleStationInput(e.target.value)} required />
+        <div style={hintStyle}>Your Weather Underground PWS station ID, or paste a setup link from another device</div>
       </div>
       <div style={{ marginBottom: 14 }}>
         <label style={labelStyle}>
@@ -182,13 +196,20 @@ export default function StationForm({ initialStationId, onSave }) {
           }}>
             {linkStatus === 'copied' ? 'Link copied ✓' : linkStatus === 'shared' ? 'Link sent ✓' : 'Set up another device'}
           </button>
+          <label style={{ display: 'flex', alignItems: 'center', marginTop: 8, fontSize: 12, color: 'var(--ts)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={linkDashboard}
+              onChange={e => { setLinkDashboard(e.target.checked); setLinkStatus(null); }}
+              style={{ marginRight: 8 }} />
+            Open as a dashboard on that device
+          </label>
           {linkStatus && linkStatus !== 'copied' && linkStatus !== 'shared' && (
             <input readOnly value={linkStatus} onFocus={e => e.target.select()}
               style={{ ...inputStyle, marginTop: 8, fontSize: 11 }} />
           )}
           <div style={hintStyle}>
-            Sends a link that sets up your station and key on another device, like an iPad: AirDrop or message it to yourself and open it there.
-            The link contains your API key, so only send it to your own devices.
+            Sends a link that sets up your station and key on another device, like an iPad: AirDrop or message it to yourself and open it in Safari there.
+            To use it from the Home Screen, add it from that Safari page.
+            The key in the link is scrambled, not locked, so only send it to your own devices.
           </div>
         </div>
       )}

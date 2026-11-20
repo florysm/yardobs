@@ -63,11 +63,11 @@ The widget shows current conditions from your station (or your preview location)
 - **Units & Locale** — imperial (°F / mph / in) or metric (°C / km/h / mm) auto-detected from your device's region, with a manual override in Settings; time displays follow your device's 12h or 24h clock preference
 - **Adaptive Theming** — 6 themes (sunny, cloudy, rainy, stormy, light, dark) auto-selected from current conditions using your station's rain gauge as ground truth; manual override persisted in `localStorage`
 - **Preview Mode** — explore with any location without owning a personal weather station
-- **Dashboard Mode** — a one-screen landscape layout for a tablet on a stand, with a clock, a stale-data warning, and screen keep-awake; turn it on per device in Settings → Layout
+- **Dashboard Mode** — a one-screen landscape layout for a tablet on a stand, with a clock, a stale-data warning, and screen keep-awake; three sizes (Large, Normal, Detailed) plus Auto, which picks from the screen size; turn it on per device in Settings → Layout
 - **In-app Changelog** — version history accessible from the settings drawer
 - **iPhone Widget** — small and medium home screen widgets plus Lock Screen widgets via the free Scriptable app, set up from Settings with one copy-and-paste
 - **API Key Expiry Reminders** — record your TWC key's expiration date and YardObs (and the widget) warns you two weeks before it stops working
-- **Set Up Another Device** — send yourself a link from Settings that sets up your station and key on a second device, such as a tablet; the details ride in the part of the link browsers never send to a server
+- **Set Up Another Device** — send yourself a link from Settings that sets up your station and key on a second device, such as a tablet; the details ride in the part of the link browsers never send to a server; the key is scrambled in the link, and the link can open the other device straight into Dashboard mode. Add it to the Home Screen from the page the link opens
 - **Location Search** — geocoding via Open-Meteo to find any location for preview or comparison
 
 ## Tech Stack
@@ -109,7 +109,8 @@ yardobs/
 │   ├── components/
 │   │   ├── TopBar.jsx              # Station ID + live last-updated timestamp
 │   │   ├── HeroCard.jsx            # Current temp hero; toggles to AI daily briefing
-│   │   ├── DashboardView.jsx       # One-screen tablet layout (clock, stale-data warning, keep-awake, nightly reload)
+│   │   ├── DashboardView.jsx       # One-screen tablet layout: Large/Normal/Detailed sizes, clock, stale-data warning, keep-awake, nightly reload
+│   │   ├── DashboardTodayChart.jsx # Detailed dashboard's since-midnight temperature line (lazy-loaded)
 │   │   ├── NavTabs.jsx             # Now / Trends / Forecast / Radar tab bar
 │   │   ├── NowTab.jsx              # Conditions detail grid + Activity Score Card
 │   │   ├── ActivityScoreCard.jsx   # Scored activity picker with factor breakdown
@@ -135,6 +136,7 @@ yardobs/
 │   │   ├── activities.js           # Activity definitions and scoring weights
 │   │   ├── alerts.js               # NWS alert normalization + severity helpers
 │   │   ├── apiFetch.js             # HTTP client: attaches the saved TWC key, throws errors with status
+│   │   ├── dashboardSize.js        # Dashboard sizes and the Auto rule
 │   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr, addDays, lastYearKey)
 │   │   ├── deviceSetup.js          # TWC key clean-up + "set up another device" link (build/read)
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format

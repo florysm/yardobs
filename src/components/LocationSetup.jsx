@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { reverseGeocode } from '../utils/geocode';
 import LocationSearchInput from './LocationSearchInput';
+import { readPastedLink } from '../utils/deviceSetup';
 
-export default function LocationSetup({ onResolved }) {
+export default function LocationSetup({ onResolved, onSetupLink }) {
   const [stage, setStage] = useState('locating'); // locating | denied
+  const [pasted, setPasted] = useState('');
+  const pastedLink = readPastedLink(pasted);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -103,6 +106,48 @@ export default function LocationSetup({ onResolved }) {
           </div>
         )}
       </div>
+
+      {onSetupLink && (
+        <div style={{ ...cardStyle, marginTop: 14, padding: '16px 18px', textAlign: 'left' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tp)', marginBottom: 4 }}>
+            Have a setup link from another device?
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ts)', marginBottom: 10, lineHeight: 1.5 }}>
+            Paste it here to use your station and key on this device.
+          </div>
+          <div style={{ display: 'flex' }}>
+            <input
+              value={pasted}
+              onChange={e => setPasted(e.target.value)}
+              placeholder="https://yardobs.app/#setup=…"
+              autoCapitalize="off" autoCorrect="off" spellCheck={false}
+              style={{
+                flex: 1, minWidth: 0, padding: '9px 12px', marginRight: 8,
+                background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10,
+                fontSize: 12, color: 'var(--tp)', fontFamily: 'var(--font-mono)', outline: 'none',
+              }}
+            />
+            <button
+              type="button"
+              disabled={!pastedLink}
+              onClick={() => pastedLink && onSetupLink(pastedLink)}
+              style={{
+                padding: '9px 14px', borderRadius: 10, border: 'none',
+                background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 600,
+                fontFamily: 'var(--font-body)', cursor: pastedLink ? 'pointer' : 'not-allowed',
+                opacity: pastedLink ? 1 : 0.5,
+              }}
+            >
+              Use link
+            </button>
+          </div>
+          {pasted.trim() && !pastedLink && (
+            <div style={{ fontSize: 11, color: 'var(--delta-dn)', marginTop: 6 }}>
+              That isn't a YardObs setup link.
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ fontSize: 11, color: 'var(--ts)', marginTop: 28, textAlign: 'center', lineHeight: 1.6, opacity: 0.7 }}>
         Preview uses Open-Meteo forecast data.

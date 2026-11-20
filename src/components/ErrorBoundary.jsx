@@ -13,6 +13,8 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (this.state.error) {
+      // `fallback` replaces the message entirely (null: render nothing).
+      if ('fallback' in this.props) return this.props.fallback;
       const { label = 'Something went wrong loading this tab.', reload = false } = this.props;
       return (
         <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--tm)', fontSize: 13 }}>

@@ -105,12 +105,11 @@ yardobs/
 ├── src/
 │   ├── App.jsx           # Root: theme resolution, phone/dashboard layout, tab routing, settings drawer
 │   ├── themes.js         # Single source of truth for all theme color values
-│   ├── polyfills.js      # Stand-ins for browser APIs old Safari lacks (AbortController)
+│   ├── polyfills.js      # Stand-ins for browser APIs old Safari lacks (AbortController, ResizeObserver)
 │   ├── components/
 │   │   ├── TopBar.jsx              # Station ID + live last-updated timestamp
 │   │   ├── HeroCard.jsx            # Current temp hero; toggles to AI daily briefing
 │   │   ├── DashboardView.jsx       # One-screen tablet layout: Large/Normal/Detailed sizes, clock, stale-data warning, keep-awake, nightly reload
-│   │   ├── DashboardTodayChart.jsx # Detailed dashboard's since-midnight temperature line (lazy-loaded)
 │   │   ├── NavTabs.jsx             # Now / Trends / Forecast / Radar tab bar
 │   │   ├── NowTab.jsx              # Conditions detail grid + Activity Score Card
 │   │   ├── ActivityScoreCard.jsx   # Scored activity picker with factor breakdown
@@ -136,7 +135,7 @@ yardobs/
 │   │   ├── activities.js           # Activity definitions and scoring weights
 │   │   ├── alerts.js               # NWS alert normalization + severity helpers
 │   │   ├── apiFetch.js             # HTTP client: attaches the saved TWC key, throws errors with status
-│   │   ├── dashboardSize.js        # Dashboard sizes and the Auto rule
+│   │   ├── dashboardSize.js        # Dashboard sizes, the Auto rule, and fit-to-screen scaling
 │   │   ├── dateUtils.js            # Date helpers (toISODate, toDateStr, addDays, lastYearKey)
 │   │   ├── deviceSetup.js          # TWC key clean-up + "set up another device" link (build/read)
 │   │   ├── forecastNormalize.js    # TWC/Open-Meteo forecast shapes → one internal format
@@ -153,6 +152,7 @@ yardobs/
 │   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check, clutter filter
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
+│   │   ├── sparkline.js            # Points for the Detailed dashboard's since-midnight temperature line
 │   │   ├── sky.js                  # Theme + hero condition rules (code groups, sensor thresholds)
 │   │   ├── sourceTypes.js          # Station vs. forecast-model source type constants
 │   │   ├── storageKeys.js          # localStorage key constants + readStored/writeStored

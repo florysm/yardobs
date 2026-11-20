@@ -7,6 +7,7 @@ import { STORAGE_KEYS, readStored } from '../utils/storageKeys';
 import { buildWidgetScript, buildWidgetUpdatePayload, widgetConfigFromSettings, WIDGET_TEMPLATE_URL, WIDGET_UPDATE_URL, SCRIPTABLE_APP_URL } from '../utils/widgetScript';
 import ChangelogModal from './ChangelogModal';
 import StationForm from './StationForm';
+import { DASHBOARD_SIZES, SIZE_LABELS, resolveForWindow } from '../utils/dashboardSize';
 
 const UNIT_OPTIONS = [
   { id: UNITS.IMPERIAL, label: '°F, mph, in' },
@@ -41,6 +42,7 @@ export default function SettingsDrawer({
   units, onSetUnits,
   isExploring, onClearExplore,
   dashboard, onSetDashboard,
+  dashboardSize = 'auto', onSetDashboardSize,
 }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -351,6 +353,44 @@ export default function SettingsDrawer({
           <div style={{ fontSize: 11, color: 'var(--tm)', marginTop: 8, lineHeight: 1.5 }}>
             Dashboard puts everything on one screen for a tablet left on a stand. Saved on this device only.
           </div>
+          {dashboard && onSetDashboardSize && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--ts)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Size</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {DASHBOARD_SIZES.map(sz => {
+                  const isActive = dashboardSize === sz;
+                  return (
+                    <button
+                      key={sz}
+                      onClick={() => onSetDashboardSize(sz)}
+                      aria-pressed={isActive}
+                      style={{
+                        flex: 1,
+                        padding: '7px 4px',
+                        textAlign: 'center',
+                        background: isActive ? 'var(--accent)' : 'var(--soft)',
+                        border: `1.5px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                        borderRadius: 20,
+                        cursor: 'pointer',
+                        fontSize: 12, fontWeight: isActive ? 600 : 400,
+                        color: isActive ? '#fff' : 'var(--tp)',
+                        fontFamily: 'var(--font-body)',
+                        transition: 'all var(--tr-fast)',
+                      }}
+                    >
+                      {SIZE_LABELS[sz]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--tm)', marginTop: 8, lineHeight: 1.5 }}>
+                {dashboardSize === 'auto'
+                  ? `Auto picks from the screen size: ${SIZE_LABELS[resolveForWindow('auto')]} here. `
+                  : ''}
+                Large is for across the room, Detailed for up close or a big screen.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Station section */}
@@ -358,6 +398,7 @@ export default function SettingsDrawer({
           <div className="y-label">Station</div>
           <StationForm
             initialStationId={profile?.stationId ?? ''}
+            dashboard={!!dashboard}
             onSave={(sid) => onSaveProfile({ mode: PROFILE_MODES.STATION, stationId: sid })}
           />
         </div>

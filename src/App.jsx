@@ -20,7 +20,8 @@ import { DEFAULT_ACTIVITY_ID } from './utils/activities';
 import { toDateStr } from './utils/dateUtils';
 import { detectDefaultUnits } from './utils/units';
 import { resolveAutoTheme } from './utils/sky';
-import { readDeviceLink } from './utils/deviceSetup';
+import { readDeviceLink, isSetupHash, clearSetupHash, setupFingerprint } from './utils/deviceSetup';
+import { normalizeSize } from './utils/dashboardSize';
 
 const TrendsTab = lazy(() => import('./components/TrendsTab'));
 const TrendsLockedPlaceholder = lazy(() => import('./components/TrendsLockedPlaceholder'));
@@ -31,30 +32,85 @@ function LazyTabFallback() {
 }
 
 // Dashboard layout is per device. `?dashboard=1` (e.g. a tablet's home-screen
-// bookmark) turns it on and remembers it; `?dashboard=0` turns it off.
+// bookmark) turns it on and remembers it; `?dashboard=large` (or normal,
+// detailed, auto) also picks the size; `?dashboard=0` turns it off.
 function initDashboard() {
   try {
     const param = new URLSearchParams(window.location.search).get('dashboard');
-    if (param === '1') writeStored(STORAGE_KEYS.DASHBOARD, '1');
     if (param === '0') writeStored(STORAGE_KEYS.DASHBOARD, null);
+    else if (param) {
+      writeStored(STORAGE_KEYS.DASHBOARD, '1');
+      if (param !== '1') {
+        const size = normalizeSize(param);
+        writeStored(STORAGE_KEYS.DASHBOARD_SIZE, size === 'auto' ? null : size);
+      }
+    }
   } catch { /* no URL support: fall back to the saved setting */ }
   return readStored(STORAGE_KEYS.DASHBOARD) === '1';
 }
 
-// A "set up another device" link (#setup&station=…&key=…, see deviceSetup.js)
-// saves its station, key and expiry here, replacing whatever profile this
-// device had, then removes itself from the address bar so the key isn't left
-// in view, in history, or in a bookmark made later.
-function consumeDeviceLink() {
-  let link;
-  try { link = readDeviceLink(window.location.hash); } catch { return; }
-  if (!link) return;
+// Running from the Home Screen rather than in a browser tab. navigator.standalone
+// is iOS Safari's (all versions); display-mode covers other browsers.
+function isInstalledApp() {
+  try {
+    return window.navigator.standalone === true
+      || (!!window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  } catch { return false; }
+}
+
+// Saves a setup link's station, key, expiry and dashboard choice on this
+// device, replacing whatever profile it had.
+function applyDeviceLink(link) {
   writeStored(STORAGE_KEYS.TWC_API_KEY, link.key);
   writeStored(STORAGE_KEYS.TWC_KEY_EXPIRES, link.expires);
   writeStored(STORAGE_KEYS.PROFILE, JSON.stringify({ mode: PROFILE_MODES.STATION, stationId: link.stationId }));
-  try {
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
-  } catch { /* the fragment stays visible but is harmless */ }
+  if (link.dashboard) writeStored(STORAGE_KEYS.DASHBOARD, '1');
+}
+
+// A "set up another device" link (#setup=…, see deviceSetup.js) applies itself
+// on load. A home-screen app on iOS doesn't share storage with Safari, so in a
+// Safari tab the link stays in the address: "Add to Home Screen" saves the
+// icon with it, and the installed app sets itself up from it on first launch.
+// Each device applies a given link once (SETUP_LINK_USED), so reloading the tab
+// or relaunching the icon never brings back an old key. Running from the Home
+// Screen, the link also removes itself from the address; in a tab,
+// SetupLinkNote offers to remove it.
+function consumeDeviceLink() {
+  let hash, link;
+  try { hash = window.location.hash; link = readDeviceLink(hash); } catch { return; }
+  if (!link) return;
+  // Only the first time this device sees this link: an icon added from a tab
+  // with the link in its address opens it again on every launch.
+  const mark = setupFingerprint(hash);
+  if (readStored(STORAGE_KEYS.SETUP_LINK_USED) !== mark) {
+    applyDeviceLink(link);
+    writeStored(STORAGE_KEYS.SETUP_LINK_USED, mark);
+  }
+  if (isInstalledApp()) clearSetupHash();
+}
+
+function setupLinkInAddress() {
+  try { return isSetupHash(window.location.hash) && !isInstalledApp(); } catch { return false; }
+}
+
+// Shown in a Safari tab while a setup link is still in the address.
+function SetupLinkNote({ onDone }) {
+  return (
+    <div style={{
+      position: 'fixed', top: 12, left: 12, right: 12, maxWidth: 560, margin: '0 auto', zIndex: 310,
+      background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
+      boxShadow: '0 6px 24px rgba(0,0,0,0.15)', padding: '12px 14px',
+      display: 'flex', alignItems: 'center', fontSize: 13, color: 'var(--tp)', lineHeight: 1.45,
+    }}>
+      <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
+        <b>This device is set up.</b> To use YardObs from your Home Screen, tap Share → Add to Home Screen now, from this page.
+      </div>
+      <button type="button" onClick={onDone} style={{
+        padding: '8px 14px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: '#fff',
+        fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)', cursor: 'pointer', flexShrink: 0,
+      }}>Done</button>
+    </div>
+  );
 }
 
 function initProfile() {
@@ -87,6 +143,8 @@ export default function App() {
   const [units, setUnits]                       = useState(() => readStored(STORAGE_KEYS.UNITS) || detectDefaultUnits());
   const [credentialsVersion, setCredentialsVersion] = useState(0);
   const [dashboard, setDashboard]               = useState(initDashboard);
+  const [dashboardSize, setDashboardSize]       = useState(() => normalizeSize(readStored(STORAGE_KEYS.DASHBOARD_SIZE)));
+  const [setupNote, setSetupNote]               = useState(setupLinkInAddress);
 
   const saveProfile = (p) => {
     setProfile(p);
@@ -147,7 +205,27 @@ export default function App() {
     writeStored(STORAGE_KEYS.UNITS, u);
   };
 
+  const dismissSetupNote = () => {
+    clearSetupHash();
+    setSetupNote(false);
+  };
+
+  // A setup link pasted on the first-run screen.
+  const handleSetupLink = (link) => {
+    applyDeviceLink(link);
+    dismissSetupNote();
+    if (link.dashboard) setDashboard(true);
+    saveProfile({ mode: PROFILE_MODES.STATION, stationId: link.stationId });
+  };
+
+  const saveDashboardSize = (size) => {
+    const s = normalizeSize(size);
+    setDashboardSize(s);
+    writeStored(STORAGE_KEYS.DASHBOARD_SIZE, s === 'auto' ? null : s);
+  };
+
   const saveDashboard = (on) => {
+    dismissSetupNote(); // or a reload would apply the link's choice again
     setDashboard(on);
     writeStored(STORAGE_KEYS.DASHBOARD, on ? '1' : null);
     // Drop a ?dashboard param so a reload keeps the choice just made.
@@ -186,12 +264,18 @@ export default function App() {
     const highs = obs.map(o => o.imperial?.tempHigh).filter(v => v != null);
     return highs.length ? Math.max(...highs) : null;
   }, [historyDaily]);
+  const todayObservedLow = useMemo(() => {
+    const obs = historyDaily[toDateStr(new Date())] ?? [];
+    const lows = obs.map(o => o.imperial?.tempLow).filter(v => v != null);
+    return lows.length ? Math.min(...lows) : null;
+  }, [historyDaily]);
 
   // First-run: no profile yet — show location setup
   if (!profile) {
     return (
       <LocationSetup
         onResolved={(lat, lon, label) => saveProfile({ mode: PROFILE_MODES.PREVIEW, lat, lon, label })}
+        onSetupLink={handleSetupLink}
       />
     );
   }
@@ -219,8 +303,12 @@ export default function App() {
           onClearExplore={handleClearExplore}
           dashboard={dashboard}
           onSetDashboard={saveDashboard}
+          dashboardSize={dashboardSize}
+          onSetDashboardSize={saveDashboardSize}
         />
       )}
+
+      {setupNote && <SetupLinkNote onDone={dismissSetupNote} />}
 
       {alertsOpen && alerts?.length > 0 && (
         <AlertsSheet alerts={alerts} onClose={() => setAlertsOpen(false)} />
@@ -254,8 +342,12 @@ export default function App() {
           hourlyForecast={hourlyForecast}
           forecast={forecast}
           todayObservedHigh={todayObservedHigh}
+          todayObservedLow={todayObservedLow}
           alerts={alerts}
           lastUpdated={lastUpdated}
+          sizePref={dashboardSize}
+          onSetSize={saveDashboardSize}
+          chartColors={chartColors}
           units={units}
           fetchHistory={fetchHistory}
           fetchHistoryDaily={fetchHistoryDaily}

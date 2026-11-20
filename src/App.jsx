@@ -327,9 +327,17 @@ export default function App() {
   );
 
   if (dashboard) {
+    // If the dashboard itself fails, its own gear and long-press are gone with
+    // it, so the error screen offers the way out: the phone layout, another
+    // size, or a reload. Keyed by size so picking one starts fresh.
+    const dashboardEscape = [
+      { label: 'Switch to phone layout', onClick: () => saveDashboard(false) },
+      ...(dashboardSize !== 'normal' ? [{ label: 'Use Normal size', onClick: () => saveDashboardSize('normal') }] : []),
+      { label: 'Reload', onClick: () => window.location.reload() },
+    ];
     return (
       <>
-        <ErrorBoundary>
+        <ErrorBoundary key={dashboardSize} where="dashboard" label="The dashboard couldn't load." actions={dashboardEscape}>
         <DashboardView
           banner={isStationProfile(profile) && (
             <KeyExpiryBanner keyExpires={keyExpires} onOpenSettings={() => setSettingsOpen(true)} />

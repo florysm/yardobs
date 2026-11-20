@@ -221,7 +221,7 @@ function Sparkline({ values, color }) {
 // Each extra card in its own boundary: if one fails on some browser, only that
 // card goes missing and the rest of the dashboard keeps running.
 function Optional({ children }) {
-  return <ErrorBoundary fallback={null}>{children}</ErrorBoundary>;
+  return <ErrorBoundary where="dashboard card" fallback={null}>{children}</ErrorBoundary>;
 }
 
 // Detailed only: what the station has recorded since midnight.

@@ -2,6 +2,16 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.14.2] - 2026-11-20
+
+### Fixed
+
+- When the Dashboard fails to load, its error screen now offers to switch to the phone layout, try the Normal size, or reload, instead of only "Try again" with no way back to Settings.
+
+### Changed
+
+- When something goes wrong, the app now sends a short error report (the error, the app version and the browser type, never your API key or setup link) so problems on devices like older iPads can be found and fixed.
+
 ## [1.14.1] - 2026-11-20
 
 ### Fixed

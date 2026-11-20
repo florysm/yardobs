@@ -8,7 +8,7 @@ A mobile-first personal weather station dashboard with AI-powered activity scori
 
 YardObs is a personal weather dashboard built around your own backyard weather station. Instead of checking a generic city forecast, it shows exactly what's happening at your location right now — temperature, wind, rain, air quality — and uses that data to score whether conditions are good for grilling, gardening, letting the dog out, or any other outdoor activity. It also remembers what the weather was doing a year ago today so you can see how this season compares.
 
-The Anthropic key stays on the server. Your TWC station key is stored only in your own browser and sent straight through to The Weather Company — it is never committed, never bundled, and never shared with other users. If you set up the iPhone widget, a copy also lives in that script on your phone, and if you send yourself a "Set up another device" link, the key travels inside that link.
+The Anthropic key stays on the server. Your TWC station key is stored only in your own browser and sent straight through to The Weather Company — it is never committed, never bundled, and never shared with other users. If you set up the iPhone widget, a copy also lives in that script on your phone, and if you send yourself a "Set up another device" link, the key travels inside that link. If the app hits an error, it sends a short report (the error, app version and browser type) to the server's log; it never includes your key.
 
 > **No weather station? No problem.** Use [Preview Mode](#option-a--preview-mode-no-weather-station-required) to explore the full app with any location — no API keys or hardware required.
 
@@ -79,7 +79,7 @@ The widget shows current conditions from your station (or your preview location)
 | Charts | Recharts 2 | Line charts with optional YoY overlay |
 | Maps | Leaflet 1.9 + React-Leaflet 5 | Iowa Environmental Mesonet radar tiles, Stadia Maps basemap |
 | AI insights | Anthropic Claude API (`claude-haiku-5-5`) | Activity, daily briefing, forecast-day; server-side only |
-| Backend | Vercel Serverless Functions (Node.js) | `api/weather.js`, `api/insight.js` |
+| Backend | Vercel Serverless Functions (Node.js) | `api/weather.js`, `api/insight.js`, `api/client-error.js` |
 | Weather data | The Weather Company (TWC) PWS API | Current obs, history, 5-day forecast |
 | Hourly forecast | Open-Meteo (free, no key required) | Global hourly forecast (5 days) plus a daily block, works for any location worldwide |
 | Air quality | Open-Meteo (free, no key required) | Current AQI, PM2.5, PM10, ozone, plus 5 days of hourly AQI |
@@ -96,6 +96,7 @@ yardobs/
 ├── api/
 │   ├── weather.js        # TWC + Open-Meteo + NWS proxy (forwards the caller's own TWC key)
 │   ├── insight.js        # Claude AI insight engine (activity, daily and forecast-day; failures return 502/503, never cached)
+│   ├── client-error.js   # Writes error reports from the app to the function log (scrubs key-shaped text)
 │   └── lib/
 │       ├── cors.js       # Origin allowlist + OPTIONS preflight
 │       ├── insightPersona.js  # Shared AI persona and prompt rules
@@ -150,6 +151,7 @@ yardobs/
 │   │   ├── profile.js              # Profile modes (station/preview) + isExploring
 │   │   ├── placeTime.js            # The shown place's clock (Explore across time zones)
 │   │   ├── radarFrames.js          # Radar frame URLs and times (observed + HRRR forecast), US coverage check, clutter filter
+│   │   ├── reportError.js          # Sends uncaught and boundary-caught errors to /api/client-error (5 per page load at most)
 │   │   ├── scoring.js              # Activity scoring engine (unit-testable)
 │   │   ├── insightCache.js         # Versioned insight cache entries + per-place insight scope
 │   │   ├── sparkline.js            # Points for the Detailed dashboard's since-midnight temperature line
@@ -263,6 +265,12 @@ Calls Claude to generate hyperlocal weather insights. Three modes via the `type`
 **`type: 'forecast-day'`** — describes a single day from the 5-day forecast, using that day's hourly forecast grouped by part of day (for today, only the hours still ahead) and air quality.
 
 Caching: 15-minute in-memory TTL on the server (keyed by bucketed weather values to maximize reuse); 1-hour `localStorage` TTL on the client.
+
+### `POST /api/client-error`
+
+Receives error reports from the app (`src/utils/reportError.js`) and writes each one to the function log as a single `[client-error]` line, so crashes on devices without a debugger show up in Vercel's runtime logs. Nothing is stored.
+
+Accepts JSON with `message` (required), `stack`, `componentStack`, `where`, `version`, `ua`, `path` and `size`; each is trimmed to a fixed length, and key-shaped strings and setup links are removed. Returns 204. Rate limited to 20 reports per IP per 10 minutes.
 
 ## Theming
 

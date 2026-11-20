@@ -29,8 +29,13 @@ export function isNightHour(sun, t) {
  * next hour is nearer, so the current one is dropped (at 3:45 the strip opens
  * on 4:00). Night icons from the daily sunrise/sunset: an hour that starts
  * before sunrise or after sunset is night.
+ *
+ * `nowTemp` (°F) is the live reading shown on the hero card. When given, the
+ * "Now" card shows it instead of the model's forecast for the hour, so the two
+ * never disagree (a station reading 67° beside a forecast 60°). Later hours
+ * stay forecasts.
  */
-export function buildHours(hf, clock) {
+export function buildHours(hf, clock, nowTemp = null) {
   const h = hf?.hourly;
   if (!h?.time?.length || !clock) return [];
   let start = h.time.findIndex(t => t.slice(0, 13) >= clock.hourKey);
@@ -44,7 +49,9 @@ export function buildHours(hf, clock) {
     const pop = h.precipitation_probability?.[i] ?? 0;
     // Same WMO table as the daily cards and current conditions.
     const icon = iconFor(wmoToTwc(hourlyDisplayCode(h.weathercode?.[i], pop), isNight ? 0 : 1));
-    return { time: t, icon, temp: h.temperature_2m?.[i], pop, isNow: k === 0 };
+    const isNow = k === 0;
+    const temp = isNow && nowTemp != null && !isNaN(nowTemp) ? nowTemp : h.temperature_2m?.[i];
+    return { time: t, icon, temp, pop, isNow };
   });
 }
 

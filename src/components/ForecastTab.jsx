@@ -146,7 +146,7 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
   // strip's "Now", "Today" and the rest-of-today narrative are that place's.
   const tz = placeTimeZone(hourlyForecast);
   const clock = placeClock(tz);
-  const groups = groupByDay(buildHours(hourlyForecast, clock), clock.date);
+  const groups = groupByDay(buildHours(hourlyForecast, clock, currentTemp), clock.date);
 
   useEffect(() => {
     if (groups.length > 0) setActiveLabel(groups[0].label);

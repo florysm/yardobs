@@ -281,7 +281,7 @@ export default function DashboardView({
 
   const tz = placeTimeZone(hourlyForecast);
   const clock = placeClock(tz);
-  const hours = buildHours(hourlyForecast, clock).slice(0, layout.hours);
+  const hours = buildHours(hourlyForecast, clock, current?.temp ?? null).slice(0, layout.hours);
   const days = buildDays(forecast, clock.date).slice(0, layout.days);
 
   const place = isExploring(profile)

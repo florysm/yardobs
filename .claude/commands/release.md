@@ -1,4 +1,4 @@
-# YardObs — Ship
+# YardObs — Release
 
 Prepare a feature branch to merge: summarize its changes in plain English, bring the documentation back in step with the code, write the CHANGELOG entry, bump the version, and open a PR whose title carries the version. Run it **on the feature branch, right before the PR** — the version bump and changelog travel in the same PR as the change that caused them. Always confirms with the user before writing or publishing anything.
 
@@ -6,9 +6,9 @@ Every merge to `main` deploys to Vercel, so the PR you open here *is* the releas
 
 ## Usage
 
-`/ship` — prepare the current branch and open the PR.
+`/release` — prepare the current branch and open the PR.
 
-## Steps (`/ship`)
+## Steps (`/release`)
 
 ### 1. Check where you are
 
@@ -202,7 +202,7 @@ When in doubt between patch and minor, choose minor. When in doubt between minor
 
 - Do not proceed past step 3 if `npm test` or `npm run build` fails.
 - Do not write to `CHANGELOG.md`, edit any doc, bump the version, push, or open a PR before the user confirms.
-- Do not run `/ship` from `main`.
+- Do not run `/release` from `main`.
 - Do not create or push a tag from a feature branch — the Tag release workflow tags the merge commit after the merge.
 - Do not use `npm run release:*`.
 - Do not fabricate changelog entries — derive every bullet from the actual diff and commits.

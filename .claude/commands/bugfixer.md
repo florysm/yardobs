@@ -37,7 +37,7 @@ Fix one bug from `KnownBugs.md`, verify the build, and remove the resolved entry
 - Do not mark a bug as fixed without `npm run build` and `npm test` passing.
 - Do not attempt bugs classified as "requires new feature" — flag them and stop.
 - Do not add unrelated tests, comments, or cleanup — one regression test for the fixed defect is the limit.
-- Do not commit, bump the version, or open a PR — that's `/ship`.
+- Do not commit, bump the version, or open a PR — that's `/release`.
 
 ## Project context
 

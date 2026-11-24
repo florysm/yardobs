@@ -3,6 +3,7 @@
 // disagree. Pure and tested.
 import { THEME_IDS } from '../themes.js';
 import { iconFor, labelFor } from './weatherIcons';
+import { NIGHT_ICON, withMoonPhase } from './moon';
 
 // TWC iconCodes by sky. (0–2 are tornado / tropical storm / hurricane.)
 export const ICON_STORMY = new Set([0, 1, 2, 3, 4, 17, 37, 38, 47]);
@@ -78,7 +79,7 @@ export function deriveFromSensors(obs) {
   const precip = obs.precipRate ?? 0;
   if (precip > SKY.HEAVY_RAIN_RATE) return { icon: '🌧️', label: 'Heavy Rain' };
   if (precip > 0)                   return { icon: '🌦️', label: 'Light Rain' };
-  if (!obs.isDay)                   return { icon: '🌙', label: 'Clear' };
+  if (!obs.isDay)                   return { icon: NIGHT_ICON, label: 'Clear' };
   if (obs.solar != null && obs.solar < SKY.OVERCAST_SOLAR)  return { icon: '☁️', label: 'Cloudy' };
   if (obs.solar != null && obs.solar >= SKY.SUNNY_SOLAR)    return { icon: '☀️', label: 'Sunny' };
   return { icon: '🌤️', label: 'Partly Cloudy' };
@@ -86,8 +87,13 @@ export function deriveFromSensors(obs) {
 
 // The hero card's { icon, label } for current conditions. A "partly cloudy"
 // model code is upgraded to Sunny in daytime when the sensors measure strong
-// sun — the same test the theme uses.
-export function heroCondition(current) {
+// sun — the same test the theme uses. A night icon shows tonight's moon phase.
+export function heroCondition(current, now = new Date()) {
+  const c = baseCondition(current);
+  return c && { ...c, icon: withMoonPhase(c.icon, now, current.lat ?? null) };
+}
+
+function baseCondition(current) {
   if (!current) return null;
   if (current.iconCode == null) return deriveFromSensors(current);
   if (ICON_PARTLY.has(current.iconCode) && (current.isDay ?? 1) && isStrongSun(current.uv, current.solar)) {

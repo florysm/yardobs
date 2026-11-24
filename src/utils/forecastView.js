@@ -1,4 +1,5 @@
 import { iconFor, wmoToTwc, hourlyDisplayCode } from './weatherIcons';
+import { withMoonPhase } from './moon';
 
 // Presentation builders for the Forecast tab: the hourly strip and the daily
 // cards. Every "now" and "today" here is the place's clock (placeTime.js), and
@@ -48,7 +49,12 @@ export function buildHours(hf, clock, nowTemp = null) {
     const isNight = isNightHour(sun, t);
     const pop = h.precipitation_probability?.[i] ?? 0;
     // Same WMO table as the daily cards and current conditions.
-    const icon = iconFor(wmoToTwc(hourlyDisplayCode(h.weathercode?.[i], pop), isNight ? 0 : 1));
+    // Night hours show that night's moon phase. Parsing `t` on the device clock
+    // is fine here: the phase barely moves across a few hours of zone offset.
+    const icon = withMoonPhase(
+      iconFor(wmoToTwc(hourlyDisplayCode(h.weathercode?.[i], pop), isNight ? 0 : 1)),
+      new Date(t), hf.latitude ?? null,
+    );
     const isNow = k === 0;
     const temp = isNow && nowTemp != null && !isNaN(nowTemp) ? nowTemp : h.temperature_2m?.[i];
     return { time: t, icon, temp, pop, isNow };
@@ -79,13 +85,15 @@ export function groupByDay(hours, today) {
 }
 
 // `forecast` arrives already normalized from useWeather (see forecastNormalize.js),
-// so this only adds presentation: the emoji and the isToday flag. Vendor quirks —
+// so this only adds presentation: the emoji (with the moon's phase at night) and
+// the isToday flag. Vendor quirks —
 // TWC's day/night interleaved dayparts, Open-Meteo's WMO codes — are handled there.
-export function buildDays(forecast, today) {
+export function buildDays(forecast, today, lat = null) {
   if (!forecast?.length) return [];
   return forecast.map(day => ({
     ...day,
-    icon:    iconFor(day.iconCode),
+    // A night icon (today's card after dark) shows that evening's moon.
+    icon:    withMoonPhase(iconFor(day.iconCode), new Date(`${day.date}T21:00:00`), lat),
     isToday: day.date === today,
   }));
 }

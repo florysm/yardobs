@@ -2,6 +2,13 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.16.1] - 2026-11-24
+
+### Changed
+
+- Clear-night weather icons now show the moon as it actually looks tonight (new, crescent, half, gibbous or full) instead of always showing a crescent, on the main card, the hourly forecast and today's forecast card.
+- The "Today so far" chart on the Detailed dashboard is now labelled as the temperature since midnight, with times along the bottom and the day's high and low marked, and it fills in from left to right as the day goes.
+
 ## [1.16.0] - 2026-11-23
 
 ### Added

@@ -15,7 +15,7 @@ Every push that touches `tv/` builds it: **Actions → TV app (APK) → latest r
 
    ```sh
    adb connect 192.168.1.50:5555      # the TV's IP; accept the prompt on the TV
-   adb install -r yardobs-tv-1.15.1.apk
+   adb install -r yardobs-tv-<version>.apk
    ```
 
 ## Point it at your station

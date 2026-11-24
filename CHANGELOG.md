@@ -2,6 +2,13 @@
 
 All notable changes to YardObs are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.16.0] - 2026-11-23
+
+### Added
+
+- YardObs on Google TV and Android TV: a small TV app that opens the Dashboard full screen and keeps the TV awake, installed from a computer and set up with a "Set up another device" link (see tv/README.md).
+- On the TV, a setup link applies itself once and then clears itself, and the app reconnects on its own if the network or site is briefly down.
+
 ## [1.15.1] - 2026-11-20
 
 ### Fixed

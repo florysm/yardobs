@@ -17,7 +17,13 @@ android {
         targetSdk = 35
         versionName = webVersion
         // 1.15.1 -> 11501. Must only go up, or Android refuses the update.
-        versionCode = webVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
+        // Any "-suffix" is ignored; minor and patch must stay below 100.
+        versionCode = webVersion.substringBefore("-").split(".").map { it.toInt() }.let { parts ->
+            require(parts.size == 3) { "versionCode needs a major.minor.patch version: $webVersion" }
+            val (a, b, c) = parts
+            require(b < 100 && c < 100) { "versionCode needs minor and patch below 100: $webVersion" }
+            a * 10000 + b * 100 + c
+        }
     }
 
     // A fixed debug key, committed on purpose: every CI build is signed the

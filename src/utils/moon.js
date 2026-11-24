@@ -62,3 +62,21 @@ export function arcProgress(startMs, endMs, nowMs) {
   if (!startMs || !endMs || endMs <= startMs) return null;
   return Math.max(0, Math.min(0.9999, (nowMs - startMs) / (endMs - startMs)));
 }
+
+// The night-sky icon, drawn as the moon actually looks. The weather tables use
+// a generic crescent (🌙) for clear and fair nights; withMoonPhase swaps it for
+// the phase emoji for `date`, in the same eight bins as moonPhaseName (so the
+// Moon card's "Full Moon" and the icon agree). The emoji are drawn as seen from
+// the northern hemisphere; south of the equator the lit side is mirrored.
+export const NIGHT_ICON = '🌙';
+const PHASE_EMOJI = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+
+export function moonPhaseEmoji(phase, lat = null) {
+  const i = Math.round(phase * 8) % 8;
+  return PHASE_EMOJI[lat != null && lat < 0 ? (8 - i) % 8 : i];
+}
+
+export function withMoonPhase(icon, date, lat = null) {
+  if (icon !== NIGHT_ICON || !(date instanceof Date) || !isFinite(date)) return icon;
+  return moonPhaseEmoji(SunCalc.getMoonIllumination(date).phase, lat);
+}

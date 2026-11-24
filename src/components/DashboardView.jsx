@@ -15,7 +15,7 @@ import { freshness, nextLocalHour, toDateStr } from '../utils/dateUtils';
 import {
   DASHBOARD_SIZES, SIZE_LABELS, resolveDashboardSize, FIT, FIT_MIN_WIDTH, FIT_MAX_STEPS, MAX_FIT_SCALE, nextFit,
 } from '../utils/dashboardSize';
-import { sparklinePoints } from '../utils/sparkline';
+import { dayCurvePoints, minuteOfDay } from '../utils/sparkline';
 
 import { isPreviewProfile, isExploring } from '../utils/profile';
 
@@ -187,20 +187,68 @@ function SizeMenu({ sizePref, resolved, onSetSize }) {
   );
 }
 
-// A plain SVG line, stretched to its box. Hand-drawn rather than Recharts:
-// Recharts sizes itself with ResizeObserver, which iOS 10 lacks, and this card
-// only needs the shape of the day.
+// Today's temperature by time of day, midnight to midnight. Hand-drawn SVG
+// rather than Recharts: Recharts sizes itself with ResizeObserver, which iOS 10
+// lacks. The line stops at the latest reading, so it fills in as the day goes;
+// the high and low are marked with their values, and the axis gives the hours.
+// Dots and labels are HTML laid over the stretched SVG so they stay round.
 const SPARK_W = 300;
-const SPARK_H = 64;
-function Sparkline({ values, color }) {
-  const pts = sparklinePoints(values, SPARK_W, SPARK_H);
-  if (!pts) return null;
+const SPARK_H = 72;
+const SPARK_PAD = 16;   // room above the high and below the low for their labels
+const DAY_TICKS = [['12 AM', 0], ['6 AM', 0.25], ['Noon', 0.5], ['6 PM', 0.75], ['12 AM', 1]];
+
+function edgeShift(frac) {
+  return frac < 0.08 ? '0' : frac > 0.92 ? '-100%' : '-50%';
+}
+
+function DayTempChart({ samples, color }) {
+  const pts = dayCurvePoints(samples, SPARK_W, SPARK_H, SPARK_PAD);
+  if (!pts.length) return null;
+  let hiPt = pts[0], loPt = pts[0];
+  for (const p of pts) {
+    if (p.v > hiPt.v) hiPt = p;
+    if (p.v <= loPt.v) loPt = p;   // latest low, so "now" wins a tie on a falling day
+  }
+  const marks = hiPt.v === loPt.v ? [] : [[hiPt, 'above'], [loPt, 'below']];
+  const pct = x => (x / SPARK_W) * 100;
   return (
-    <svg viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} preserveAspectRatio="none" width="100%" height={SPARK_H}
-      style={{ display: 'block' }} aria-hidden="true">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="2"
-        strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-    </svg>
+    <div>
+      <div className="y-label" style={{ marginBottom: 4 }}>Temperature since midnight</div>
+      <div style={{ position: 'relative', height: SPARK_H }}>
+        <svg viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} preserveAspectRatio="none" width="100%" height={SPARK_H}
+          style={{ display: 'block' }} aria-hidden="true">
+          {DAY_TICKS.slice(1, -1).map(([, f]) => (
+            <line key={f} x1={f * SPARK_W} x2={f * SPARK_W} y1="0" y2={SPARK_H}
+              stroke="var(--tm)" strokeOpacity="0.25" strokeWidth="1" strokeDasharray="2 4"
+              vectorEffect="non-scaling-stroke" />
+          ))}
+          <polyline points={pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} fill="none"
+            stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
+            vectorEffect="non-scaling-stroke" />
+        </svg>
+        {marks.map(([p, side]) => (
+          <div key={side} aria-hidden="true">
+            <div style={{
+              position: 'absolute', left: `${pct(p.x)}%`, top: p.y, width: 7, height: 7, borderRadius: '50%',
+              background: color, transform: 'translate(-50%, -50%)',
+            }} />
+            <div style={{
+              position: 'absolute', left: `${pct(p.x)}%`, top: side === 'above' ? p.y - 15 : p.y + 4,
+              transform: `translateX(${edgeShift(p.x / SPARK_W)})`, whiteSpace: 'nowrap',
+              fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tp)',
+            }}>{Math.round(p.v)}°</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ position: 'relative', height: 14, marginTop: 4 }} aria-hidden="true">
+        {DAY_TICKS.map(([label, f]) => (
+          <div key={f} style={{
+            position: 'absolute', left: `${f * 100}%`, transform: `translateX(${edgeShift(f)})`,
+            fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--tm)', whiteSpace: 'nowrap',
+          }}>{label}</div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -228,9 +276,9 @@ function TodaySoFar({ stationId, fetchHistory, lastUpdated, current, high, low, 
   const lo = [low, now].filter(v => v != null);
   const hiParts = formatTempParts(hi.length ? Math.max(...hi) : null, units);
   const loParts = formatTempParts(lo.length ? Math.min(...lo) : null, units);
-  const points = (obs ?? [])
-    .map(o => ({ temp: convertTemp(o.imperial?.tempAvg ?? null, units) }))
-    .filter(p => p.temp != null && !isNaN(p.temp));
+  const samples = (obs ?? [])
+    .map(o => ({ minute: minuteOfDay(o.obsTimeLocal), value: convertTemp(o.imperial?.tempAvg ?? null, units) }))
+    .filter(p => p.minute != null && p.value != null && !isNaN(p.value));
   const stat = (label, value) => (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div className="y-label" style={{ marginBottom: 2 }}>{label}</div>
@@ -244,9 +292,9 @@ function TodaySoFar({ stationId, fetchHistory, lastUpdated, current, high, low, 
         {stat('Low', `${loParts.value}${loParts.unit}`)}
         {stat('Rain', formatPrecipTotal(current?.precipTotal ?? null, units))}
       </div>
-      {points.length > 1 && (
-        <div style={{ marginTop: 8 }}>
-          <Sparkline values={points.map(p => p.temp)} color={color} />
+      {samples.length > 1 && (
+        <div style={{ marginTop: 10 }}>
+          <DayTempChart samples={samples} color={color} />
         </div>
       )}
     </div>
@@ -282,7 +330,7 @@ export default function DashboardView({
   const tz = placeTimeZone(hourlyForecast);
   const clock = placeClock(tz);
   const hours = buildHours(hourlyForecast, clock, current?.temp ?? null).slice(0, layout.hours);
-  const days = buildDays(forecast, clock.date).slice(0, layout.days);
+  const days = buildDays(forecast, clock.date, current?.lat ?? null).slice(0, layout.days);
 
   const place = isExploring(profile)
     ? profile.exploring.label

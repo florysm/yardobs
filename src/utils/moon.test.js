@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickMoonWindow, moonPhaseName, arcProgress } from './moon';
+import { pickMoonWindow, moonPhaseName, arcProgress, moonPhaseEmoji, withMoonPhase, NIGHT_ICON } from './moon';
 
 // Fixed local times on consecutive days; getTimes returns per-day rise/set.
 const at = (day, h, m = 0) => new Date(2026, 10, day, h, m);
@@ -73,5 +73,33 @@ describe('moonPhaseName', () => {
     expect(moonPhaseName(0.5)).toBe('Full Moon');
     expect(moonPhaseName(0.75)).toBe('Last Quarter');
     expect(moonPhaseName(0.97)).toBe('New Moon');
+  });
+});
+
+describe('moonPhaseEmoji', () => {
+  it('matches the phase names', () => {
+    expect(moonPhaseEmoji(0)).toBe('🌑');
+    expect(moonPhaseEmoji(0.25)).toBe('🌓');
+    expect(moonPhaseEmoji(0.49)).toBe('🌕');
+    expect(moonPhaseEmoji(0.75)).toBe('🌗');
+    expect(moonPhaseEmoji(0.97)).toBe('🌑');
+  });
+  it('mirrors the lit side south of the equator', () => {
+    expect(moonPhaseEmoji(0.25, -33)).toBe('🌗');
+    expect(moonPhaseEmoji(0.125, -33)).toBe('🌘');
+    expect(moonPhaseEmoji(0.5, -33)).toBe('🌕');
+    expect(moonPhaseEmoji(0.25, 40)).toBe('🌓');
+  });
+});
+
+describe('withMoonPhase', () => {
+  it('swaps the night crescent for the phase on that date', () => {
+    // 2026-11-24 is a full moon.
+    expect(withMoonPhase(NIGHT_ICON, new Date('2026-11-24T03:00:00Z'))).toBe('🌕');
+  });
+  it('leaves other icons alone', () => {
+    expect(withMoonPhase('☁️', new Date())).toBe('☁️');
+    expect(withMoonPhase(NIGHT_ICON, null)).toBe(NIGHT_ICON);
+    expect(withMoonPhase(NIGHT_ICON, new Date('nope'))).toBe(NIGHT_ICON);
   });
 });

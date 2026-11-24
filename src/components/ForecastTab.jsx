@@ -155,7 +155,7 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
   }, [hourlyForecast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // AI narrative for the selected day.
-  const insightDay = buildDays(forecast, clock.date)[selectedDayIndex] ?? null;
+  const insightDay = buildDays(forecast, clock.date, lat)[selectedDayIndex] ?? null;
   const insightId = insightScope({ stationId, sourceType, lat, lon });
   const dayAqi = insightDay ? aqiForDay(airQuality, insightDay.date) : null;
   // Same 25-wide bucket the server keys on, so client and server invalidate together.
@@ -208,7 +208,7 @@ export default function ForecastTab({ forecast, isLoading, hourlyForecast, airQu
     );
   }
 
-  const days = buildDays(forecast, clock.date);
+  const days = buildDays(forecast, clock.date, lat);
 
   function handleHourlyScroll() {
     if (!scrollRef.current) return;

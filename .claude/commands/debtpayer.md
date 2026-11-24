@@ -68,4 +68,4 @@ A change is **structural** if it involves:
 - Do not remove an item from `TechDebt.md` without `npm run build` and `npm test` passing first.
 - Do not treat a structural item as mechanical to skip the confirmation step.
 - Do not add unrelated tests, comments, or cleanup as part of the change.
-- Do not commit, bump the version, or open a PR — that's `/ship`.
+- Do not commit, bump the version, or open a PR — that's `/release`.

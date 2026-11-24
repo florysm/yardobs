@@ -50,10 +50,13 @@ function initDashboard() {
 }
 
 // Running from the Home Screen rather than in a browser tab. navigator.standalone
-// is iOS Safari's (all versions); display-mode covers other browsers.
+// is iOS Safari's (all versions); display-mode covers other browsers; the
+// YardObsTV user agent is the Android TV app in tv/android, which keeps its
+// own storage like a home-screen app does.
 function isInstalledApp() {
   try {
     return window.navigator.standalone === true
+      || /YardObsTV\//.test(window.navigator.userAgent || '')
       || (!!window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
   } catch { return false; }
 }

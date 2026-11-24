@@ -64,6 +64,7 @@ The widget shows current conditions from your station (or your preview location)
 - **Adaptive Theming** — 6 themes (sunny, cloudy, rainy, stormy, light, dark) auto-selected from current conditions using your station's rain gauge as ground truth; manual override persisted in `localStorage`
 - **Preview Mode** — explore with any location without owning a personal weather station
 - **Dashboard Mode** — a one-screen landscape layout for a tablet on a stand, with a clock, a stale-data warning, and screen keep-awake; three sizes (Large, Normal, Detailed) plus Auto, which picks from the screen size; turn it on per device in Settings → Layout
+- **Google TV / Android TV app** — a small wrapper app (`tv/`) that opens the Dashboard full screen on a TV and keeps it awake; built as an APK by GitHub Actions and installed with `adb` (see [tv/README.md](tv/README.md))
 - **In-app Changelog** — version history accessible from the settings drawer
 - **iPhone Widget** — small and medium home screen widgets plus Lock Screen widgets via the free Scriptable app, set up from Settings with one copy-and-paste
 - **API Key Expiry Reminders** — record your TWC key's expiration date and YardObs (and the widget) warns you two weeks before it stops working
